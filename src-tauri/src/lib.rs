@@ -157,8 +157,9 @@ pub fn run() {
             if let Err(error) = app.global_shortcut().register(shortcut) {
                 report(app.handle(), format!("The capture shortcut is unavailable ({error}). Use Capture Region in Mark's menu."));
             }
-            // A visible development window makes HMR useful immediately. Release stays in the tray.
-            #[cfg(debug_assertions)]
+            // Launching Mark must show something. A tray-only start looks like a
+            // failed launch, so open the editor on its empty state, which names the
+            // shortcut. Escape or Command-W sends it back to the tray.
             present(app.handle());
             Ok(())
         })

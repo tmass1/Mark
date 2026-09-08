@@ -56,7 +56,8 @@ identity and notarization.
 
 ## Use
 
-1. Launch Mark. It lives in the menu bar and does not appear in the Dock.
+1. Launch Mark. The editor opens on its empty state so the launch is visible.
+   Mark itself lives in the menu bar and never appears in the Dock.
 2. Press **⌃⌥⌘4**, or choose **Capture Region** from Mark's menu.
 3. Grant Screen Recording access when macOS asks. This permission is also used
    for still screenshots; Mark does not capture audio or video.
