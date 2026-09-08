@@ -3,7 +3,7 @@ import { command, isTauri, watchCapture, type CapturePreview, type Snapshot } fr
 import { copyThenDismiss, type EditorSize } from './model';
 import { preferences } from './preferences';
 import { sampleCapture } from './sample';
-import { ArrowLayer, COLORS, drawArrows } from './annotations';
+import { AnnotationLayer, COLORS, drawAnnotations, textSize, type Tool } from './annotations';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
@@ -11,17 +11,21 @@ app.innerHTML = `
     <span class="app-title" data-tauri-drag-region>Mark</span>
     <span class="preview-label" hidden>Browser preview</span>
   </header>
-  <div class="toolbar" role="toolbar" aria-label="Arrow tools" hidden>
-    <div class="swatches" role="radiogroup" aria-label="Arrow color">
+  <div class="toolbar" role="toolbar" aria-label="Annotation tools" hidden>
+    <div class="tools" role="radiogroup" aria-label="Tool">
+      <button class="tool" type="button" role="radio" data-tool="arrow" aria-checked="true">Arrow</button>
+      <button class="tool" type="button" role="radio" data-tool="text" aria-checked="false">Text</button>
+    </div>
+    <div class="swatches" role="radiogroup" aria-label="Color">
       ${COLORS.map(color => `<button class="swatch" type="button" role="radio" aria-checked="false"
         data-color="${color.value}" style="--swatch:${color.value}" title="${color.name}"><span class="sr">${color.name}</span></button>`).join('')}
     </div>
     <label class="size">Size
-      <input class="weight" type="range" min="0.5" max="2.5" step="0.1" value="1" aria-label="Arrow size" />
+      <input class="weight" type="range" min="0.5" max="2.5" step="0.1" value="1" aria-label="Size" />
     </label>
     <span class="spacer"></span>
     <button class="undo subtle" type="button" title="Undo (⌘Z)">Undo</button>
-    <button class="remove subtle" type="button" title="Delete selected arrow (⌫)">Delete</button>
+    <button class="remove subtle" type="button" title="Delete selection (⌫)">Delete</button>
   </div>
   <main class="canvas" aria-label="Screenshot editor">
     <div class="stage" hidden>
@@ -63,7 +67,7 @@ let busy = false;
 let copyPending = false;
 let disposed = false;
 
-const layer = new ArrowLayer(overlay, () => syncTools());
+const layer = new AnnotationLayer(overlay, stage, () => syncTools());
 
 function showMessage(text: string | null) {
   message.hidden = !text;
@@ -74,10 +78,12 @@ function showMessage(text: string | null) {
 /** Selecting an arrow adopts its look, so the swatches and slider always describe
  *  whatever the next edit will affect. */
 function syncTools() {
-  const selected = layer.arrows.find(arrow => arrow.id === layer.selected);
+  const selected = layer.annotations.find(item => item.id === layer.selected);
   if (selected) {
     layer.style.color = selected.color;
-    layer.style.scale = selected.weight / layer.base;
+    layer.style.scale = selected.kind === 'arrow'
+      ? selected.weight / layer.base
+      : selected.size / textSize(layer.base);
   }
   weight.value = layer.style.scale.toFixed(1);
   for (const swatch of app.querySelectorAll<HTMLButtonElement>('.swatch')) {
@@ -85,8 +91,14 @@ function syncTools() {
     swatch.setAttribute('aria-checked', String(active));
     swatch.classList.toggle('active', active);
   }
+  for (const button of app.querySelectorAll<HTMLButtonElement>('.tool')) {
+    const active = button.dataset.tool === layer.tool;
+    button.setAttribute('aria-checked', String(active));
+    button.classList.toggle('active', active);
+  }
+  overlay.classList.toggle('text-tool', layer.tool === 'text');
   undoButton.disabled = !layer.canUndo;
-  removeButton.disabled = layer.selected === null;
+  removeButton.disabled = layer.selected === null || layer.isEditing;
 }
 
 function render() {
@@ -138,7 +150,7 @@ async function flatten(): Promise<HTMLCanvasElement> {
   canvas.width = capture!.width; canvas.height = capture!.height;
   const context = canvas.getContext('2d')!;
   context.drawImage(source, 0, 0, canvas.width, canvas.height);
-  drawArrows(context, layer.arrows);
+  drawAnnotations(context, layer.annotations);
   return canvas;
 }
 
@@ -179,7 +191,10 @@ on(choose, 'click', () => input.click());
 on(settings, 'click', () => { void command('open_screen_settings').catch(report); });
 on(input, 'change', () => { void loadFile().catch(report); });
 on(toolbar, 'click', event => {
-  const swatch = (event.target as Element).closest<HTMLButtonElement>('.swatch');
+  const element = event.target as Element;
+  const tool = element.closest<HTMLButtonElement>('.tool');
+  if (tool?.dataset.tool) { layer.tool = tool.dataset.tool as Tool; layer.deselect(); syncTools(); return; }
+  const swatch = element.closest<HTMLButtonElement>('.swatch');
   if (!swatch?.dataset.color) return;
   layer.style.color = swatch.dataset.color;
   layer.applyStyle();
@@ -215,6 +230,7 @@ document.addEventListener('keydown', event => {
   const target = event.target as HTMLElement | null;
   const typing = target instanceof HTMLTextAreaElement || target?.isContentEditable === true ||
     (target instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'file', 'button'].includes(target.type));
+  if (layer.isEditing) return;
   if (key === 'escape') {
     // Escape backs out one level: first the selection, then the editor.
     event.preventDefault();

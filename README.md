@@ -1,10 +1,10 @@
 # Mark
 
 Mark is a fast, small macOS screenshot utility built with Tauri v2. Press a
-global shortcut, drag across a region, mark it up with arrows, then copy and
-close.
+global shortcut, drag across a region, mark it up with arrows and text, then
+copy and close.
 
-Annotation is arrows only. There are no accounts, settings window, cloud
+Annotation is arrows and text. There are no accounts, settings window, cloud
 features, or screen recording. The UI uses the system WKWebView; the native
 shell is Rust. There is no Xcode project and no Swift source.
 
@@ -62,11 +62,16 @@ identity and notarization.
 3. Grant Screen Recording access when macOS asks. This permission is also used
    for still screenshots; Mark does not capture audio or video.
 4. Drag to select a region. Press Escape to cancel.
-5. Drag on the capture to draw an arrow. Drag its body to move it, drag either
-   end to reshape it, and set color and size from the toolbar. Selecting an
-   arrow adopts its style, so the toolbar always describes the next edit.
-   ⌘Z undoes, ⌫ deletes the selected arrow, and Escape clears the selection
-   before it closes the editor.
+5. Choose **Arrow** or **Text** in the toolbar.
+   - Arrow: drag on the capture. Drag its body to move it, or either end to
+     reshape it.
+   - Text: click, then type. Enter starts a new line and Escape finishes.
+     Click a note to move it; click it again to edit it.
+
+   Color and size come from the toolbar and drive both tools. Selecting an
+   annotation adopts its style, so the toolbar always describes the next edit.
+   ⌘Z undoes, ⌫ deletes the selection, and Escape backs out one level: first
+   the text caret, then the selection, then the editor.
 6. Press **⌘C** or click **Copy and Close**. A PNG and a TIFF compatibility
    representation are written to the macOS clipboard. A capture you did not
    draw on is copied as the original bytes macOS produced; only a drawing is
@@ -78,9 +83,11 @@ new capture hides the old editor; cancel restores it and success replaces it.
 ## Architecture
 
 - `src/` is framework-free TypeScript, HTML, and CSS for the editor.
-- `src/annotations.ts` owns arrow geometry, the SVG overlay, and hit-testing.
-  Coordinates are image pixels, never screen pixels, so a drawing survives a
-  resize and composites at full resolution.
+- `src/annotations.ts` owns arrow geometry, text notes, the SVG overlay, and
+  hit-testing. Coordinates are image pixels, never screen pixels, so a drawing
+  survives a resize and composites at full resolution. One routine paints each
+  shape to SVG for display and to a canvas for export, so the copied image
+  matches the screen.
 - `src/platform.ts` is the only frontend boundary for native commands.
 - `src/preferences.ts` selects the shared Tauri store or browser localStorage.
 - `src-tauri/src/capture.rs` owns region capture, PNG validation, cancellation,
@@ -110,9 +117,10 @@ pnpm tauri build --bundles app
 Browser screenshots are written to `test-results/editor-light.png` and
 `test-results/editor-dark.png`. Browser tests cover responsive rendering,
 clipboard failures, keyboard dismissal, local image loading, preference sync,
-and the arrow lifecycle: drawing, restyling, moving, deleting, undo, and that
-a copied image carries the arrow at full resolution. Unit tests cover arrow
-geometry and default weight. Rust tests cover PNG preservation and validation,
+and the annotation lifecycle: drawing, typing, restyling, moving, reopening a
+note, deleting, undo, mixing both tools, and that a copied image carries the
+annotation at full resolution. Unit tests cover arrow geometry, text layout,
+and default sizing. Rust tests cover PNG preservation and validation,
 cancellation/error classification, capture re-entry, child-process
 cancellation, and temporary cleanup.
 

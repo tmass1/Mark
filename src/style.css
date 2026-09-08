@@ -58,5 +58,21 @@ h1 { margin: 16px 0 8px; font-size: 19px; font-weight: 600; letter-spacing: -.3p
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 @media (max-width: 500px) {
   .toolbar { gap: 8px; padding: 0 12px; }
-  .size { display: none; }
+  .size, .undo, .remove { display: none; }   /* ⌘Z and ⌫ still work */
+  .tool { padding: 4px 8px; }
+  .swatch { width: 16px; height: 16px; }
+  .swatches { gap: 5px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 }
+.tools { display: flex; gap: 2px; padding: 2px; border-radius: 7px; background: #0000000d; }
+.tool { border: none; border-radius: 5px; padding: 4px 11px; background: transparent; color: var(--muted); font-size: 12px; }
+.tool.active { background: var(--canvas); color: inherit; box-shadow: 0 1px 2px #00000014; font-weight: 500; }
+.note { cursor: move; }
+.note-outline { fill: none; stroke: var(--blue); pointer-events: none; }
+.overlay.text-tool { cursor: text; }
+.text-editor {
+  position: absolute; margin: 0; padding: 0; border: 0; outline: 0; background: transparent;
+  resize: none; overflow: hidden; white-space: pre; caret-color: currentColor;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, sans-serif;
+  font-weight: 600; line-height: 1.25;
+}
+@media (prefers-color-scheme: dark) { .tools { background: #ffffff14; } }

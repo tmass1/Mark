@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { arrowPolygon, baseWeight, polygonPath, type Arrow } from './annotations';
+import { arrowPolygon, baseWeight, drawAnnotations, lines, polygonPath, textSize, type Arrow, type Note } from './annotations';
 
 const arrow = (over: Partial<Arrow> = {}): Arrow =>
-  ({ id: 1, x1: 0, y1: 0, x2: 100, y2: 0, color: '#ff3b30', weight: 10, ...over });
+  ({ kind: 'arrow', id: 1, x1: 0, y1: 0, x2: 100, y2: 0, color: '#ff3b30', weight: 10, ...over });
+const note = (over: Partial<Note> = {}): Note =>
+  ({ kind: 'text', id: 2, x: 40, y: 60, text: 'Look here', color: '#007aff', size: 30, ...over });
 
 describe('arrow geometry', () => {
   it('puts the head exactly where the pointer was released', () => {
@@ -55,5 +57,34 @@ describe('default weight', () => {
   it('clamps so tiny and enormous captures stay usable', () => {
     expect(baseWeight(60, 40)).toBe(5);
     expect(baseWeight(12000, 12000)).toBe(64);
+  });
+});
+
+describe('text notes', () => {
+  it('splits on newlines so each line is drawn separately', () => {
+    expect(lines(note({ text: 'one\ntwo\nthree' }))).toEqual(['one', 'two', 'three']);
+    expect(lines(note({ text: 'one' }))).toEqual(['one']);
+  });
+
+  it('sizes text off the same base as arrows, so one slider drives both', () => {
+    expect(textSize(baseWeight(1600, 1200))).toBeCloseTo(baseWeight(1600, 1200) * 2);
+  });
+
+  it('paints arrows and text in the order they were added', () => {
+    const calls: string[] = [];
+    const ctx = {
+      set fillStyle(value: string) { calls.push(`fill:${value}`); },
+      set font(value: string) { calls.push(`font:${value}`); },
+      textBaseline: '',
+      beginPath: () => calls.push('begin'), closePath: () => calls.push('close'),
+      moveTo: () => {}, lineTo: () => {}, fill: () => calls.push('shape'),
+      fillText: (text: string, x: number, y: number) => calls.push(`text:${text}@${x},${y}`),
+    } as unknown as CanvasRenderingContext2D;
+    drawAnnotations(ctx, [arrow(), note({ text: 'a\nb', size: 20, x: 5, y: 7 })]);
+    expect(calls).toContain('fill:#ff3b30');
+    expect(calls).toContain('shape');
+    // Second line sits one line-height below the first.
+    expect(calls).toContain('text:a@5,7');
+    expect(calls).toContain('text:b@5,32');
   });
 });

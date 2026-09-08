@@ -150,3 +150,95 @@ test('the copied image carries the arrow at full resolution', async ({ page }) =
   await expect(page.locator('body')).toHaveAttribute('data-copied-size', '1200x740');
   await expect(page.locator('body')).toHaveAttribute('data-copied-pixel', '255,59,48');
 });
+
+test('types a text note, moves it, and reopens it on double click', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('radio', { name: 'Text' }).click();
+  const at = await stage(page);
+  const spot = at(300, 250);
+  await page.mouse.click(spot.x, spot.y);
+
+  const editor = page.locator('.text-editor');
+  await expect(editor).toBeVisible();
+  await page.keyboard.type('Look here');
+  await page.keyboard.press('Escape');          // commits, and must not close the editor
+  await expect(editor).toBeHidden();
+  await expect(page.locator('.note text')).toHaveText('Look here');
+  await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
+
+  const before = await page.locator('.note text').getAttribute('x');
+  const grab = at(330, 265), drop = at(700, 480);
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(drop.x, drop.y, { steps: 10 });
+  await page.mouse.up();
+  expect(await page.locator('.note text').getAttribute('x')).not.toEqual(before);
+
+  await page.locator('.note').dblclick();
+  await expect(editor).toBeVisible();
+  await page.keyboard.type('!');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.note text')).toHaveText('Look here!');
+});
+
+test('a text box left empty leaves nothing behind', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('radio', { name: 'Text' }).click();
+  const at = await stage(page);
+  const spot = at(400, 300);
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.locator('.text-editor')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.note')).toHaveCount(0);
+  await expect(page.locator('.text-editor')).toBeHidden();
+});
+
+test('text takes the toolbar colour and the copied image carries it', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async (items: any[]) => {
+      const blob = await items[0].getType('image/png');
+      const bitmap = await createImageBitmap(blob);
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext('2d')!;
+      context.drawImage(bitmap, 0, 0);
+      // Scan the box the text was typed into for its exact colour.
+      const { data } = context.getImageData(290, 240, 320, 70);
+      let hits = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] === 0 && data[i + 1] === 122 && data[i + 2] === 255) hits++;
+      }
+      document.body.dataset.textPixels = String(hits);
+    } } });
+  });
+  await page.goto('/');
+  await page.getByRole('radio', { name: 'Text' }).click();
+  await page.locator('.swatch[data-color="#007aff"]').click();
+  const at = await stage(page);
+  const spot = at(300, 250);
+  await page.mouse.click(spot.x, spot.y);
+  await page.keyboard.type('Look here');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.note text')).toHaveAttribute('fill', '#007aff');
+
+  await page.getByRole('button', { name: /Copy and Close/ }).click();
+  // Flattening is async; poll rather than read once.
+  await expect.poll(async () => Number(await page.locator('body').getAttribute('data-text-pixels')))
+    .toBeGreaterThan(100);
+});
+
+test('arrows and text can be mixed on one capture', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [200, 600], [500, 400]);
+  await page.getByRole('radio', { name: 'Text' }).click();
+  const at = await stage(page);
+  const spot = at(560, 360);
+  await page.mouse.click(spot.x, spot.y);
+  await page.keyboard.type('Here');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.arrow')).toHaveCount(1);
+  await expect(page.locator('.note')).toHaveCount(1);
+  // Undo peels off the text and leaves the arrow.
+  await page.keyboard.press('Meta+z');
+  await expect(page.locator('.note')).toHaveCount(0);
+  await expect(page.locator('.arrow')).toHaveCount(1);
+});
