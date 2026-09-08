@@ -290,6 +290,10 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("could not build Mark")
         .run(|app, event| {
+            // Opening a menu bar app that is already running has to show
+            // something. Without this the editor stays hidden and re-opening
+            // Mark looks exactly like a launch that failed.
+            if let tauri::RunEvent::Reopen { .. } = event { present(app); }
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 // Only a shutter already in flight is worth delaying a quit for.
                 // A selection still on screen just goes away.
