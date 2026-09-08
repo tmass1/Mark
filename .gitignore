@@ -1,0 +1,9 @@
+.build/
+build/
+node_modules/
+dist/
+test-results/
+src-tauri/target/
+.DS_Store
+xcuserdata/
+*.xcuserstate
