@@ -23,6 +23,6 @@
     "active": true, "targets": ["app"], "category": "Utility",
     "shortDescription": "Capture a region. Copy and close.",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"],
-    "macOS": { "minimumSystemVersion": "13.0", "signingIdentity": "-", "infoPlist": "Info.plist" }
+    "macOS": { "minimumSystemVersion": "13.0", "signingIdentity": "Apple Development: tmass1@me.com (7H35QWWLTC)", "infoPlist": "Info.plist" }
   }
 }

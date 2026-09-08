@@ -51,8 +51,18 @@ The output is:
 src-tauri/target/release/bundle/macos/Mark.app
 ```
 
-The local build is ad hoc signed. Distribution still requires a Developer ID
-identity and notarization.
+The build is signed with the Apple Development identity named in
+`tauri.conf.json`. That matters beyond tidiness: macOS pins a Screen Recording
+grant to a binary's designated requirement, and an ad hoc signature puts the
+binary's own hash in that requirement, so every rebuild silently invalidated
+the permission and Capture Region failed with a request to grant access that
+was already granted. Signing with a certificate makes the requirement depend on
+the bundle identifier and the certificate instead, so the grant survives
+rebuilds. Change `signingIdentity` to a local identity from
+`security find-identity -v -p codesigning` when building on another machine.
+
+Distributing Mark to anyone else still needs a Developer ID identity and
+notarization; an Apple Development certificate is only good for this Mac.
 
 ## Use
 
