@@ -6,6 +6,7 @@
     "beforeDevCommand": "pnpm dev", "beforeBuildCommand": "pnpm build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [{
       "label": "editor", "title": "Mark", "width": 800, "height": 580,
       "minWidth": 380, "minHeight": 280, "visible": false, "center": true,
@@ -13,7 +14,7 @@
       "titleBarStyle": "Overlay", "hiddenTitle": true, "dragDropEnabled": false
     }],
     "security": {
-      "capabilities": ["editor"],
+      "capabilities": ["editor", "selector"],
       "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'self'",
       "devCsp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; frame-src 'none'; base-uri 'self'"
     }

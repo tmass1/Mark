@@ -1,0 +1,47 @@
+:root {
+  font: 13px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { cursor: crosshair; user-select: none; -webkit-user-select: none; }
+[hidden] { display: none !important; }
+
+.veil { position: fixed; inset: 0; background: #00000052; }
+/* The selection is a hole: transparent, with a shadow wide enough to dim the
+   rest of the display however large it is. */
+.shot { position: fixed; box-shadow: 0 0 0 9999px #00000052; outline: 1px solid #ffffffe6; cursor: move; }
+.grip { position: absolute; width: 13px; height: 13px; margin: -7px; border: 1.5px solid #ffffff; border-radius: 50%; background: #007aff; box-shadow: 0 1px 3px #0006; }
+.grip.nw { top: 0; left: 0; cursor: nwse-resize; }
+.grip.ne { top: 0; left: 100%; cursor: nesw-resize; }
+.grip.se { top: 100%; left: 100%; cursor: nwse-resize; }
+.grip.sw { top: 100%; left: 0; cursor: nesw-resize; }
+
+.readout { position: fixed; padding: 3px 8px; border-radius: 6px; background: #000000b8; color: #fff;
+  font-variant-numeric: tabular-nums; font-size: 12px; pointer-events: none; white-space: nowrap; }
+.hint { position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); padding: 8px 16px;
+  border-radius: 999px; background: #000000ad; color: #fff; font-size: 12.5px; pointer-events: none; }
+
+.panel { position: fixed; display: flex; align-items: center; gap: 8px; padding: 10px;
+  border-radius: 12px; background: #2c2c2ef2; box-shadow: 0 8px 34px #00000073, 0 0 0 1px #ffffff1a;
+  color: #f5f5f7; cursor: default; }
+.field { display: flex; align-items: center; gap: 6px; color: #b8b8bd; font-size: 11.5px; }
+.field input { width: 62px; padding: 5px 7px; border: 1px solid #ffffff26; border-radius: 6px;
+  background: #ffffff14; color: #f5f5f7; font: inherit; font-variant-numeric: tabular-nums; }
+.field input:focus { outline: 2px solid #007aff; outline-offset: -1px; }
+.panel button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 28px;
+  padding: 5px 11px; border: 1px solid #ffffff1f; border-radius: 7px; background: #ffffff17;
+  color: #f5f5f7; font: inherit; cursor: default; white-space: nowrap; }
+.panel button:hover { background: #ffffff2b; }
+.panel button:focus-visible { outline: 2px solid #007aff; outline-offset: 2px; }
+/* Size the glyph, not the button: constraining the button crushed the svg to
+   nothing inside its own padding. */
+.panel button.icon { padding: 5px 9px; }
+.panel button svg { display: block; width: 18px; height: 18px; }
+.delay-label { font-variant-numeric: tabular-nums; }
+.lock[aria-pressed="true"], .delay.armed { background: #007aff; border-color: #007aff; color: #fff; }
+.go { background: #007aff !important; border-color: #007aff !important; font-weight: 500; }
+.go:hover { background: #0069dc !important; }
+.gap { width: 4px; }
+@media (prefers-reduced-motion: no-preference) { .panel { animation: rise .12s ease-out; } }
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } }

@@ -6,6 +6,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[derive(Clone)]
 pub struct Capture { pub png: Vec<u8>, pub width: u32, pub height: u32 }
 
+/// A region in global screen points, as Mark's own selection overlay reports it.
+#[derive(Clone, Copy, Debug)]
+pub struct Rect { pub x: f64, pub y: f64, pub width: f64, pub height: f64 }
+
+impl Rect {
+    /// screencapture takes the rectangle as one argument, in points. The file it
+    /// writes is at the display's real pixel density.
+    fn argument(&self) -> String {
+        format!("-R{},{},{},{}", self.x.round(), self.y.round(), self.width.round(), self.height.round())
+    }
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Preview { pub data_url: String, pub width: u32, pub height: u32 }
@@ -47,16 +59,24 @@ pub fn validate_png(bytes: &[u8]) -> Result<(u32, u32), String> {
 /// RAII removes output on success, Escape, errors, and unwinding.
 #[cfg(test)]
 pub fn run_capture(executable: &Path, temporary_root: &Path) -> Result<Option<Capture>, String> {
-    run_capture_cancellable(executable, temporary_root, &AtomicBool::new(false))
+    run_capture_cancellable(executable, temporary_root, &AtomicBool::new(false), None)
 }
 
-pub fn run_capture_cancellable(executable: &Path, temporary_root: &Path, cancelled: &AtomicBool) -> Result<Option<Capture>, String> {
+pub fn run_capture_cancellable(executable: &Path, temporary_root: &Path, cancelled: &AtomicBool, rect: Option<Rect>)
+    -> Result<Option<Capture>, String> {
     if cancelled.load(Ordering::SeqCst) { return Ok(None); }
     let directory = tempfile::Builder::new().prefix("Mark-").tempdir_in(temporary_root).map_err(|e| e.to_string())?;
     let output_path = directory.path().join("Capture.png");
     let diagnostic_path = directory.path().join("stderr");
     let diagnostic_file = std::fs::File::create(&diagnostic_path).map_err(|e| e.to_string())?;
-    let mut child = Command::new(executable).args(["-i", "-s", "-x", "-t", "png"])
+    // No -i: the region already came from Mark's own overlay, so screencapture
+    // runs headless and returns immediately.
+    let mut arguments: Vec<String> = vec!["-x".into(), "-t".into(), "png".into()];
+    match rect {
+        Some(rect) => arguments.push(rect.argument()),
+        None => { arguments.insert(0, "-s".into()); arguments.insert(0, "-i".into()); }
+    }
+    let mut child = Command::new(executable).args(&arguments)
         .arg(&output_path).stdout(Stdio::null()).stderr(diagnostic_file).spawn().map_err(|e| e.to_string())?;
     let status = loop {
         if cancelled.load(Ordering::SeqCst) {
@@ -128,6 +148,12 @@ mod tests {
     }
 
     #[test]
+    fn a_rectangle_becomes_one_screencapture_argument() {
+        let rect = Rect { x: 12.4, y: -80.6, width: 640.5, height: 400.2 };
+        assert_eq!(rect.argument(), "-R12,-81,641,400");
+    }
+
+    #[test]
     fn quitting_cancels_the_child_and_cleans_up() {
         use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
         let root = tempfile::tempdir().unwrap();
@@ -139,7 +165,7 @@ mod tests {
         let signal = cancel.clone();
         std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_millis(50)); signal.store(true, Ordering::SeqCst); });
         let started = std::time::Instant::now();
-        assert!(run_capture_cancellable(&fixture, &output, &cancel).unwrap().is_none());
+        assert!(run_capture_cancellable(&fixture, &output, &cancel, None).unwrap().is_none());
         assert!(started.elapsed() < std::time::Duration::from_secs(2));
         assert_eq!(std::fs::read_dir(output).unwrap().count(), 0);
     }

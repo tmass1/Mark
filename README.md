@@ -61,7 +61,13 @@ identity and notarization.
 2. Press **⌃⌥⌘4**, or choose **Capture Region** from Mark's menu.
 3. Grant Screen Recording access when macOS asks. This permission is also used
    for still screenshots; Mark does not capture audio or video.
-4. Drag to select a region. Press Escape to cancel.
+4. Drag to select a region. The selection stays put afterwards: drag inside it
+   to move it, drag a corner to resize, or type exact numbers into Width and
+   Height. The link button locks the ratio and ⌘A takes the whole display.
+   Press **Capture** to shoot, or the clock first to arm a 3, 5, or 10 second
+   delay. A delayed shot clears the screen immediately so you can open the menu
+   or hover state you are capturing, and counts down in the menu bar rather
+   than over the shot. Escape cancels.
 5. Choose **Arrow** or **Text** in the toolbar.
    - Arrow: drag on the capture. Drag its body to move it, or either end to
      reshape it.
@@ -83,6 +89,12 @@ new capture hides the old editor; cancel restores it and success replaces it.
 ## Architecture
 
 - `src/` is framework-free TypeScript, HTML, and CSS for the editor.
+- `src/selector.ts` and `src/region.ts` are the selection overlay: one
+  transparent, borderless window per display, lifted above the menu bar and the
+  Dock, reporting its rectangle in the global point space that
+  `screencapture -R` reads. macOS's own picker is not used; it returns an image
+  and nothing else, so it cannot hold a selection open for resizing, exact
+  sizing, or a delayed shutter.
 - `src/annotations.ts` owns arrow geometry, text notes, the SVG overlay, and
   hit-testing. Coordinates are image pixels, never screen pixels, so a drawing
   survives a resize and composites at full resolution. One routine paints each
@@ -99,8 +111,12 @@ new capture hides the old editor; cancel restores it and success replaces it.
   lifecycle.
 - `src-tauri/capabilities/editor.json` is the complete per-window API allowlist.
 
-The frontend cannot run shell commands or read arbitrary files. Native capture
-calls `/usr/sbin/screencapture` directly with fixed arguments. Temporary output
+The transparent overlay needs Tauri's `macos-private-api`, which rules out Mac
+App Store distribution. Mark does not target it.
+
+The frontend cannot run shell commands or read arbitrary files. Native capture calls
+`/usr/sbin/screencapture` directly with fixed arguments and a rectangle that is
+validated as finite and non-empty before it is used. Temporary output
 uses a private unique directory and is deleted on success, cancellation, error,
 and quit.
 
@@ -120,11 +136,12 @@ clipboard failures, keyboard dismissal, local image loading, preference sync,
 and the annotation lifecycle: drawing, typing, restyling, moving, reopening a
 note, deleting, undo, mixing both tools, and that a copied image carries the
 annotation at full resolution. Unit tests cover arrow geometry, text layout,
-and default sizing. Rust tests cover PNG preservation and validation,
+default sizing, selection clamping, and locked-ratio resizing. Rust tests cover PNG preservation and validation,
 cancellation/error classification, capture re-entry, child-process
 cancellation, and temporary cleanup.
 
 For a manual release check, verify the shortcut from another app, screen-access
-grant and denial, selection on every attached display, Copy and Close into
+grant and denial, selection on every attached display, a delayed capture that
+catches an open menu, Copy and Close into
 Preview, cancellation with an existing editor, focus restoration, and quit
 during selection.

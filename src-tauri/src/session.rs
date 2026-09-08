@@ -10,6 +10,11 @@ pub struct Session {
     pub previous_pid: Option<i32>,
     pub cancelled: Arc<AtomicBool>,
     pub quitting: bool,
+    /// Cancelling a selection puts the editor back only if it was there before.
+    pub editor_was_visible: bool,
+    /// True only while screencapture is actually running, which is the one state
+    /// that has to survive a quit request.
+    pub capturing: bool,
 }
 
 #[derive(Clone, Serialize)]

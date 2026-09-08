@@ -13,7 +13,9 @@ crate-type = ["rlib"]
 tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
-tauri = { version = "2.11", features = ["tray-icon", "image-png"] }
+# macos-private-api backs the transparent selection overlay. It rules out Mac
+# App Store distribution, which Mark does not target.
+tauri = { version = "2.11", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-global-shortcut = "2.3"
 tauri-plugin-store = "2.4"
 serde = { version = "1", features = ["derive"] }
@@ -22,7 +24,7 @@ base64 = "0.22"
 png = "0.18"
 tempfile = "3"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSImage", "NSRunningApplication", "NSWorkspace"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSImage", "NSRunningApplication", "NSWorkspace", "NSApplication", "NSWindow", "NSResponder"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSString"] }
 
 [profile.release]

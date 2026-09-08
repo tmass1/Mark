@@ -1,6 +1,11 @@
 use objc2::{AnyThread, MainThreadMarker};
-use objc2_app_kit::{NSImage, NSPasteboard, NSRunningApplication, NSApplicationActivationOptions, NSWorkspace};
+use objc2_app_kit::{NSApplication, NSImage, NSPasteboard, NSRunningApplication, NSApplicationActivationOptions,
+                    NSWindow, NSWindowCollectionBehavior, NSWorkspace};
 use objc2_foundation::{NSData, NSString};
+
+/// Above the menu bar and the Dock. A selection overlay that sits below either
+/// one cannot capture what is under it.
+const SCREEN_SAVER_LEVEL: isize = 1000;
 
 #[link(name = "CoreGraphics", kind = "framework")]
 extern "C" {
@@ -39,4 +44,25 @@ fn write_png(pasteboard: &NSPasteboard, bytes: &[u8]) -> Result<(), String> {
     }
     if let Some(tiff) = tiff { pasteboard.setData_forType(Some(&tiff), &NSString::from_str("public.tiff")); }
     Ok(())
+}
+
+/// Lift an overlay above every other window, on every Space, and keep it there
+/// when the user switches Spaces mid-selection.
+pub fn raise_overlay(handle: *mut std::ffi::c_void) {
+    if handle.is_null() || MainThreadMarker::new().is_none() { return; }
+    let window: &NSWindow = unsafe { &*(handle as *const NSWindow) };
+    window.setLevel(SCREEN_SAVER_LEVEL);
+    window.setCollectionBehavior(
+        NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::Stationary
+            | NSWindowCollectionBehavior::FullScreenAuxiliary,
+    );
+}
+
+/// An accessory app gets no keyboard focus by default, so the overlay would not
+/// see Escape. Come forward for the length of the selection.
+pub fn activate_self() {
+    let Some(marker) = MainThreadMarker::new() else { return };
+    #[allow(deprecated)]
+    NSApplication::sharedApplication(marker).activateIgnoringOtherApps(true);
 }
