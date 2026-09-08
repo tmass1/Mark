@@ -3,6 +3,7 @@ import { command, isTauri, watchCapture, type CapturePreview, type Snapshot } fr
 import { copyThenDismiss, type EditorSize } from './model';
 import { preferences } from './preferences';
 import { sampleCapture } from './sample';
+import { ArrowLayer, COLORS, drawArrows } from './annotations';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
@@ -10,8 +11,23 @@ app.innerHTML = `
     <span class="app-title" data-tauri-drag-region>Mark</span>
     <span class="preview-label" hidden>Browser preview</span>
   </header>
+  <div class="toolbar" role="toolbar" aria-label="Arrow tools" hidden>
+    <div class="swatches" role="radiogroup" aria-label="Arrow color">
+      ${COLORS.map(color => `<button class="swatch" type="button" role="radio" aria-checked="false"
+        data-color="${color.value}" style="--swatch:${color.value}" title="${color.name}"><span class="sr">${color.name}</span></button>`).join('')}
+    </div>
+    <label class="size">Size
+      <input class="weight" type="range" min="0.5" max="2.5" step="0.1" value="1" aria-label="Arrow size" />
+    </label>
+    <span class="spacer"></span>
+    <button class="undo subtle" type="button" title="Undo (⌘Z)">Undo</button>
+    <button class="remove subtle" type="button" title="Delete selected arrow (⌫)">Delete</button>
+  </div>
   <main class="canvas" aria-label="Screenshot editor">
-    <img class="capture" alt="Captured screenshot" draggable="false" hidden />
+    <div class="stage" hidden>
+      <img class="capture" alt="Captured screenshot" draggable="false" />
+      <svg class="overlay" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Arrow annotations"></svg>
+    </div>
     <section class="empty" hidden>
       <svg class="viewfinder" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M12 5H7a2 2 0 0 0-2 2v5m15-7h5a2 2 0 0 1 2 2v5M5 20v5a2 2 0 0 0 2 2h5m15-7v5a2 2 0 0 1-2 2h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <h1>Capture a region</h1><p class="empty-hint">A little less between seeing and sharing.</p>
@@ -27,6 +43,12 @@ app.innerHTML = `
   <input class="file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
 `;
 const image = app.querySelector<HTMLImageElement>('.capture')!;
+const stage = app.querySelector<HTMLElement>('.stage')!;
+const overlay = app.querySelector<SVGSVGElement>('.overlay')!;
+const toolbar = app.querySelector<HTMLElement>('.toolbar')!;
+const weight = app.querySelector<HTMLInputElement>('.weight')!;
+const undoButton = app.querySelector<HTMLButtonElement>('.undo')!;
+const removeButton = app.querySelector<HTMLButtonElement>('.remove')!;
 const empty = app.querySelector<HTMLElement>('.empty')!;
 const copy = app.querySelector<HTMLButtonElement>('.copy')!;
 const start = app.querySelector<HTMLButtonElement>('.start')!;
@@ -41,17 +63,43 @@ let busy = false;
 let copyPending = false;
 let disposed = false;
 
+const layer = new ArrowLayer(overlay, () => syncTools());
+
 function showMessage(text: string | null) {
   message.hidden = !text;
   message.querySelector('span')!.textContent = text ?? '';
   settings.hidden = !isTauri || !text?.includes('screen access');
 }
 
+/** Selecting an arrow adopts its look, so the swatches and slider always describe
+ *  whatever the next edit will affect. */
+function syncTools() {
+  const selected = layer.arrows.find(arrow => arrow.id === layer.selected);
+  if (selected) {
+    layer.style.color = selected.color;
+    layer.style.scale = selected.weight / layer.base;
+  }
+  weight.value = layer.style.scale.toFixed(1);
+  for (const swatch of app.querySelectorAll<HTMLButtonElement>('.swatch')) {
+    const active = swatch.dataset.color === layer.style.color;
+    swatch.setAttribute('aria-checked', String(active));
+    swatch.classList.toggle('active', active);
+  }
+  undoButton.disabled = !layer.canUndo;
+  removeButton.disabled = layer.selected === null;
+}
+
 function render() {
-  image.hidden = !capture;
+  stage.hidden = !capture;
+  toolbar.hidden = !capture;
   empty.hidden = !!capture;
   if (capture) {
-    if (image.getAttribute('src') !== capture.dataUrl) image.src = capture.dataUrl;
+    // A different image means a different drawing surface; arrows never carry over.
+    if (image.getAttribute('src') !== capture.dataUrl) {
+      image.src = capture.dataUrl;
+      stage.style.setProperty('--ratio', `${capture.width} / ${capture.height}`);
+      layer.setImage(capture.width, capture.height);
+    }
     image.alt = `Captured screenshot, ${capture.width} by ${capture.height} pixels`;
   } else image.removeAttribute('src');
   app.querySelector('.dimensions')!.textContent = capture ? `${capture.width} × ${capture.height} px` : '';
@@ -60,6 +108,7 @@ function render() {
   start.disabled = busy;
   start.firstChild!.textContent = isTauri ? (busy ? 'Selecting… ' : 'Capture Region ') : 'Choose image… ';
   start.querySelector('kbd')!.hidden = !isTauri;
+  syncTools();
 }
 
 let revision = 0;
@@ -80,15 +129,34 @@ async function dismiss() {
   capture = null; showMessage(null); render(); start.focus();
 }
 
+/** Flatten the capture and its arrows at natural resolution. */
+async function flatten(): Promise<HTMLCanvasElement> {
+  const source = new Image();
+  source.src = capture!.dataUrl;
+  await source.decode();
+  const canvas = document.createElement('canvas');
+  canvas.width = capture!.width; canvas.height = capture!.height;
+  const context = canvas.getContext('2d')!;
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  drawArrows(context, layer.arrows);
+  return canvas;
+}
+
 async function copyCapture() {
   if (!capture || busy || copyPending) return;
   copyPending = true; render(); showMessage(null);
   try {
     if (isTauri) {
-      await command('copy_and_close'); capture = null;
+      // An untouched capture keeps its original bytes; only a drawing re-encodes.
+      if (layer.empty) await command('copy_and_close');
+      else await command('copy_annotated_and_close', { png: (await flatten()).toDataURL('image/png').split(',')[1] });
+      capture = null;
     } else {
       // Start clipboard.write inside the gesture; Safari accepts a promised Blob.
-      const png = fetch(capture.dataUrl).then(response => response.blob());
+      const png = layer.empty
+        ? fetch(capture.dataUrl).then(response => response.blob())
+        : flatten().then(canvas => new Promise<Blob>((resolve, reject) =>
+            canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('The image could not be encoded.'))), 'image/png')));
       await copyThenDismiss(async () => {
         if (!navigator.clipboard?.write) throw new Error('Image copying needs clipboard access on localhost or HTTPS.');
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
@@ -110,6 +178,20 @@ on(start, 'click', () => {
 on(choose, 'click', () => input.click());
 on(settings, 'click', () => { void command('open_screen_settings').catch(report); });
 on(input, 'change', () => { void loadFile().catch(report); });
+on(toolbar, 'click', event => {
+  const swatch = (event.target as Element).closest<HTMLButtonElement>('.swatch');
+  if (!swatch?.dataset.color) return;
+  layer.style.color = swatch.dataset.color;
+  layer.applyStyle();
+});
+on(weight, 'input', () => { layer.style.scale = Number(weight.value); layer.applyStyle(); });
+on(undoButton, 'click', () => { layer.undo(); });
+on(removeButton, 'click', () => { layer.deleteSelected(); });
+
+// The overlay scales with the window; handles are sized from the drawn width.
+const observer = new ResizeObserver(() => layer.measure());
+observer.observe(stage);
+cleanups.push(() => observer.disconnect());
 
 async function loadFile() {
   const file = input.files?.[0]; if (!file) return;
@@ -128,8 +210,21 @@ async function loadFile() {
 
 document.addEventListener('keydown', event => {
   const key = event.key.toLowerCase();
-  if (key === 'escape' || ((event.metaKey || event.ctrlKey) && key === 'w')) {
+  // Only real text entry may swallow Backspace. A range or file input must not,
+  // or adjusting the size control would quietly disable Delete.
+  const target = event.target as HTMLElement | null;
+  const typing = target instanceof HTMLTextAreaElement || target?.isContentEditable === true ||
+    (target instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'file', 'button'].includes(target.type));
+  if (key === 'escape') {
+    // Escape backs out one level: first the selection, then the editor.
+    event.preventDefault();
+    if (!layer.deselect()) void dismiss().catch(report);
+  } else if ((event.metaKey || event.ctrlKey) && key === 'w') {
     event.preventDefault(); void dismiss().catch(report);
+  } else if (capture && (event.metaKey || event.ctrlKey) && key === 'z') {
+    event.preventDefault(); layer.undo();
+  } else if (capture && !typing && (key === 'backspace' || key === 'delete')) {
+    event.preventDefault(); layer.deleteSelected();
   } else if (capture && ((key === 'c' && (event.metaKey || event.ctrlKey)) ||
       (key === 'enter' && (document.activeElement === document.body || document.activeElement === copy)))) {
     event.preventDefault(); void copyCapture();

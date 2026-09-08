@@ -26,7 +26,14 @@ pub fn parse_result(bytes: Option<Vec<u8>>, code: Option<i32>, stderr: &[u8]) ->
         return Err("The screenshot couldn't be captured. Try again, or check Mark's screen access in System Settings.".into());
     }
     let bytes = bytes.ok_or("No screenshot was returned.")?;
-    let mut decoder = png::Decoder::new(Cursor::new(&bytes));
+    let (width, height) = validate_png(&bytes)?;
+    Ok(Some(Capture { png: bytes, width, height }))
+}
+
+/// Decode fully, so only a complete PNG can reach the clipboard. Used for the
+/// native capture and again for an edited image arriving from the editor.
+pub fn validate_png(bytes: &[u8]) -> Result<(u32, u32), String> {
+    let mut decoder = png::Decoder::new(Cursor::new(bytes));
     decoder.set_limits(png::Limits { bytes: 256 * 1024 * 1024 });
     let mut reader = decoder.read_info().map_err(|_| "The screenshot isn't a valid PNG.")?;
     let size = reader.output_buffer_size().filter(|size| *size <= 256 * 1024 * 1024)
@@ -34,7 +41,7 @@ pub fn parse_result(bytes: Option<Vec<u8>>, code: Option<i32>, stderr: &[u8]) ->
     let mut pixels = vec![0; size];
     let frame = reader.next_frame(&mut pixels).map_err(|_| "The screenshot is incomplete.")?;
     reader.finish().map_err(|_| "The screenshot is incomplete.")?;
-    Ok(Some(Capture { png: bytes, width: frame.width, height: frame.height }))
+    Ok((frame.width, frame.height))
 }
 
 /// RAII removes output on success, Escape, errors, and unwinding.

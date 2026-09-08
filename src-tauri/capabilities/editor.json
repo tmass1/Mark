@@ -5,6 +5,7 @@
   "windows": ["editor"], "platforms": ["macOS"],
   "permissions": [
     "allow-current-capture", "allow-capture-region", "allow-copy-and-close",
+    "allow-copy-annotated-and-close",
     "allow-dismiss-editor", "allow-open-screen-settings",
     "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize",
     "core:window:allow-inner-size", "core:window:allow-scale-factor", "core:window:allow-set-size",
