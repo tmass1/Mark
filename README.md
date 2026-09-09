@@ -278,6 +278,37 @@ validated as finite and non-empty before it is used. Temporary output
 uses a private unique directory and is deleted on success, cancellation, error,
 and quit.
 
+## Put it on another Mac
+
+`./scripts/release.sh` builds a signed, notarized, stapled disk image. It needs
+two things that only an Apple account holder can create, and it stops with
+instructions if either is missing:
+
+- a **Developer ID Application** certificate. The Apple Development certificate
+  Mark builds with signs an app for the machine that built it; Gatekeeper
+  rejects it anywhere else.
+- notarization credentials, stored once with `notarytool store-credentials`.
+  The script passes a keychain profile name, never a password or a key, so
+  nothing secret is written here or typed on a command line during a release.
+
+Stapling matters: it attaches the notarization ticket to the image, so it opens
+on a Mac that is offline or behind a firewall rather than silently failing the
+check.
+
+To try a build on your own machines before any of that, copy `Mark.app` across
+directly — over a shared folder, `rsync`, or a USB drive. Gatekeeper only
+assesses files that arrive carrying a quarantine flag, which a direct copy does
+not set. If you send it a way that does set one, and macOS refuses to open it,
+either clear the flag on that machine:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Mark.app
+```
+
+or approve it once under System Settings > Privacy & Security > Open Anyway.
+Both are fine for your own machines and neither is a substitute for
+notarization if Mark ever goes to someone else's.
+
 ## Verify
 
 ```sh
