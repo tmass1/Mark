@@ -102,7 +102,9 @@ step "Notarizing (Apple usually answers within a few minutes)"
 xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --wait
 
 step "Stapling the ticket"
-# Stapled, so the image passes Gatekeeper even on a Mac that is offline.
+# The ticket goes onto the image, so mounting it needs no network. The app
+# dragged out of it carries no ticket of its own and is checked against
+# Apple's servers the first time it runs -- fine online, refused offline.
 xcrun stapler staple "$DMG"
 
 step "Checking the result the way another Mac will"
