@@ -38,11 +38,11 @@ function squircle(cx, cy, half, n = 5) {
  *  system expects for shadow and alignment. */
 const SHAPE = squircle(512, 512, 412);
 
-/** Detail is chosen per size, not scaled: the content lines are the idea at
- *  large sizes and noise at small ones, so below 128px they simply are not
- *  drawn and the icon degrades to the arrow alone. */
+/** Detail is chosen per size, not scaled: the brackets are the idea at large
+ *  sizes and clutter at small ones, so below 128px they simply are not drawn
+ *  and the icon degrades to the arrow alone. */
 function icon(px) {
-  const lines = px >= 128;
+  const frame = px >= 128;
   const weight = px >= 128 ? 74 : 92;          // heavier when small, to hold up
   const arrow = poly(arrowPolygon({ x1: 792, y1: 232, x2: 322, y2: 702, weight }));
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${px}" height="${px}">
@@ -54,14 +54,23 @@ function icon(px) {
       <stop offset="0" stop-color="#ffffff" stop-opacity=".16"/>
       <stop offset=".45" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
+    <!-- Along the arrow's own axis, tail to head, so it reads as one stroke
+         catching the light rather than a shape filled with a gradient. -->
+    <linearGradient id="ink" x1="792" y1="232" x2="322" y2="702" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff7a63"/>
+      <stop offset=".55" stop-color="#ff4638"/>
+      <stop offset="1" stop-color="#e8281d"/>
+    </linearGradient>
+    <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="16" stdDeviation="26" flood-color="#000000" flood-opacity=".45"/>
+    </filter>
   </defs>
   <path d="${SHAPE}" fill="url(#ground)"/>
-  ${lines ? `<g fill="#ffffff" opacity=".13">
-    <rect x="236" y="300" width="392" height="34" rx="17"/>
-    <rect x="236" y="382" width="250" height="34" rx="17"/>
-    <rect x="236" y="464" width="318" height="34" rx="17"/>
+  ${frame ? `<g fill="none" stroke="#ffffff" stroke-opacity=".22" stroke-width="52"
+       stroke-linecap="round" stroke-linejoin="round">
+    <path d="M258 396V308a50 50 0 0 1 50-50h88M628 258h88a50 50 0 0 1 50 50v88M766 628v88a50 50 0 0 1-50 50h-88M396 766h-88a50 50 0 0 1-50-50v-88"/>
   </g>` : ''}
-  <path d="${arrow}" fill="#ff453a"/>
+  <path d="${arrow}" fill="url(#ink)" filter="url(#lift)"/>
   <path d="${SHAPE}" fill="url(#sheen)"/>
 </svg>`;
 }
