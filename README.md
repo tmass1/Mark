@@ -3,8 +3,8 @@
 Mark is a fast, small macOS screenshot utility built with Tauri v2. Press a
 global shortcut, drag across a region, mark it up, then copy and close.
 
-Annotation is arrows, text, boxes, ellipses, a highlighter, and redaction.
-There are no accounts, settings window, cloud
+Annotation is arrows, text, boxes, ellipses, a highlighter, redaction, and a
+crop. There are no accounts, settings window, cloud
 features, or screen recording. The UI uses the system WKWebView; the native
 shell is Rust. There is no Xcode project and no Swift source.
 
@@ -85,6 +85,10 @@ notarization; an Apple Development certificate is only good for this Mac.
    - **Box** and **Ellipse**: drag out an outline. Grab the outline to move it,
      or a corner to resize.
    - **Highlighter**: drag a band of translucent ink over what matters.
+   - **Crop**: drag out what to keep. Everything else dims, corners adjust the
+     region, and Enter or the Crop button trims to it. The drawing comes along,
+     shifted to match, so cropping never quietly discards work; ⌘Z puts the
+     capture back.
    - **Redact**: drag over anything that must not leave the machine. The region
      is replaced with coarse blocks averaged from the capture, and the size
      control sets how coarse. This is pixelation rather than blur on purpose:
@@ -95,6 +99,9 @@ notarization; an Apple Development certificate is only good for this Mac.
    ⌘Z undoes, ⌫ deletes the selection, and Escape backs out one level: first
    the text caret, then the selection, then the editor. ⌘W hides Mark and ⌘Q
    quits it, since an accessory app has no menu bar to quit from.
+
+   ⌘Z takes the most recent thing back, whichever kind it was: a crop counts as
+   most recent only while nothing has been drawn since it.
 
    With something selected, ⌘C takes that annotation and ⌘V drops a copy
    nearby; pasting again cascades instead of stacking. ⌘D does both at once.
@@ -175,7 +182,9 @@ copies a redacted capture back out and counts distinct colours in the region,
 so redaction is checked for actually destroying the pixels rather than only
 looking like it; another moves a redaction onto different content and reads the
 patch back, since a stale patch would both mislead and leak the region it was
-cut from. Rust tests cover PNG preservation and validation,
+cut from. Cropping is covered for the trim itself, for carrying the drawing
+along, for undo ordering against drawing, and for re-sampling a redaction into
+the cropped image's coordinates. Rust tests cover PNG preservation and validation,
 cancellation/error classification, capture re-entry, child-process
 cancellation, and temporary cleanup.
 

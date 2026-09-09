@@ -10,7 +10,7 @@ body { margin: 0; overflow: hidden; }
 button { font: inherit; cursor: default; }
 button:focus-visible { outline: 3px solid #75b6ff; outline-offset: 3px; }
 [hidden] { display: none !important; }
-#app { height: 100dvh; display: flex; flex-direction: column; min-width: 300px; }
+#app { position: relative; height: 100dvh; display: flex; flex-direction: column; min-width: 300px; }
 .titlebar { height: 44px; flex: 0 0 44px; padding: 0 18px 0 78px; display: flex; align-items: center; gap: 16px; background: var(--chrome); border-bottom: 1px solid var(--line); user-select: none; -webkit-user-select: none; }
 .app-title { font-weight: 600; font-size: 13px; flex: 1; }
 .preview-label { color: var(--muted); font-size: 11px; }
@@ -86,3 +86,15 @@ h1 { margin: 16px 0 8px; font-size: 19px; font-weight: 600; letter-spacing: -.3p
 .copy-only { border: 1px solid var(--line); border-radius: 7px; padding: 6px 11px; color: inherit; }
 .copy-only:hover { border-color: var(--blue); color: var(--blue); }
 @media (max-width: 500px) { .copy-only kbd { display: none; } }
+.crop-veil { fill: #000; opacity: .45; }
+.crop-frame { fill: none; stroke: #fff; }
+.overlay.crop-tool { cursor: crosshair; }
+/* Floats over the canvas rather than sitting in the column: as a layout element
+   it reflowed the image mid-drag, moving the picture under the cursor that was
+   still drawing the crop. */
+.crop-bar { position: absolute; left: 50%; bottom: 78px; transform: translateX(-50%); z-index: 5;
+  display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 12px;
+  background: #2c2c2ef2; color: #f5f5f7; box-shadow: 0 8px 30px #00000059, 0 0 0 1px #ffffff1a; font-size: 12px; }
+.crop-size { color: #b8b8bd; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.crop-bar .subtle { color: #b8b8bd; }
+.crop-bar .subtle:hover { color: #fff; }

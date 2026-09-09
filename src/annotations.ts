@@ -16,7 +16,7 @@ export interface Shape {
   pixels?: string;
 }
 export type Annotation = Arrow | Note | Shape;
-export type Tool = 'arrow' | 'text' | ShapeKind;
+export type Tool = 'arrow' | 'text' | ShapeKind | 'crop';
 
 export const SHAPES: readonly ShapeKind[] = ['box', 'ellipse', 'highlight', 'redact'];
 export function isShape(item: Annotation): item is Shape { return (SHAPES as readonly string[]).includes(item.kind); }
@@ -42,7 +42,11 @@ export function offsetBy<T extends Annotation>(item: T, distance: number): T {
 export function blockSize(weight: number): number { return Math.max(7, weight * 1.5); }
 export type Point = [number, number];
 
+import { clampRect, type Rect } from './region';
+
 const SVG = 'http://www.w3.org/2000/svg';
+/** Below this a crop is a mis-drag, not an intention. */
+const MIN_CROP = 16;
 /** Matches the app's own stack so SVG display and canvas export render alike. */
 export const FONT = '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, sans-serif';
 export const WEIGHT = 600;
@@ -177,7 +181,8 @@ type Drag =
   | { kind: 'create'; id: number; ox: number; oy: number }
   | { kind: 'move'; id: number; ox: number; oy: number; from: Annotation }
   | { kind: 'reshape'; id: number; end: 1 | 2 }
-  | { kind: 'corner'; id: number; corner: Corner; from: Shape };
+  | { kind: 'corner'; id: number; corner: Corner; from: Shape }
+  | { kind: 'crop'; ox: number; oy: number };
 
 /** A rectangle from two opposite points, always with a positive size. */
 function span(ax: number, ay: number, bx: number, by: number) {
@@ -205,6 +210,9 @@ export class AnnotationLayer {
   /** Survives a new capture on purpose: the same label often belongs on several
    *  screenshots in a row. */
   private clipboard: Annotation | null = null;
+  /** A crop the user is drawing out but has not confirmed. Not an annotation:
+   *  it changes the capture rather than sitting on top of it. */
+  pendingCrop: Rect | null = null;
   selected: number | null = null;
   tool: Tool = 'arrow';
   base = 12;
@@ -235,8 +243,36 @@ export class AnnotationLayer {
   get annotations(): readonly Annotation[] { return this.items; }
   get empty(): boolean { return this.items.length === 0; }
   get canUndo(): boolean { return this.past.length > 0; }
+  /** How many annotation edits deep we are, so the editor can tell whether a
+   *  crop or a drawing was the more recent thing to undo. */
+  get undoDepth(): number { return this.past.length; }
   get isEditing(): boolean { return this.editing !== null; }
   private get weight(): number { return this.base * this.style.scale; }
+
+  clearCrop(): void {
+    if (!this.pendingCrop) return;
+    this.pendingCrop = null; this.render(); this.onChange();
+  }
+
+  /** Follow the image when it is cropped. Deliberately not an undo step: the
+   *  editor pairs the shift with the capture it belongs to. */
+  shiftBy(dx: number, dy: number): void {
+    for (const item of this.items) {
+      if (item.kind === 'arrow') { item.x1 += dx; item.y1 += dy; item.x2 += dx; item.y2 += dy; }
+      else { item.x += dx; item.y += dy; }
+      // Coordinates moved, so every redaction patch is now of the wrong region.
+      if (item.kind === 'redact') item.pixels = undefined;
+    }
+  }
+
+  /** A new size for the same drawing, unlike setImage which starts over. */
+  resize(width: number, height: number): void {
+    this.width = width; this.height = height;
+    this.base = baseWeight(width, height);
+    this.pendingCrop = null;
+    this.svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    this.measure(); this.render();
+  }
 
   /** The capture itself, which redaction samples. */
   setSource(source: HTMLImageElement): void { this.source = source; }
@@ -452,7 +488,23 @@ export class AnnotationLayer {
     const hit = this.targetId(target);
 
     const corner = target.getAttribute?.('data-corner') as Corner | null;
+    const cropCorner = target.getAttribute?.('data-crop') as Corner | null;
     const current = this.find(this.selected);
+
+    if (this.tool === 'crop') {
+      if (cropCorner && this.pendingCrop) {
+        const from = this.pendingCrop;
+        const anchorX = cropCorner === 'nw' || cropCorner === 'sw' ? from.x + from.width : from.x;
+        const anchorY = cropCorner === 'nw' || cropCorner === 'ne' ? from.y + from.height : from.y;
+        this.drag = { kind: 'crop', ox: anchorX, oy: anchorY };
+      } else {
+        this.drag = { kind: 'crop', ox: x, oy: y };
+        this.pendingCrop = { x, y, width: 0, height: 0 };
+      }
+      this.selected = null;
+      this.render(); this.onChange();
+      return;
+    }
 
     if (end && current?.kind === 'arrow') {
       this.commitHistory();
@@ -501,6 +553,12 @@ export class AnnotationLayer {
 
   private move = (event: PointerEvent): void => {
     if (!this.drag) return;
+    if (this.drag.kind === 'crop') {
+      const [cx, cy] = this.at(event);
+      this.pendingCrop = clampRect(span(this.drag.ox, this.drag.oy, cx, cy), this.width, this.height);
+      this.render();
+      return;
+    }
     const item = this.find(this.drag.id);
     if (!item) return;
     const [x, y] = this.at(event);
@@ -534,6 +592,12 @@ export class AnnotationLayer {
     if (!drag) return;
     this.drag = null;
     if (this.svg.hasPointerCapture(event.pointerId)) this.svg.releasePointerCapture(event.pointerId);
+    if (drag.kind === 'crop') {
+      const crop = this.pendingCrop;
+      if (crop && (crop.width < MIN_CROP || crop.height < MIN_CROP)) this.pendingCrop = null;
+      this.render(); this.onChange();
+      return;
+    }
     const item = this.find(drag.id);
     if (drag.kind === 'move') {
       const [x, y] = this.at(event);
@@ -599,6 +663,7 @@ export class AnnotationLayer {
         if (item.id === this.selected) group.append(this.dashedOutline(bounds, item.size * 0.16));
       }
     }
+    if (this.pendingCrop) { this.renderCrop(this.pendingCrop); return; }
     const chosen = this.find(this.selected);
     if (chosen?.kind === 'arrow') {
       this.svg.append(this.grip(chosen.x1, chosen.y1, 'data-handle', '1'),
@@ -611,6 +676,30 @@ export class AnnotationLayer {
           chosen.y + (corner === 'sw' || corner === 'se' ? chosen.height : 0),
           'data-corner', corner));
       }
+    }
+  }
+
+  /** Everything outside the crop is dimmed by one even-odd path: the capture's
+   *  own rectangle with the crop punched out of it. */
+  private renderCrop(crop: Rect): void {
+    const veil = document.createElementNS(SVG, 'path');
+    veil.setAttribute('d',
+      `M0 0H${this.width}V${this.height}H0Z ` +
+      `M${crop.x} ${crop.y}H${crop.x + crop.width}V${crop.y + crop.height}H${crop.x}Z`);
+    veil.setAttribute('fill-rule', 'evenodd');
+    veil.setAttribute('class', 'crop-veil');
+    const frame = document.createElementNS(SVG, 'rect');
+    frame.setAttribute('x', String(crop.x)); frame.setAttribute('y', String(crop.y));
+    frame.setAttribute('width', String(Math.max(crop.width, 1)));
+    frame.setAttribute('height', String(Math.max(crop.height, 1)));
+    frame.setAttribute('class', 'crop-frame');
+    frame.setAttribute('stroke-width', String(1.5 / this.scale));
+    this.svg.append(veil, frame);
+    for (const corner of CORNERS) {
+      this.svg.append(this.grip(
+        crop.x + (corner === 'ne' || corner === 'se' ? crop.width : 0),
+        crop.y + (corner === 'sw' || corner === 'se' ? crop.height : 0),
+        'data-crop', corner));
     }
   }
 

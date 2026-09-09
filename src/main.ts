@@ -16,6 +16,8 @@ const TOOLS: { id: Tool; name: string; art: string }[] = [
   { id: 'highlight', name: 'Highlighter', art:
     `<path d="M4.6 15.6h10.8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" opacity=".45"/>` +
     `<path d="M6.9 12.4 12.4 6.9l2 2-5.5 5.5z" ${STROKE}/>` },
+  { id: 'crop', name: 'Crop', art:
+    `<path d="M6.6 2.8v10.6h10.6M2.8 6.6h10.6v10.6" ${STROKE}/>` },
   { id: 'redact', name: 'Redact', art:
     `<path d="M4.8 5.2h4.1v4.1H4.8zM11.1 5.2h4.1v4.1h-4.1zM4.8 10.7h4.1v4.1H4.8zM11.1 10.7h4.1v4.1h-4.1z" fill="currentColor"/>` },
 ];
@@ -55,6 +57,11 @@ app.innerHTML = `
     </section>
   </main>
   <aside class="message" role="status" aria-live="polite" hidden><span></span><button class="settings" hidden>Open System Settings</button></aside>
+  <aside class="crop-bar" hidden>
+    <span class="crop-size"></span>
+    <button class="crop-cancel subtle" type="button">Cancel</button>
+    <button class="crop-apply primary" type="button">Crop <kbd>⏎</kbd></button>
+  </aside>
   <footer>
     <span class="dimensions" aria-label="Image dimensions"></span>
     <button class="choose subtle" type="button" hidden>Choose image…</button>
@@ -78,12 +85,17 @@ const choose = app.querySelector<HTMLButtonElement>('.choose')!;
 const input = app.querySelector<HTMLInputElement>('.file-input')!;
 const message = app.querySelector<HTMLElement>('.message')!;
 const settings = app.querySelector<HTMLButtonElement>('.settings')!;
+const cropBar = app.querySelector<HTMLElement>('.crop-bar')!;
+const cropSize = app.querySelector<HTMLElement>('.crop-size')!;
 const abort = new AbortController();
 const cleanups: (() => void)[] = [];
 let capture: CapturePreview | null = null;
 let busy = false;
 let copyPending = false;
 let disposed = false;
+let shown: CapturePreview | null = null;
+let cropped = false;
+const crops: { capture: CapturePreview; dx: number; dy: number; depth: number }[] = [];
 
 const layer = new AnnotationLayer(overlay, stage, () => syncTools());
 // Redaction samples the capture, so the layer needs the decoded image, and any
@@ -127,7 +139,11 @@ function syncTools() {
   }
   overlay.classList.toggle('text-tool', layer.tool === 'text');
   overlay.classList.toggle('draw-tool', layer.tool !== 'arrow' && layer.tool !== 'text');
-  undoButton.disabled = !layer.canUndo;
+  overlay.classList.toggle('crop-tool', layer.tool === 'crop');
+  const crop = layer.pendingCrop;
+  cropBar.hidden = !crop;
+  if (crop) cropSize.textContent = `Crop to ${Math.round(crop.width)} × ${Math.round(crop.height)} px`;
+  undoButton.disabled = !layer.canUndo && !crops.length;
   removeButton.disabled = layer.selected === null || layer.isEditing;
 }
 
@@ -136,11 +152,13 @@ function render() {
   toolbar.hidden = !capture;
   empty.hidden = !!capture;
   if (capture) {
-    // A different image means a different drawing surface; arrows never carry over.
-    if (image.getAttribute('src') !== capture.dataUrl) {
+    // A different capture means a different drawing surface. A crop swaps the
+    // image in place and updates `shown` itself, so it is not mistaken for one.
+    if (capture !== shown) {
       image.src = capture.dataUrl;
       stage.style.setProperty('--ratio', `${capture.width} / ${capture.height}`);
       layer.setImage(capture.width, capture.height);
+      shown = capture; cropped = false; crops.length = 0;
     }
     image.alt = `Captured screenshot, ${capture.width} by ${capture.height} pixels`;
   } else image.removeAttribute('src');
@@ -192,7 +210,8 @@ async function copyCapture(close = true) {
   try {
     if (isTauri) {
       // An untouched capture keeps its original bytes; only a drawing re-encodes.
-      if (layer.empty) await command('copy_capture', { close });
+      // A crop makes the original bytes wrong, so it forces a re-encode too.
+      if (layer.empty && !cropped) await command('copy_capture', { close });
       else await command('copy_edited', { png: (await flatten()).toDataURL('image/png').split(',')[1], close });
       if (close) capture = null; else flash('Copied to clipboard.');
     } else {
@@ -233,13 +252,57 @@ on(toolbar, 'click', event => {
   layer.applyStyle();
 });
 on(weight, 'input', () => { layer.style.scale = Number(weight.value); layer.applyStyle(); });
-on(undoButton, 'click', () => { layer.undo(); });
+on(undoButton, 'click', () => { stepBack(); });
+on(app.querySelector<HTMLButtonElement>('.crop-apply')!, 'click', () => { void applyCrop().catch(report); });
+on(app.querySelector<HTMLButtonElement>('.crop-cancel')!, 'click', () => layer.clearCrop());
 on(removeButton, 'click', () => { layer.deleteSelected(); });
 
 // The overlay scales with the window; handles are sized from the drawn width.
 const observer = new ResizeObserver(() => layer.measure());
 observer.observe(stage);
 cleanups.push(() => observer.disconnect());
+
+/** Trim the capture to the pending rectangle. The drawing comes along, shifted
+ *  to match, so a crop never silently discards work. */
+async function applyCrop() {
+  const crop = layer.pendingCrop;
+  if (!crop || !capture || crop.width < 1 || crop.height < 1) return;
+  const source = new Image();
+  source.src = capture.dataUrl;
+  await source.decode();
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(crop.width); canvas.height = Math.round(crop.height);
+  canvas.getContext('2d')!.drawImage(source, Math.round(crop.x), Math.round(crop.y), canvas.width, canvas.height,
+                                     0, 0, canvas.width, canvas.height);
+  crops.push({ capture, dx: crop.x, dy: crop.y, depth: layer.undoDepth });
+  layer.shiftBy(-crop.x, -crop.y);
+  capture = { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
+  cropped = true;
+  swapImage(capture);
+}
+
+function swapImage(next: CapturePreview) {
+  image.src = next.dataUrl;
+  stage.style.setProperty('--ratio', `${next.width} / ${next.height}`);
+  layer.resize(next.width, next.height);
+  shown = next;
+  render();
+}
+
+/** Undo the most recent thing, whichever kind it was: a crop only counts as
+ *  most recent while no drawing has happened since. */
+function stepBack() {
+  const last = crops.at(-1);
+  if (last && layer.undoDepth === last.depth) {
+    crops.pop();
+    layer.shiftBy(last.dx, last.dy);
+    capture = last.capture;
+    cropped = crops.length > 0;
+    swapImage(last.capture);
+    return;
+  }
+  layer.undo();
+}
 
 async function loadFile() {
   const file = input.files?.[0]; if (!file) return;
@@ -265,16 +328,17 @@ document.addEventListener('keydown', event => {
     (target instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'file', 'button'].includes(target.type));
   if (layer.isEditing) return;
   if (key === 'escape') {
-    // Escape backs out one level: first the selection, then the editor.
+    // Escape backs out one level: the crop, then the selection, then the editor.
     event.preventDefault();
-    if (!layer.deselect()) void dismiss().catch(report);
+    if (layer.pendingCrop) layer.clearCrop();
+    else if (!layer.deselect()) void dismiss().catch(report);
   } else if (event.metaKey && key === 'q') {
     // No menu bar on an accessory app, so nothing else would catch this.
     event.preventDefault(); void command('quit_app').catch(report);
   } else if ((event.metaKey || event.ctrlKey) && key === 'w') {
     event.preventDefault(); void dismiss().catch(report);
   } else if (capture && (event.metaKey || event.ctrlKey) && key === 'z') {
-    event.preventDefault(); layer.undo();
+    event.preventDefault(); stepBack();
   } else if (capture && !typing && (key === 'backspace' || key === 'delete')) {
     event.preventDefault(); layer.deleteSelected();
   } else if (capture && key === 'c' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
@@ -283,6 +347,7 @@ document.addEventListener('keydown', event => {
     // With something selected this copies that, not the screenshot. Say so, so
     // the change of meaning is never silent.
     event.preventDefault();
+    if (layer.pendingCrop) { flash('Finish or cancel the crop first.'); return; }
     const taken = layer.copySelection();
     if (taken) flash(`${describe(taken.kind)} copied. ⌘V pastes it, Escape deselects.`);
     else void copyCapture(true);
@@ -292,6 +357,8 @@ document.addEventListener('keydown', event => {
   } else if (capture && key === 'd' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
     if (!layer.duplicateSelection()) flash('Select something to duplicate.');
+  } else if (capture && key === 'enter' && layer.pendingCrop) {
+    event.preventDefault(); void applyCrop().catch(report);
   } else if (capture && key === 'enter' &&
       (document.activeElement === document.body || document.activeElement === copy)) {
     event.preventDefault(); void copyCapture(true);

@@ -440,3 +440,103 @@ test('a moved redaction hides where it lands, not where it came from', async ({ 
   expect(middle.b).toBeGreaterThan(180);
   expect(middle.r).toBeLessThan(140);
 });
+
+test('crops the capture, brings the drawing along, and can be undone', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [300, 300], [600, 400]);
+  const drawn = await page.locator('.arrow').getAttribute('d');
+
+  await pick(page, 'Crop');
+  await drawArrow(page, [200, 200], [900, 600]);          // drag out the region
+  await expect(page.locator('.crop-bar')).toBeVisible();
+  await expect(page.locator('.crop-size')).toContainText('700 × 400');
+
+  await page.getByRole('button', { name: /^Crop/ }).click();
+  await expect(page.locator('.crop-bar')).toBeHidden();
+  await expect(page.locator('.dimensions')).toHaveText('700 × 400 px');
+  // The arrow survives, moved to stay over the same part of the picture.
+  await expect(page.locator('.arrow')).toHaveCount(1);
+  const moved = await page.locator('.arrow').getAttribute('d');
+  expect(moved).not.toEqual(drawn);
+
+  await page.keyboard.press('Meta+z');
+  await expect(page.locator('.dimensions')).toHaveText('1200 × 740 px');
+  expect(await page.locator('.arrow').getAttribute('d')).toEqual(drawn);
+});
+
+test('undo takes the drawing before the crop when the drawing came later', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Crop');
+  await drawArrow(page, [200, 200], [900, 600]);
+  await page.getByRole('button', { name: /^Crop/ }).click();
+  await expect(page.locator('.dimensions')).toHaveText('700 × 400 px');
+
+  await pick(page, 'Arrow');
+  await drawArrow(page, [100, 100], [300, 250]);
+  await expect(page.locator('.arrow')).toHaveCount(1);
+
+  await page.keyboard.press('Meta+z');                     // the arrow, not the crop
+  await expect(page.locator('.arrow')).toHaveCount(0);
+  await expect(page.locator('.dimensions')).toHaveText('700 × 400 px');
+  await page.keyboard.press('Meta+z');                     // now the crop
+  await expect(page.locator('.dimensions')).toHaveText('1200 × 740 px');
+});
+
+test('a crop is abandoned by Escape without closing the editor', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Crop');
+  await drawArrow(page, [200, 200], [700, 500]);
+  await expect(page.locator('.crop-bar')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.crop-bar')).toBeHidden();
+  await expect(page.locator('.dimensions')).toHaveText('1200 × 740 px');
+  await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
+  // A flick of the mouse is not a crop.
+  const at = await stage(page);
+  const spot = at(400, 300);
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.locator('.crop-bar')).toBeHidden();
+});
+
+test('the copied image is the cropped one', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async (items: any[]) => {
+      const bitmap = await createImageBitmap(await items[0].getType('image/png'));
+      document.body.dataset.copiedSize = `${bitmap.width}x${bitmap.height}`;
+    } } });
+  });
+  await page.goto('/');
+  await pick(page, 'Crop');
+  await drawArrow(page, [200, 200], [900, 600]);
+  await page.getByRole('button', { name: /^Crop/ }).click();
+  await page.getByRole('button', { name: /Copy and Close/ }).click();
+  // 700x400, not the original 1200x740: a crop forces the re-encode even with
+  // nothing drawn, since the untouched original bytes are no longer right.
+  await expect(page.locator('body')).toHaveAttribute('data-copied-size', '700x400');
+});
+
+test('a redaction is re-sampled after a crop moves it', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Redact');
+  await drawArrow(page, [170, 430], [360, 480]);           // over the blue button
+  await pick(page, 'Crop');
+  await drawArrow(page, [100, 300], [800, 700]);
+  await page.getByRole('button', { name: /^Crop/ }).click();
+  // The patch is refilled once the cropped image decodes, not synchronously.
+  await expect(page.locator('.shape image')).toHaveCount(1);
+
+  const middle = await page.evaluate(async () => {
+    const href = document.querySelector('.shape image')!.getAttribute('href')!;
+    const image = new Image();
+    await new Promise(done => { image.onload = done; image.src = href; });
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width; canvas.height = image.height;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(image, 0, 0);
+    const [r, g, b] = context.getImageData(Math.floor(image.width / 2), Math.floor(image.height / 2), 1, 1).data;
+    return { r, g, b };
+  });
+  // Still the button underneath it, read from the cropped image's coordinates.
+  expect(middle.b).toBeGreaterThan(180);
+  expect(middle.r).toBeLessThan(140);
+});
