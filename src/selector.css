@@ -33,6 +33,12 @@ body { cursor: crosshair; user-select: none; -webkit-user-select: none; color: v
 /* ---- the selection ------------------------------------------------------ */
 
 .veil { position: fixed; inset: 0; background: var(--dim); }
+
+/* Aiming guides. White over a dark halo, so they stay visible over a pale
+   window and a dark one alike, and never take the pointer. */
+.guide { position: fixed; background: #ffffffbf; box-shadow: 0 0 0 1px #00000059; pointer-events: none; }
+.guide-x { left: 0; right: 0; height: 1px; }
+.guide-y { top: 0; bottom: 0; width: 1px; }
 /* The selection is a hole: transparent, with a shadow wide enough to dim the
    rest of the display however large it is. The frame is white over dark so it
    reads on any desktop, whatever is underneath. */

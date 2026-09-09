@@ -80,7 +80,10 @@ notarization; an Apple Development certificate is only good for this Mac.
    the overlay with a five second delay already armed.
 3. Grant Screen Recording access when macOS asks. This permission is also used
    for still screenshots; Mark does not capture audio or video.
-4. Drag to select a region. The selection stays put afterwards: drag inside it
+4. Drag to select a region. Guides run the full width and height of the display
+   through the pointer while you aim, so an edge can be lined up with something
+   on the far side of the screen; they step aside once the region is settled,
+   and come back if you adjust a corner. The selection stays put afterwards: drag inside it
    to move it, drag a corner to resize, or type exact numbers into Width and
    Height. The link button locks the ratio and ⌘A takes the whole display.
    Press **Capture** to shoot, or the clock first to arm a 3, 5, or 10 second

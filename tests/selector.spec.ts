@@ -79,3 +79,53 @@ test('the whole-display button takes everything', async ({ page }) => {
   await expect(page.locator('.w')).toHaveValue(String(size.width));
   await expect(page.locator('.h')).toHaveValue(String(size.height));
 });
+
+test('guides follow the pointer while aiming, and leave once a region is settled', async ({ page }) => {
+  await overlay(page);
+  const x = page.locator('.guide-x'), y = page.locator('.guide-y');
+  await expect(x).toBeHidden();                      // nothing to aim at yet
+
+  await page.mouse.move(300, 220);
+  await expect(x).toBeVisible();
+  await expect(y).toBeVisible();
+  expect(await x.evaluate(node => node.style.top)).toBe('220px');
+  expect(await y.evaluate(node => node.style.left)).toBe('300px');
+
+  await page.mouse.move(480, 360);
+  expect(await x.evaluate(node => node.style.top)).toBe('360px');
+  expect(await y.evaluate(node => node.style.left)).toBe('480px');
+
+  // They stay up through the drag, which is when lining an edge up matters.
+  await page.mouse.move(120, 100);
+  await page.mouse.down();
+  await page.mouse.move(520, 400, { steps: 6 });
+  await expect(x).toBeVisible();
+  await page.mouse.up();
+
+  // Settled: the panel takes over and the guides get out of the way.
+  await expect(page.locator('.panel')).toBeVisible();
+  await expect(x).toBeHidden();
+  await expect(y).toBeHidden();
+});
+
+test('guides come back when a settled region is adjusted', async ({ page }) => {
+  await overlay(page);
+  await select(page, [120, 100], [520, 400]);
+  await expect(page.locator('.guide-x')).toBeHidden();
+  await page.mouse.move(520, 400);
+  await page.mouse.down();
+  await page.mouse.move(600, 460, { steps: 5 });
+  await expect(page.locator('.guide-x')).toBeVisible();
+  await page.mouse.up();
+  await expect(page.locator('.guide-x')).toBeHidden();
+});
+
+test('guides do not aim through the panel', async ({ page }) => {
+  await overlay(page);
+  await select(page, [120, 100], [520, 400]);
+  await page.mouse.move(300, 250);                   // over the selection
+  await expect(page.locator('.guide-x')).toBeHidden();
+  const panel = (await page.locator('.panel').boundingBox())!;
+  await page.mouse.move(panel.x + panel.width / 2, panel.y + panel.height / 2);
+  await expect(page.locator('.guide-x')).toBeHidden();
+});

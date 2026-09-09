@@ -17,6 +17,8 @@ const DELAYS = [0, 3, 5, 10];
 const root = document.querySelector<HTMLDivElement>('#selector')!;
 root.innerHTML = `
   <div class="veil"></div>
+  <div class="guide guide-x" hidden></div>
+  <div class="guide guide-y" hidden></div>
   <div class="shot" hidden>
     ${['nw', 'ne', 'se', 'sw'].map(corner => `<span class="grip ${corner}" data-grip="${corner}"></span>`).join('')}
   </div>
@@ -43,6 +45,8 @@ root.innerHTML = `
   </div>
 `;
 const veil = root.querySelector<HTMLElement>('.veil')!;
+const guideX = root.querySelector<HTMLElement>('.guide-x')!;
+const guideY = root.querySelector<HTMLElement>('.guide-y')!;
 const shot = root.querySelector<HTMLElement>('.shot')!;
 const readout = root.querySelector<HTMLElement>('.readout')!;
 const hint = root.querySelector<HTMLElement>('.hint')!;
@@ -73,6 +77,19 @@ async function announce() {
   if (!inTauri) return;
   const { emit } = await import('@tauri-apps/api/event');
   await emit('selection-started', {});
+}
+
+/** Full-width and full-height guides through the pointer, so an edge can be
+ *  lined up with something on the far side of the screen. They are for aiming:
+ *  shown while choosing a corner or dragging one, and out of the way once a
+ *  region is settled and the panel has taken over. */
+function guide(x: number | null, y: number | null) {
+  const aiming = drag !== null || rect === null;
+  const on = aiming && x !== null && y !== null;
+  guideX.hidden = guideY.hidden = !on;
+  if (!on) return;
+  guideX.style.top = `${y}px`;
+  guideY.style.left = `${x}px`;
 }
 
 function show() {
@@ -135,6 +152,9 @@ root.addEventListener('pointerdown', event => {
 });
 
 root.addEventListener('pointermove', event => {
+  // The panel is a place to click, not to aim through.
+  const overPanel = (event.target as Element).closest?.('.panel');
+  guide(overPanel ? null : event.clientX, overPanel ? null : event.clientY);
   if (!drag) return;
   const [x, y] = point(event);
   const from = drag.from;
@@ -154,6 +174,7 @@ root.addEventListener('pointermove', event => {
   }
 });
 
+root.addEventListener('pointerleave', () => guide(null, null));
 root.addEventListener('pointerup', event => {
   if (!drag) return;
   const started = drag.kind === 'new';
@@ -162,6 +183,7 @@ root.addEventListener('pointerup', event => {
   // A click with no drag is not a region; go back to an empty screen.
   if (started && rect && (rect.width < 6 || rect.height < 6)) rect = null;
   if (rect) ratio = rect.width / Math.max(rect.height, 1);
+  guide(null, null);
   show();
 });
 
