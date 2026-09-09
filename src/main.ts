@@ -23,6 +23,22 @@ const KEPT_CHARS = 120_000_000;
 /** Six tools do not fit as words, so the palette is glyphs with real labels
  *  behind them for screen readers and tooltips. */
 const STROKE = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
+/** The three ways into a capture. Part of the screen, all of it, and part of it
+ *  later: a frame, a filled display, and a stopwatch, so the set reads as three
+ *  answers to the same question rather than three unrelated pictures. */
+const CAPTURE_MODES: { mode: string; name: string; hint: string; art: string }[] = [
+  { mode: 'region', name: 'Region', hint: '⌃⌥⌘4', art:
+    `<path d="M4.4 7.7V5.9a1.5 1.5 0 0 1 1.5-1.5h1.8M12.3 4.4h1.8a1.5 1.5 0 0 1 1.5 1.5v1.8`
+    + `M15.6 12.3v1.8a1.5 1.5 0 0 1-1.5 1.5h-1.8M7.7 15.6H5.9a1.5 1.5 0 0 1-1.5-1.5v-1.8" ${STROKE}/>` },
+  { mode: 'display', name: 'Whole Screen', hint: '', art:
+    `<rect x="3.2" y="4.5" width="13.6" height="9.6" rx="1.8" fill="currentColor" opacity=".16"/>`
+    + `<rect x="3.2" y="4.5" width="13.6" height="9.6" rx="1.8" ${STROKE}/>`
+    + `<path d="M7.6 16.6h4.8" ${STROKE}/>` },
+  { mode: 'timed', name: 'Timed Region', hint: '5s', art:
+    `<circle cx="10" cy="11.4" r="5.4" ${STROKE}/>`
+    + `<path d="M10 8.4v3l2.1 1.3M8.1 3.4h3.8M10 3.4v2.6" ${STROKE}/>` },
+];
+
 const TOOLS: { id: Tool; name: string; art: string }[] = [
   { id: 'arrow', name: 'Arrow', art: `<path d="M5.5 14.5 14 6M5.5 14.5h5.2M5.5 14.5V9.3" ${STROKE}/>` },
   { id: 'text', name: 'Text', art: `<path d="M5 6h10M10 6v8.5M7.8 14.5h4.4" ${STROKE}/>` },
@@ -48,9 +64,10 @@ app.innerHTML = `
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.4 8.4 10 12l3.6-3.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <div class="capture-menu" hidden>
-        <button type="button" data-mode="region">Region <kbd>⌃⌥⌘4</kbd></button>
-        <button type="button" data-mode="display">Whole Screen</button>
-        <button type="button" data-mode="timed">Timed Region <kbd>5s</kbd></button>
+        ${CAPTURE_MODES.map(item => `<button type="button" data-mode="${item.mode}">
+          <svg viewBox="0 0 20 20" aria-hidden="true">${item.art}</svg>
+          <span>${item.name}</span>${item.hint ? `<kbd>${item.hint}</kbd>` : ''}
+        </button>`).join('')}
       </div>
     </div>
   </header>
