@@ -16,12 +16,15 @@ export async function installBridge(page: Page, snapshot: {
   error?: string | null;
   busy?: boolean;
   fails?: Record<string, string>;
+  /** Canned replies, for commands whose return value the editor acts on. */
+  returns?: Record<string, unknown>;
 } = {}) {
   const state = {
     capture: snapshot.capture === undefined ? CAPTURE : snapshot.capture,
     error: snapshot.error ?? null,
     busy: snapshot.busy ?? false,
     fails: snapshot.fails ?? {},
+    returns: snapshot.returns ?? {},
   };
   await page.addInitScript(([state]) => {
     const sent: Sent[] = [];
@@ -42,7 +45,7 @@ export async function installBridge(page: Page, snapshot: {
         if (cmd === 'current_capture') {
           return { capture: state.capture, error: state.error, busy: state.busy };
         }
-        return undefined;
+        return cmd in state.returns ? state.returns[cmd] : undefined;
       },
     };
   }, [state] as const);

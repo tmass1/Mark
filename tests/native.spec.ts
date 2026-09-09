@@ -182,3 +182,78 @@ test('a capture too big for the window arrives fitted rather than scrolled', asy
   expect(box.width).toBeLessThanOrEqual(room.width);
   expect(box.height).toBeLessThanOrEqual(room.height);
 });
+
+test('saving sends the flattened image and a filename macOS would recognise', async ({ page }) => {
+  await installBridge(page, { returns: { save_image: 'Mark 2026-09-09 at 10.35.42.png' } });
+  await page.goto('/');
+  await clear(page);
+  await page.getByRole('button', { name: 'Save to a file' }).click();
+  const call = await waitFor(page, 'save_image');
+
+  const png = call.args.png as string;
+  expect(png.startsWith('data:')).toBe(false);          // bare base64, as Rust expects
+  expect(png.startsWith('iVBORw0KGgo')).toBe(true);
+  expect(call.args.name).toMatch(/^Mark \d{4}-\d{2}-\d{2} at \d{2}\.\d{2}\.\d{2}\.png$/);
+  await expect(page.getByRole('status')).toContainText('Saved as Mark 2026-09-09');
+});
+
+test('cancelling the save panel says so rather than claiming success', async ({ page }) => {
+  await installBridge(page, { returns: { save_image: null } });
+  await page.goto('/');
+  // The snapshot arrives asynchronously and the shortcut needs a capture.
+  await expect(page.locator('.dimensions')).toContainText('×');
+  await page.keyboard.press('Meta+s');
+  await waitFor(page, 'save_image');
+  await expect(page.getByRole('status')).toContainText('Not saved');
+});
+
+test('sharing sends the image too, and the capture stays open', async ({ page }) => {
+  await installBridge(page);
+  await page.goto('/');
+  await expect(page.locator('.dimensions')).toContainText('×');
+  await clear(page);
+  await page.keyboard.press('Meta+Shift+s');
+  const call = await waitFor(page, 'share_image');
+  expect((call.args.png as string).startsWith('iVBORw0KGgo')).toBe(true);
+  expect(call.args.name).toMatch(/\.png$/);
+  // Sharing is not a way out of the editor.
+  await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
+});
+
+test('a drawing reaches the saved file, not just the clipboard', async ({ page }) => {
+  await installBridge(page, { returns: { save_image: 'x.png' } });
+  await page.goto('/');
+  const box = (await page.locator('.overlay').boundingBox())!;
+  await page.mouse.move(box.x + 15, box.y + 15);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 15, box.y + box.height - 15, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator('.arrow')).toHaveCount(1);
+
+  await clear(page);
+  await expect(page.locator('.dimensions')).toContainText('×');
+  await page.keyboard.press('Meta+s');
+  const png = (await waitFor(page, 'save_image')).args.png as string;
+  const red = await page.evaluate(async (data) => {
+    const image = new Image();
+    await new Promise(done => { image.onload = done; image.src = 'data:image/png;base64,' + data; });
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width; canvas.height = image.height;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(image, 0, 0);
+    const { data: pixels } = context.getImageData(0, 0, canvas.width, canvas.height);
+    let hits = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] === 255 && pixels[i + 1] === 59 && pixels[i + 2] === 48) hits++;
+    }
+    return hits;
+  }, png);
+  expect(red).toBeGreaterThan(100);                     // the arrow is in the file
+});
+
+test('save and share are not offered in the browser preview', async ({ page }) => {
+  await page.goto('/');                                  // no bridge: the web path
+  await expect(page.locator('.save')).toBeHidden();
+  await expect(page.locator('.share')).toBeHidden();
+  await expect(page.getByRole('button', { name: /Copy and Close/ })).toBeVisible();
+});

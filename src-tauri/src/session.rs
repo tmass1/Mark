@@ -15,6 +15,10 @@ pub struct Session {
     /// True only while screencapture is actually running, which is the one state
     /// that has to survive a quit request.
     pub capturing: bool,
+    /// Holds the file behind the share sheet alive. The sheet is asynchronous
+    /// and the receiving app reads the URL long after the command returns, so
+    /// the directory is dropped only when the next share replaces it.
+    pub share_dir: Option<tempfile::TempDir>,
 }
 
 #[derive(Clone, Serialize)]

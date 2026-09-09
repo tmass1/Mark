@@ -5,7 +5,7 @@
   "windows": ["editor"], "platforms": ["macOS"],
   "permissions": [
     "allow-current-capture", "allow-capture-region", "allow-capture-display",
-    "allow-copy-capture", "allow-copy-edited",
+    "allow-copy-capture", "allow-copy-edited", "allow-save-image", "allow-share-image",
     "allow-dismiss-editor", "allow-open-screen-settings", "allow-quit-app",
     "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize",
     "core:window:allow-inner-size", "core:window:allow-scale-factor", "core:window:allow-set-size",

@@ -102,6 +102,12 @@ app.innerHTML = `
       </select>
     </label>
     <button class="choose glassy" type="button" hidden>Choose image…</button>
+    <button class="share glassy icon" type="button" title="Share (⌘⇧S)" aria-label="Share">
+      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.8v9M6.8 6l3.2-3.2L13.2 6"/><path d="M5 10.6H4.2a1.4 1.4 0 0 0-1.4 1.4v4.2a1.4 1.4 0 0 0 1.4 1.4h11.6a1.4 1.4 0 0 0 1.4-1.4V12a1.4 1.4 0 0 0-1.4-1.4H15"/></svg>
+    </button>
+    <button class="save glassy icon" type="button" title="Save to a file (⌘S)" aria-label="Save to a file">
+      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.8v9M6.8 8.6 10 11.8l3.2-3.2"/><path d="M3.4 14v2.2a1.4 1.4 0 0 0 1.4 1.4h10.4a1.4 1.4 0 0 0 1.4-1.4V14"/></svg>
+    </button>
     <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘⇧C</kbd></button>
     <button class="copy primary" type="button">Copy and Close <kbd>⌘C</kbd></button>
   </footer>
@@ -120,6 +126,8 @@ const removeButton = app.querySelector<HTMLButtonElement>('.remove')!;
 const empty = app.querySelector<HTMLElement>('.empty')!;
 const copy = app.querySelector<HTMLButtonElement>('.copy')!;
 const copyOnly = app.querySelector<HTMLButtonElement>('.copy-only')!;
+const shareButton = app.querySelector<HTMLButtonElement>('.share')!;
+const saveButton = app.querySelector<HTMLButtonElement>('.save')!;
 const start = app.querySelector<HTMLButtonElement>('.start')!;
 const choose = app.querySelector<HTMLButtonElement>('.choose')!;
 const input = app.querySelector<HTMLInputElement>('.file-input')!;
@@ -237,6 +245,8 @@ function render() {
   app.querySelector('.dimensions')!.textContent = capture ? `${capture.width} × ${capture.height} px` : '';
   copy.hidden = !capture;
   copyOnly.hidden = !capture;
+  shareButton.hidden = saveButton.hidden = !capture || !isTauri;
+  shareButton.disabled = saveButton.disabled = busy || copyPending;
   zoomSelect.parentElement!.hidden = !capture;
   applyZoom();
   copy.disabled = busy || copyPending;
@@ -278,6 +288,28 @@ async function flatten(): Promise<HTMLCanvasElement> {
   return canvas;
 }
 
+/** The name macOS itself would give a screenshot, so a saved file lands
+ *  somewhere recognisable in a folder full of them. */
+function suggestedName(): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `Mark ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+    + ` at ${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}.png`;
+}
+
+/** Saving and sharing always send the flattened image: a file should be what is
+ *  on screen, crop and annotations included. */
+async function exportImage(via: 'save_image' | 'share_image') {
+  if (!capture || busy || copyPending) return;
+  copyPending = true; render();
+  try {
+    const png = (await flatten()).toDataURL('image/png').split(',')[1];
+    const saved = await command<string | null>(via, { png, name: suggestedName() });
+    if (via === 'save_image') flash(saved ? `Saved as ${saved}.` : 'Not saved.');
+  } catch (error) { report(error); }
+  finally { copyPending = false; render(); }
+}
+
 async function copyCapture(close = true) {
   if (!capture || busy || copyPending) return;
   copyPending = true; render(); showMessage(null);
@@ -309,6 +341,8 @@ function on<K extends keyof HTMLElementEventMap>(element: HTMLElement, name: K, 
 }
 on(copy, 'click', () => { void copyCapture(true); });
 on(copyOnly, 'click', () => { void copyCapture(false); });
+on(saveButton, 'click', () => { void exportImage('save_image'); });
+on(shareButton, 'click', () => { void exportImage('share_image'); });
 on(start, 'click', () => startCapture('region'));
 on(app.querySelector<HTMLButtonElement>('.capture-go')!, 'click', () => startCapture('region'));
 on(captureMore, 'click', event => {
@@ -563,6 +597,8 @@ document.addEventListener('keydown', event => {
     event.preventDefault(); stepBack();
   } else if (capture && !typing && (key === 'backspace' || key === 'delete')) {
     event.preventDefault(); layer.deleteSelected();
+  } else if (capture && key === 's' && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault(); void exportImage(event.shiftKey ? 'share_image' : 'save_image');
   } else if (capture && key === 'c' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
     event.preventDefault(); void copyCapture(false);
   } else if (capture && key === 'c' && (event.metaKey || event.ctrlKey)) {

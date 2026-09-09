@@ -1,8 +1,10 @@
 use objc2::runtime::{AnyClass, AnyObject};
 use objc2::{msg_send, rc::Retained, AnyThread, MainThreadMarker};
-use objc2_app_kit::{NSApplication, NSImage, NSPasteboard, NSRunningApplication, NSApplicationActivationOptions,
-                    NSWindow, NSWindowCollectionBehavior, NSWorkspace};
-use objc2_foundation::{NSData, NSString};
+use objc2::rc::Retained as Rc;
+use objc2_app_kit::{NSApplication, NSImage, NSPasteboard, NSRunningApplication,
+                    NSApplicationActivationOptions, NSSharingServicePicker, NSWindow,
+                    NSWindowCollectionBehavior, NSWorkspace};
+use objc2_foundation::{NSArray, NSData, NSPoint, NSRect, NSRectEdge, NSSize, NSString, NSURL};
 
 /// Above the menu bar and the Dock. A selection overlay that sits below either
 /// one cannot capture what is under it.
@@ -113,4 +115,33 @@ pub fn activate_self() {
     let Some(marker) = MainThreadMarker::new() else { return };
     #[allow(deprecated)]
     NSApplication::sharedApplication(marker).activateIgnoringOtherApps(true);
+}
+
+/// Hand a file to macOS's own share sheet, anchored under the editor's Share
+/// button. The file has to outlive this call: the sheet is asynchronous and
+/// whichever app the user picks reads the URL long after we return.
+pub fn share_file(handle: *mut std::ffi::c_void, path: &std::path::Path) -> Result<(), String> {
+    let Some(marker) = MainThreadMarker::new() else {
+        return Err("Sharing has to run on the main thread.".into());
+    };
+    if handle.is_null() { return Err("Mark's window isn't available to share from.".into()); }
+    let text = path.to_str().ok_or("That file path can't be shared.")?;
+    let url = unsafe { NSURL::fileURLWithPath(&NSString::from_str(text)) };
+    // The picker takes a heterogeneous list, so the URL goes in as a plain object.
+    let item: Rc<AnyObject> = unsafe { Rc::cast_unchecked(url) };
+    let items = NSArray::from_retained_slice(&[item]);
+    let picker = unsafe { NSSharingServicePicker::initWithItems(NSSharingServicePicker::alloc(), &items) };
+
+    let window: &NSWindow = unsafe { &*(handle as *const NSWindow) };
+    let _ = marker;
+    let view = window.contentView().ok_or("Mark's window has no content view.")?;
+    let bounds = view.bounds();
+    // Near the top-right, which is where the Share button sits. An approximate
+    // anchor is fine; the sheet only needs somewhere sensible to point at.
+    let anchor = NSRect::new(
+        NSPoint::new((bounds.size.width - 150.0).max(0.0), (bounds.size.height - 54.0).max(0.0)),
+        NSSize::new(2.0, 2.0),
+    );
+    picker.showRelativeToRect_ofView_preferredEdge(anchor, &view, NSRectEdge::MinY);
+    Ok(())
 }

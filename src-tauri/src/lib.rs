@@ -3,6 +3,7 @@ mod macos;
 mod session;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
+use tauri_plugin_dialog::DialogExt;
 use session::{Session, Snapshot, State};
 use std::{path::Path, sync::{Mutex, atomic::Ordering}, time::Duration};
 use tauri::{AppHandle, Emitter, Manager, menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu}, tray::TrayIconBuilder};
@@ -261,6 +262,57 @@ fn dismiss_editor(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Keep a suggested filename to a filename: no separators, no traversal, and a
+/// png extension whatever was asked for.
+fn safe_name(name: &str) -> String {
+    let trimmed: String = name.chars()
+        .filter(|c| !matches!(c, '/' | '\\' | ':' | '\0'))
+        .take(120).collect();
+    let stem = trimmed.trim().trim_start_matches('.');
+    let stem = stem.strip_suffix(".png").unwrap_or(stem);
+    if stem.is_empty() { "Mark capture.png".into() } else { format!("{stem}.png") }
+}
+
+/// Ask where to put it, then write it. Async so it runs off the main thread,
+/// which is what lets the save panel block without deadlocking the app.
+#[tauri::command]
+async fn save_image(app: AppHandle, png: String, name: String) -> Result<Option<String>, String> {
+    let bytes = decode_png(&png)?;
+    let chosen = app.dialog().file()
+        .add_filter("PNG image", &["png"])
+        .set_file_name(safe_name(&name))
+        .blocking_save_file();
+    let Some(chosen) = chosen else { return Ok(None) };      // cancelled
+    let path = chosen.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(&path, &bytes).map_err(|e| format!("The image couldn't be saved ({e})."))?;
+    Ok(Some(path.file_name().unwrap_or_default().to_string_lossy().into_owned()))
+}
+
+/// Hand the image to macOS's share sheet. Synchronous, so it runs on the main
+/// thread, which AppKit requires for showing the picker.
+#[tauri::command]
+fn share_image(app: AppHandle, png: String, name: String) -> Result<(), String> {
+    let bytes = decode_png(&png)?;
+    let directory = tempfile::Builder::new().prefix("Mark-share-").tempdir()
+        .map_err(|e| format!("Nowhere to put the image to share it ({e})."))?;
+    let path = directory.path().join(safe_name(&name));
+    std::fs::write(&path, &bytes).map_err(|e| format!("The image couldn't be prepared ({e})."))?;
+    let window = app.get_webview_window(EDITOR).ok_or("Mark's editor isn't open.")?;
+    macos::share_file(window.ns_window().map_err(|e| e.to_string())?, &path)?;
+    // Replacing this drops the previous share's directory, which removes it.
+    app.state::<State>().lock().unwrap().share_dir = Some(directory);
+    Ok(())
+}
+
+/// Base64 in, verified PNG bytes out. Everything leaving the editor as a file
+/// or to another app goes through here first.
+fn decode_png(png: &str) -> Result<Vec<u8>, String> {
+    if png.len() > 128 * 1024 * 1024 { return Err("That image is too large.".into()); }
+    let bytes = STANDARD.decode(png.as_bytes()).map_err(|_| "The edited screenshot couldn't be read.")?;
+    capture::validate_png(&bytes)?;
+    Ok(bytes)
+}
+
 /// An accessory app has no menu bar, so Command-Q never reaches a menu. The
 /// editor forwards it here instead.
 #[tauri::command]
@@ -312,13 +364,14 @@ pub fn run() {
     tauri::Builder::default()
         .manage(Mutex::new(Session::default()))
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
             if event.state() == ShortcutState::Pressed {
                 if let Err(e) = capture_region(app.clone(), None) { report(app, e); }
             }
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, cancel_selection,
-            copy_capture, copy_edited, dismiss_editor, open_screen_settings, quit_app])
+            copy_capture, copy_edited, save_image, share_image, dismiss_editor, open_screen_settings, quit_app])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -388,4 +441,37 @@ pub fn run() {
                 if capturing { api.prevent_exit(); } else { close_selectors(app); }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::safe_name;
+
+    #[test]
+    fn a_suggested_filename_stays_a_filename() {
+        assert_eq!(safe_name("Mark 2026-09-09 at 10.35.42.png"), "Mark 2026-09-09 at 10.35.42.png");
+        assert_eq!(safe_name("Mark capture"), "Mark capture.png");
+    }
+
+    #[test]
+    fn a_suggested_filename_cannot_climb_out_of_the_folder() {
+        // Separators and leading dots go, so nothing here can name a directory.
+        assert_eq!(safe_name("../../etc/passwd"), "etcpasswd.png");
+        assert_eq!(safe_name("/tmp/evil"), "tmpevil.png");
+        assert_eq!(safe_name(".ssh/id_rsa"), "sshid_rsa.png");
+        for name in ["../../etc/passwd", "/tmp/evil", "a\\b", "x:y"] {
+            let safe = safe_name(name);
+            assert!(!safe.contains('/') && !safe.contains('\\') && !safe.contains(':'));
+            assert!(!safe.starts_with('.'));
+        }
+    }
+
+    #[test]
+    fn an_empty_or_absurd_name_still_gives_a_usable_one() {
+        assert_eq!(safe_name(""), "Mark capture.png");
+        assert_eq!(safe_name("   "), "Mark capture.png");
+        assert_eq!(safe_name("...."), "Mark capture.png");
+        assert!(safe_name(&"n".repeat(500)).len() <= 124);
+        assert!(safe_name("anything").ends_with(".png"));
+    }
 }

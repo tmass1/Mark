@@ -4,7 +4,8 @@ Mark is a fast, small macOS screenshot utility built with Tauri v2. Press a
 global shortcut, drag across a region, mark it up, then copy and close.
 
 Annotation is arrows, text, boxes, ellipses, a highlighter, redaction, and a
-crop. There are no accounts, settings window, cloud
+crop. Finished work goes to the clipboard, to a file, or to macOS's share
+sheet. There are no accounts, settings window, cloud
 features, or screen recording. The UI uses the system WKWebView; the native
 shell is Rust. There is no Xcode project and no Swift source.
 
@@ -136,7 +137,12 @@ notarization; an Apple Development certificate is only good for this Mac.
 
    A capture you did not draw on is copied as the original bytes macOS
    produced; only a drawing is flattened and re-encoded.
-7. A capture opens at **100%**, meaning the size it was on screen. That is not
+7. **Save** (⌘S) asks where to put a PNG, suggesting the name macOS would give
+   a screenshot. **Share** (⌘⇧S) hands the image to macOS's own share sheet —
+   Mail, Messages, AirDrop, whatever is installed — and leaves the capture open
+   afterwards. Both send the flattened image, so a file is what is on screen,
+   crop and annotations included.
+8. A capture opens at **100%**, meaning the size it was on screen. That is not
    the same as one screen pixel per image pixel: a Retina grab has twice the
    pixels of the region it came from, so a literal 1:1 view would show every
    screenshot at double the size it was taken. Rust reports each capture's
@@ -147,7 +153,7 @@ notarization; an Apple Development certificate is only good for this Mac.
    **Fit** and the percentages are in the footer; ⌘+ and ⌘- step through the
    stops, ⌘0 fits and ⌘1 returns to 100%. Drawing works the same at any zoom,
    because annotations are stored in image pixels rather than screen ones.
-8. A closed capture is not gone. **Recent** on the empty state holds the last
+9. A closed capture is not gone. **Recent** on the empty state holds the last
    six, drawing and all, so closing one by accident costs a click rather than
    the shot. It lives in memory only and does not survive quitting Mark:
    it is an undo for closing, not a library.
@@ -184,8 +190,11 @@ new capture hides the old editor; cancel restores it and success replaces it.
 - `src-tauri/src/capture.rs` owns region capture, PNG validation, cancellation,
   and temporary-file cleanup.
 - `src-tauri/src/macos.rs` contains the small AppKit/Core Graphics bridge for
-  permissions, clipboard output, focus restoration, overlay window level, and
-  login-item registration. SMAppService is reached through the Objective-C
+  permissions, clipboard output, focus restoration, overlay window level,
+  login-item registration, and the share sheet. Sharing hands over a file, and
+  the file has to outlive the call: the sheet is asynchronous and the receiving
+  app reads the URL long after the command returns, so its directory is kept in
+  the session and dropped only when the next share replaces it. SMAppService is reached through the Objective-C
   runtime rather than a binding crate, and reports `notFound` rather than
   `notRegistered` until the app has been registered once, so status is compared
   against `enabled` rather than tested for absence.
@@ -216,7 +225,11 @@ defeat the selection. Its panel matches the editor's language instead --
 the same radii, pills and hairlines -- and stays dark enough to read against
 whatever is on screen, as macOS's own screenshot toolbar does.
 
-The frontend cannot run shell commands or read arbitrary files. Native capture calls
+The frontend never names a path. Saving opens the panel in Rust and writes what
+comes back, and the filename it suggests is stripped of separators, leading
+dots and anything past 120 characters before it is used, so a suggestion cannot
+become a directory. The frontend cannot run shell commands or read arbitrary
+files. Native capture calls
 `/usr/sbin/screencapture` directly with fixed arguments and a rectangle that is
 validated as finite and non-empty before it is used. Temporary output
 uses a private unique directory and is deleted on success, cancellation, error,
