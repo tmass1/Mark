@@ -194,6 +194,13 @@ target it.
 The browser preview has no material behind it and paints a plain ground
 instead, so it shows the layout faithfully but not the glass.
 
+The selection overlay cannot have the same treatment. It is transparent over
+the live desktop, where `backdrop-filter` samples the page rather than what is
+behind the window, and a native material there would frost the whole screen and
+defeat the selection. Its panel matches the editor's language instead --
+the same radii, pills and hairlines -- and stays dark enough to read against
+whatever is on screen, as macOS's own screenshot toolbar does.
+
 The frontend cannot run shell commands or read arbitrary files. Native capture calls
 `/usr/sbin/screencapture` directly with fixed arguments and a rectangle that is
 validated as finite and non-empty before it is used. Temporary output
@@ -211,7 +218,9 @@ pnpm tauri build --bundles app
 ```
 
 Browser screenshots are written to `test-results/editor-light.png` and
-`test-results/editor-dark.png`. Browser tests cover responsive rendering,
+`test-results/editor-dark.png`. The selection overlay has its own spec, covering
+the drag, the size fields, the ratio lock, the whole-display button, and the
+timer -- including a delay armed before the overlay opened. Browser tests cover responsive rendering,
 clipboard failures, keyboard dismissal, local image loading, preference sync,
 and the annotation lifecycle: drawing, typing, restyling, moving, reopening a
 note, deleting, undo, mixing both tools, and that a copied image carries the

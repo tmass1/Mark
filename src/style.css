@@ -154,8 +154,12 @@ footer {
 .capture-menu kbd { margin: 0; }
 .capture-menu button:hover kbd { opacity: .8; }
 
-.message { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; background: var(--chrome); border-top: 1px solid var(--hairline); font-size: 12px; line-height: 1.5; }
+.message { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 11px 16px; background: var(--chrome); border-top: 1px solid var(--hairline); font-size: 12px; line-height: 1.5; }
 .message span { flex: 1 1 240px; }
+/* An action, not an aside: the settings button gets the same weight as the
+   other controls rather than reading as body text. */
+.settings { border: 1px solid var(--control-line); border-radius: 999px; padding: 5px 12px; background: var(--control); color: var(--ink); }
+.settings:hover { background: var(--control-hover); color: var(--blue); }
 
 /* Floats over the canvas rather than sitting in the column: as a layout element
    it reflowed the image mid-drag, moving the picture under the cursor that was
@@ -200,7 +204,8 @@ footer {
 .empty { text-align: center; padding: 12px; }
 .viewfinder { width: 40px; height: 40px; color: var(--muted); opacity: .85; }
 h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35px; }
-.empty-hint { margin: 0 0 24px; color: var(--muted); line-height: 1.5; }
+.empty-hint { margin: 0 0 26px; color: var(--muted); line-height: 1.5; }
+.start { padding: 9px 18px; font-size: 13px; }
 .quit-hint { margin: 22px 0 0; color: var(--muted); font-size: 11px; opacity: .8; }
 
 .recents { margin-top: 30px; }

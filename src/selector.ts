@@ -55,7 +55,11 @@ const delayButton = root.querySelector<HTMLButtonElement>('.delay')!;
 let rect: Rect | null = null;
 let ratio = 1;
 let locked = false;
-let delay = DELAYS.includes(window.__MARK_DELAY__ ?? 0) ? window.__MARK_DELAY__! : 0;
+// Guard the injected value, but keep the coalesced one: testing `?? 0` and then
+// assigning the raw field left delay undefined whenever nothing was injected,
+// which is the ordinary case, and indexOf(undefined) cycles straight back to 0.
+const armed = window.__MARK_DELAY__ ?? 0;
+let delay = DELAYS.includes(armed) ? armed : 0;
 let drag: { kind: 'new' | 'move' | 'grip'; grip?: string; ox: number; oy: number; from: Rect } | null = null;
 let sent = false;
 
