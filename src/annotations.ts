@@ -10,7 +10,14 @@
  *  Separate interfaces rather than one with a union discriminant, because
  *  TypeScript narrows a union of types and not a union inside one. */
 interface Ends { id: number; x1: number; y1: number; x2: number; y2: number; color: string; weight: number }
-export interface Arrow extends Ends { kind: 'arrow' }
+/** Three shapes for the same gesture. Taper is Mark's own; straight is the
+ *  plain solid arrow; line is the thin diagram arrow that does not cover what
+ *  it points at. */
+export type ArrowStyle = 'taper' | 'straight' | 'line';
+export const ARROW_STYLES: readonly ArrowStyle[] = ['taper', 'straight', 'line'];
+export interface Arrow extends Ends { kind: 'arrow'; style?: ArrowStyle }
+/** Arrows drawn before styles existed, and anything restored, are tapered. */
+export function styleOf(a: Arrow): ArrowStyle { return a.style ?? 'taper'; }
 export interface Line extends Ends { kind: 'line' }
 export type Segment = Arrow | Line;
 export interface Stroke { kind: 'pen'; id: number; points: Point[]; color: string; weight: number }
@@ -79,18 +86,50 @@ export function baseWeight(width: number, height: number): number {
 /** Text is sized off the same base, so one slider drives both tools. */
 export function textSize(weight: number): number { return weight * 2; }
 
-/** Tapered shaft into a solid head: near a point at the tail, widening to the
- *  head, in the spirit of Skitch's arrow. Seven points, head tip exactly at
- *  (x2, y2) so the arrow lands where the pointer was released. */
-export function arrowPolygon(a: Arrow): Point[] {
+/** The axis of an arrow: along it, across it, and how long it is. */
+function axis(a: Arrow) {
   const dx = a.x2 - a.x1, dy = a.y2 - a.y1;
   const length = Math.hypot(dx, dy) || 1;
   const ux = dx / length, uy = dy / length;
-  const nx = -uy, ny = ux;
+  return { ux, uy, nx: -uy, ny: ux, length };
+}
+
+/** The line style is drawn rather than filled: a shaft and two wings meeting at
+ *  the tip. Returned as polylines so the overlay and the exported canvas stroke
+ *  exactly the same geometry. */
+export function arrowStrokes(a: Arrow): Point[][] {
+  const { ux, uy, nx, ny, length } = axis(a);
+  const wing = Math.min(a.weight * 2.4, length * 0.5);
+  const spread = 0.52;                       // radians off the shaft, about 30 degrees
+  const back = (sign: number): Point => [
+    a.x2 - (ux * Math.cos(spread) + nx * sign * Math.sin(spread)) * wing,
+    a.y2 - (uy * Math.cos(spread) + ny * sign * Math.sin(spread)) * wing,
+  ];
+  return [[[a.x1, a.y1], [a.x2, a.y2]], [back(1), [a.x2, a.y2], back(-1)]];
+}
+
+/** How thick the line style is stroked. */
+export function arrowStrokeWidth(weight: number): number { return weight * 0.62; }
+
+/** The line style's polylines as one path, for the overlay. */
+export function strokePath(runs: readonly Point[][]): string {
+  return runs.map(run => run.map(([x, y], i) =>
+    `${i ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`).join(' ')).join(' ');
+}
+
+/** A solid arrow: shaft into a head, tip exactly at (x2, y2) so it lands where
+ *  the pointer was released. Taper narrows almost to a point at the tail, in
+ *  the spirit of Skitch's; straight holds one width throughout. Seven points
+ *  either way -- only the tail differs. */
+export function arrowPolygon(a: Arrow): Point[] {
+  const { ux, uy, nx, ny, length } = axis(a);
+  const straight = styleOf(a) === 'straight';
   // A short arrow gives up head length before it gives up head width, so it
   // stays recognisable instead of collapsing into a wedge.
   const head = Math.min(a.weight * 3.2, length * 0.44);
-  const halfHead = a.weight * 1.5, tailHalf = a.weight * 0.16, baseHalf = a.weight * 0.5;
+  const halfHead = a.weight * 1.5;
+  const baseHalf = straight ? a.weight * 0.44 : a.weight * 0.5;
+  const tailHalf = straight ? baseHalf : a.weight * 0.16;
   const bx = a.x2 - ux * head, by = a.y2 - uy * head;
   const off = (px: number, py: number, d: number): Point => [px + nx * d, py + ny * d];
   return [
@@ -201,6 +240,18 @@ export function drawAnnotations(
       ctx.stroke();
       continue;
     }
+    if (item.kind === 'arrow' && styleOf(item) === 'line') {
+      ctx.strokeStyle = item.color;
+      ctx.lineWidth = arrowStrokeWidth(item.weight);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const run of arrowStrokes(item)) {
+        ctx.beginPath();
+        run.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.stroke();
+      }
+      continue;
+    }
     if (item.kind === 'pen' || item.kind === 'line') {
       ctx.strokeStyle = item.color;
       ctx.lineWidth = item.weight;
@@ -264,7 +315,7 @@ function span(ax: number, ay: number, bx: number, by: number) {
   return { x: Math.min(ax, bx), y: Math.min(ay, by), width: Math.abs(bx - ax), height: Math.abs(by - ay) };
 }
 
-export interface LayerStyle { color: string; scale: number }
+export interface LayerStyle { color: string; scale: number; arrow: ArrowStyle }
 
 export class AnnotationLayer {
   private items: Annotation[] = [];
@@ -293,7 +344,7 @@ export class AnnotationLayer {
   private chosen = new Set<number>();
   tool: Tool = 'arrow';
   base = 12;
-  style: LayerStyle = { color: COLORS[0].value, scale: 1 };
+  style: LayerStyle = { color: COLORS[0].value, scale: 1, arrow: 'taper' };
 
   constructor(private svg: SVGSVGElement, private stage: HTMLElement, private onChange: () => void) {
     svg.addEventListener('pointerdown', this.down);
@@ -532,6 +583,7 @@ export class AnnotationLayer {
         item.color = this.style.color;
         if (item.kind === 'text') item.size = textSize(this.weight);
         else item.weight = this.weight;
+        if (item.kind === 'arrow') item.style = this.style.arrow;
         // Coarseness follows the size control, so the patch must be rebuilt.
         this.settle(item);
       }
@@ -691,8 +743,11 @@ export class AnnotationLayer {
       return;
     } else if (this.tool === 'arrow' || this.tool === 'line') {
       this.commitHistory();
-      const segment: Segment = { kind: this.tool, id: this.nextId++, x1: x, y1: y, x2: x, y2: y,
-                                 color: this.style.color, weight: this.weight };
+      const segment: Segment = this.tool === 'arrow'
+        ? { kind: 'arrow', id: this.nextId++, x1: x, y1: y, x2: x, y2: y,
+            color: this.style.color, weight: this.weight, style: this.style.arrow }
+        : { kind: 'line', id: this.nextId++, x1: x, y1: y, x2: x, y2: y,
+            color: this.style.color, weight: this.weight };
       this.items.push(segment);
       this.chosen = new Set([segment.id]);
       this.drag = { kind: 'create', id: segment.id, ox: x, oy: y };
@@ -807,7 +862,18 @@ export class AnnotationLayer {
     while (this.svg.firstChild) this.svg.removeChild(this.svg.firstChild);
     for (const item of this.items) {
       if (item.id === this.editing) continue;   // the textarea stands in while editing
-      if (item.kind === 'arrow') {
+      if (item.kind === 'arrow' && styleOf(item) === 'line') {
+        const path = document.createElementNS(SVG, 'path');
+        path.setAttribute('d', strokePath(arrowStrokes(item)));
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', item.color);
+        path.setAttribute('stroke-width', String(arrowStrokeWidth(item.weight)));
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        path.setAttribute('data-item', String(item.id));
+        path.setAttribute('class', 'arrow');
+        this.svg.append(path);
+      } else if (item.kind === 'arrow') {
         const path = document.createElementNS(SVG, 'path');
         path.setAttribute('d', polygonPath(arrowPolygon(item)));
         path.setAttribute('fill', item.color);

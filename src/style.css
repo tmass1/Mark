@@ -149,7 +149,17 @@ footer > * { flex: none; }
 .capture-more svg { width: 15px; height: 15px; }
 .capture-go:hover, .capture-more:hover { background: var(--control); }
 
+/* The swatch strip is what gives when the toolbar runs out of room: it scrolls
+   rather than pushing the buttons at the end off the edge, which is what a
+   toolbar that only reflowed below 560px did at every width in between. */
 .swatches { display: flex; gap: 7px; }
+/* The tool and colour strips are what give when the toolbar runs out of room:
+   they scroll rather than pushing the buttons at the end off the edge, which is
+   what a toolbar that only reflowed below 560px did at every width between.
+   Their contents must not shrink, or the icons distort instead. */
+.tools, .swatches { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tools::-webkit-scrollbar, .swatches::-webkit-scrollbar { display: none; }
+.tool, .swatch, .styles, .exports { flex: none; }
 .swatch { width: 20px; height: 20px; padding: 0; border: 1px solid #0000002e; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 1px 1px #ffffff40; }
 .swatch.active { box-shadow: 0 0 0 2px var(--glass), 0 0 0 3.5px var(--blue); }
 
@@ -258,6 +268,13 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 
 /* ---- narrow ------------------------------------------------------------- */
 
+/* Before anything is dropped, take back the space that costs least. */
+@media (max-width: 980px) {
+  .chosen { display: none; }
+  .weight { width: 62px; }
+  .toolbar { gap: 10px; }
+}
+
 @media (max-width: 560px) {
   .titlebar, .toolbar, footer { padding-left: 12px; padding-right: 12px; }
   .titlebar { padding-left: 78px; }
@@ -268,7 +285,7 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
   .size, .undo, .remove, .zoom, .choose { display: none; }
   .tool { padding: 5px 6px; }
   .swatch { width: 16px; height: 16px; }
-  .swatches, .tools { gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .swatches, .tools { gap: 4px; }
   .copy kbd, .copy-only kbd, .capture-go kbd { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .primary:active { transform: none; } }
@@ -278,3 +295,9 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 @media (max-width: 560px) { .chosen, .back, .front { display: none; } }
 .glassy.icon { padding: 0 11px; }
 .glassy.icon svg { display: block; width: 17px; height: 17px; }
+.styles { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); }
+.style { display: flex; border: none; border-radius: 999px; padding: 4px 7px; background: transparent; color: var(--muted); }
+.style svg { display: block; width: 17px; height: 17px; }
+.style:hover { color: var(--ink); }
+.style.active { background: var(--control); color: var(--ink); box-shadow: 0 1px 2px #00000017, inset 0 1px 0 #ffffff59; }
+@media (max-width: 560px) { .styles { display: none; } }

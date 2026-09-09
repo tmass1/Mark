@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
-  describe as describeKind, isSegment, offsetBy, penPath, polygonPath, textSize, thin,
+  ARROW_STYLES, arrowStrokes, describe as describeKind, isSegment, offsetBy, penPath,
+  polygonPath, styleOf, textSize, thin,
   type Arrow, type Note, type Point, type Shape,
 } from './annotations';
 
@@ -256,5 +257,50 @@ describe('lines', () => {
   it('offsets both ends together', () => {
     const moved = offsetBy(line() as never, 10) as ReturnType<typeof line>;
     expect([moved.x1, moved.y1, moved.x2, moved.y2]).toEqual([10, 10, 110, 60]);
+  });
+});
+
+describe('arrow styles', () => {
+  it('treats an arrow without a style as tapered, so older ones are unchanged', () => {
+    expect(styleOf(arrow())).toBe('taper');
+    expect(styleOf(arrow({ style: 'straight' }))).toBe('straight');
+  });
+
+  it('tapers almost to a point at the tail, and holds width when straight', () => {
+    const tapered = arrowPolygon(arrow({ style: 'taper', weight: 10 }));
+    const straight = arrowPolygon(arrow({ style: 'straight', weight: 10 }));
+    expect(tapered[0][1]).toBeCloseTo(1.6);        // a sixth of the shaft
+    expect(straight[0][1]).toBeCloseTo(4.4);       // the same as the shaft
+    expect(straight[0][1]).toBeCloseTo(straight[1][1]);
+  });
+
+  it('lands every style head exactly where the pointer was released', () => {
+    for (const style of ARROW_STYLES) {
+      const a = arrow({ style, x2: 240, y2: 120 });
+      const tip = style === 'line' ? arrowStrokes(a)[0][1] : arrowPolygon(a)[3];
+      expect(tip).toEqual([240, 120]);
+    }
+  });
+
+  it('draws the thin style as a shaft and two wings meeting at the tip', () => {
+    const runs = arrowStrokes(arrow({ style: 'line' }));
+    expect(runs).toHaveLength(2);
+    expect(runs[0]).toEqual([[0, 0], [100, 0]]);   // the shaft, end to end
+    expect(runs[1][1]).toEqual([100, 0]);          // wings meet at the tip
+    // Symmetric about the shaft.
+    expect(runs[1][0][1]).toBeCloseTo(-runs[1][2][1]);
+  });
+
+  it('strokes the thin style instead of filling it', () => {
+    const { ctx, calls } = recorder();
+    drawAnnotations(ctx, [arrow({ style: 'line', color: '#34c759' })]);
+    expect(calls).toContain('stroke:#34c759');
+    expect(calls).toContain('stroke!');
+    expect(calls).not.toContain('shape');          // no filled polygon
+  });
+
+  it('keeps the wings inside a very short arrow', () => {
+    const runs = arrowStrokes(arrow({ style: 'line', x2: 8, weight: 20 }));
+    for (const [x] of runs[1]) expect(x).toBeGreaterThanOrEqual(-1);
   });
 });

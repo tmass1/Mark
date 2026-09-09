@@ -92,6 +92,11 @@ notarization; an Apple Development certificate is only good for this Mac.
    than over the shot. Escape cancels.
 5. Pick a tool in the toolbar.
    - **Arrow**: drag. Drag its body to move it, or either end to reshape it.
+     Three styles sit beside the colours: **tapered**, which narrows almost to a
+     point at the tail; **solid**, one width throughout; and **thin**, a stroked
+     shaft and two wings that does not cover what it points at. Each style's
+     button is drawn from the geometry it draws with, so the picker cannot come
+     to misrepresent what it picks.
    - **Line**: drag. The same two ends as an arrow, without the head, so it
      moves and reshapes the same way.
    - **Pen**: drag to scribble. The stroke is smoothed through the midpoints of

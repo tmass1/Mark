@@ -2,8 +2,20 @@ import './style.css';
 import { command, isTauri, watchCapture, type CapturePreview, type Snapshot } from './platform';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
-import { AnnotationLayer, COLORS, arrowPolygon, describe, drawAnnotations, polygonPath, textSize,
-         type Annotation, type Tool } from './annotations';
+import { ARROW_STYLES, AnnotationLayer, COLORS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
+         describe, drawAnnotations, polygonPath, strokePath, styleOf, textSize,
+         type Annotation, type ArrowStyle, type Tool } from './annotations';
+
+/** Each style's button previews itself, drawn from the geometry it will draw
+ *  with, so a picker cannot come to misrepresent what it picks. */
+const STYLE_NAMES: Record<ArrowStyle, string> = { taper: 'Tapered', straight: 'Solid', line: 'Thin' };
+function stylePreview(style: ArrowStyle): string {
+  const sample = { kind: 'arrow', id: 0, x1: 3, y1: 16, x2: 17, y2: 4, color: '', weight: 2.6, style } as const;
+  return style === 'line'
+    ? `<path d="${strokePath(arrowStrokes(sample))}" fill="none" stroke="currentColor"
+         stroke-width="${arrowStrokeWidth(sample.weight)}" stroke-linecap="round" stroke-linejoin="round"/>`
+    : `<path d="${polygonPath(arrowPolygon(sample))}" fill="currentColor"/>`;
+}
 
 /** The app's mark: the same arrow the icon is built from, and the same function
  *  every arrow in the editor comes out of, so the empty state cannot drift away
@@ -83,6 +95,11 @@ app.innerHTML = `
       ${COLORS.map(color => `<button class="swatch" type="button" role="radio" aria-checked="false"
         data-color="${color.value}" style="--swatch:${color.value}" title="${color.name}"><span class="sr">${color.name}</span></button>`).join('')}
     </div>
+    <div class="styles" role="radiogroup" aria-label="Arrow style" hidden>
+      ${ARROW_STYLES.map(style => `<button class="style" type="button" role="radio" data-style="${style}"
+        aria-checked="${style === 'taper'}" title="${STYLE_NAMES[style]} arrow"><svg viewBox="0 0 20 20"
+        aria-hidden="true">${stylePreview(style)}</svg><span class="sr">${STYLE_NAMES[style]}</span></button>`).join('')}
+    </div>
     <label class="size">Size
       <input class="weight" type="range" min="0.5" max="2.5" step="0.1" value="1" aria-label="Size" />
     </label>
@@ -94,8 +111,12 @@ app.innerHTML = `
     <button class="front subtle icon" type="button" title="Bring forward (⌘])" aria-label="Bring forward">
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 4.8a1.6 1.6 0 0 0-1.6-1.6H4.8A1.6 1.6 0 0 0 3.2 4.8v5.6A1.6 1.6 0 0 0 4.8 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="7.8" y="7.8" width="9" height="9" rx="1.6" fill="currentColor" opacity=".9"/></svg>
     </button>
-    <button class="undo subtle" type="button" title="Undo (⌘Z)">Undo</button>
-    <button class="remove subtle" type="button" title="Delete selection (⌫)">Delete</button>
+    <button class="undo subtle icon" type="button" title="Undo (⌘Z)" aria-label="Undo">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.2 5.4 3.6 9l3.6 3.6M3.9 9h7.5a4.4 4.4 0 0 1 0 8.8h-1.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="remove subtle icon" type="button" title="Delete selection (⌫)" aria-label="Delete selection">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.8 6.2h12.4M8.2 6.2V4.6a1 1 0 0 1 1-1h1.6a1 1 0 0 1 1 1v1.6M5.4 6.2l.7 9.4a1.4 1.4 0 0 0 1.4 1.3h5a1.4 1.4 0 0 0 1.4-1.3l.7-9.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
   </div>
   <main class="canvas" aria-label="Screenshot editor">
     <div class="stage" hidden>
@@ -156,6 +177,7 @@ const undoButton = app.querySelector<HTMLButtonElement>('.undo')!;
 const backButton = app.querySelector<HTMLButtonElement>('.back')!;
 const frontButton = app.querySelector<HTMLButtonElement>('.front')!;
 const chosenCount = app.querySelector<HTMLElement>('.chosen')!;
+const styles = app.querySelector<HTMLElement>('.styles')!;
 const removeButton = app.querySelector<HTMLButtonElement>('.remove')!;
 const empty = app.querySelector<HTMLElement>('.empty')!;
 const copy = app.querySelector<HTMLButtonElement>('.copy')!;
@@ -226,6 +248,15 @@ function syncTools() {
   chosenCount.textContent = picked.length === 1
     ? `${describe(picked[0].kind)} selected`
     : `${picked.length} selected`;
+  // Only worth showing when it would change something.
+  const arrows = picked.filter(item => item.kind === 'arrow');
+  styles.hidden = layer.tool !== 'arrow' && arrows.length === 0;
+  if (arrows.length) layer.style.arrow = styleOf(arrows[arrows.length - 1]);
+  for (const button of app.querySelectorAll<HTMLButtonElement>('.style')) {
+    const active = button.dataset.style === layer.style.arrow;
+    button.setAttribute('aria-checked', String(active));
+    button.classList.toggle('active', active);
+  }
   const selected = layer.styleSource;
   if (selected) {
     layer.style.color = selected.color;
@@ -405,6 +436,12 @@ on(toolbar, 'click', event => {
   const element = event.target as Element;
   const tool = element.closest<HTMLButtonElement>('.tool');
   if (tool?.dataset.tool) { layer.tool = tool.dataset.tool as Tool; layer.deselect(); syncTools(); return; }
+  const style = element.closest<HTMLButtonElement>('.style');
+  if (style?.dataset.style) {
+    layer.style.arrow = style.dataset.style as ArrowStyle;
+    layer.applyStyle();
+    return;
+  }
   const swatch = element.closest<HTMLButtonElement>('.swatch');
   if (!swatch?.dataset.color) return;
   layer.style.color = swatch.dataset.color;

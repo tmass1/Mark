@@ -864,3 +864,65 @@ test('a tap with the pen leaves nothing behind', async ({ page }) => {
   await page.mouse.click(spot.x, spot.y);
   await expect(page.locator('.overlay path[fill="none"]')).toHaveCount(0);
 });
+
+test('arrow styles change the shape, and the picker only shows when it applies', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.styles')).toBeVisible();          // the arrow tool is selected
+  await pick(page, 'Box');
+  await expect(page.locator('.styles')).toBeHidden();           // nothing it could change
+  await pick(page, 'Arrow');
+
+  await drawArrow(page, [200, 200], [600, 320]);
+  const arrow = page.locator('.arrow');
+  await expect(arrow).toHaveAttribute('fill', '#ff3b30');       // tapered: a filled shape
+
+  await page.locator('.style[data-style="line"]').click();
+  await expect(arrow).toHaveAttribute('fill', 'none');          // thin: stroked instead
+  await expect(arrow).toHaveAttribute('stroke', '#ff3b30');
+  const thin = await arrow.getAttribute('d');
+
+  await page.locator('.style[data-style="straight"]').click();
+  await expect(arrow).toHaveAttribute('fill', '#ff3b30');
+  expect(await arrow.getAttribute('d')).not.toEqual(thin);
+  await expect(page.locator('.style[data-style="straight"]')).toHaveAttribute('aria-checked', 'true');
+});
+
+test('the picker follows the selected arrow, and the next one keeps that style', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.style[data-style="line"]').click();
+  await drawArrow(page, [200, 200], [600, 320]);
+  await expect(page.locator('.arrow')).toHaveAttribute('fill', 'none');
+
+  // A second arrow inherits the chosen style rather than reverting.
+  await page.keyboard.press('Escape');
+  await drawArrow(page, [200, 500], [600, 620]);
+  await expect(page.locator('.arrow[fill="none"]')).toHaveCount(2);
+
+  // Selecting a tapered one moves the picker to it.
+  await page.locator('.style[data-style="taper"]').click();
+  await expect(page.locator('.style[data-style="taper"]')).toHaveAttribute('aria-checked', 'true');
+});
+
+test('the copied image carries the thin style, stroked not filled', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async (items: any[]) => {
+      const bitmap = await createImageBitmap(await items[0].getType('image/png'));
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext('2d')!;
+      context.drawImage(bitmap, 0, 0);
+      const { data } = context.getImageData(0, 0, bitmap.width, bitmap.height);
+      let red = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] === 255 && data[i + 1] === 59 && data[i + 2] === 48) red++;
+      }
+      document.body.dataset.redPixels = String(red);
+    } } });
+  });
+  await page.goto('/');
+  await page.locator('.style[data-style="line"]').click();
+  await drawArrow(page, [200, 200], [800, 500]);
+  await page.getByRole('button', { name: /Copy and Close/ }).click();
+  // Present in the file, and far less ink than a filled arrow of the same span.
+  await expect.poll(async () => Number(await page.locator('body').getAttribute('data-red-pixels')))
+    .toBeGreaterThan(500);
+});
