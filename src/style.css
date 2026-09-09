@@ -67,7 +67,7 @@ body { margin: 0; overflow: hidden; background: transparent; }
 button { font: inherit; cursor: default; color: inherit; }
 button:disabled { opacity: .4; }
 button:focus-visible { outline: 2.5px solid var(--blue); outline-offset: 2px; }
-kbd { font: inherit; font-size: 11px; opacity: .55; margin-left: 10px; }
+kbd { font: inherit; font-size: 11px; opacity: .5; margin-left: 9px; letter-spacing: .3px; }
 
 #app {
   position: relative; height: 100dvh; display: flex; flex-direction: column; min-width: 300px;
@@ -92,16 +92,22 @@ kbd { font: inherit; font-size: 11px; opacity: .55; margin-left: 10px; }
 }
 .spacer { flex: 1; }
 
+/* What the capture is, on the left; what to do with it, on the right. Every
+   control shares one height and one radius so the row reads as a single band
+   rather than a queue of differently shaped things. */
 footer {
-  flex: 0 0 62px; padding: 0 14px; display: flex; gap: 12px; align-items: center;
+  flex: 0 0 62px; padding: 0 14px; display: flex; gap: 10px; align-items: center;
   background: var(--chrome); border-top: 1px solid var(--hairline);
 }
-.dimensions { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+footer > * { flex: none; }
+.push { flex: 1 1 auto; min-width: 8px; }
+.dimensions { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* ---- controls ----------------------------------------------------------- */
 
 .primary {
-  border: none; border-radius: 999px; padding: 7px 15px; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; height: 30px;
+  border: none; border-radius: 999px; padding: 0 16px; color: #fff;
   background: var(--blue); font-weight: 500; white-space: nowrap;
   box-shadow: 0 1px 2px #0000001f, inset 0 1px 0 #ffffff2b;
 }
@@ -109,11 +115,19 @@ footer {
 .primary:active { transform: translateY(.5px); }
 
 .glassy {
-  border: 1px solid var(--control-line); border-radius: 999px; padding: 6px 13px;
+  display: inline-flex; align-items: center; justify-content: center; height: 30px;
+  border: 1px solid var(--control-line); border-radius: 999px; padding: 0 14px;
   background: var(--control); white-space: nowrap;
   box-shadow: inset 0 1px 0 #ffffff40;
 }
 .glassy:hover { background: var(--control-hover); }
+
+/* Share and Save are one pair of related actions, so they read as one control
+   rather than two loose circles. */
+.exports { display: inline-flex; }
+.exports .glassy { border-radius: 0; }
+.exports .glassy:first-child { border-radius: 999px 0 0 999px; padding-left: 13px; }
+.exports .glassy:last-child { border-radius: 0 999px 999px 0; padding-right: 13px; border-left: none; }
 
 .subtle, .settings { border: none; padding: 6px 8px; border-radius: 999px; background: transparent; color: var(--muted); font-size: 12px; }
 .subtle:hover, .settings:hover { background: var(--sunken); color: var(--ink); }
@@ -138,8 +152,17 @@ footer {
 .size { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .weight { width: 88px; accent-color: var(--blue); }
 
-.zoom { display: flex; align-items: center; }
-.zoom-select { padding: 4px 5px; border: 1px solid var(--control-line); border-radius: 8px; background: var(--control); color: var(--muted); font: inherit; font-size: 11px; }
+/* The native select brought its own height, radius and chevron, none of which
+   matched the buttons beside it. */
+.zoom { position: relative; display: flex; align-items: center; }
+.zoom-select {
+  appearance: none; height: 30px; padding: 0 26px 0 10px;
+  border: 1px solid var(--control-line); border-radius: 999px; background: var(--control);
+  color: var(--ink); font: inherit; font-size: 11.5px; font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1px 0 #ffffff40;
+}
+.zoom-select:hover { background: var(--control-hover); }
+.zoom .chevron { position: absolute; right: 7px; width: 14px; height: 14px; color: var(--muted); pointer-events: none; }
 
 /* ---- popovers ----------------------------------------------------------- */
 
@@ -235,5 +258,5 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 .subtle.icon { display: flex; padding: 5px 6px; }
 .subtle.icon svg { display: block; width: 18px; height: 18px; }
 @media (max-width: 560px) { .chosen, .back, .front { display: none; } }
-.glassy.icon { display: flex; padding: 6px 9px; }
+.glassy.icon { padding: 0 11px; }
 .glassy.icon svg { display: block; width: 17px; height: 17px; }

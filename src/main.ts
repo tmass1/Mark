@@ -100,14 +100,18 @@ app.innerHTML = `
         <option value="0.25">25%</option><option value="0.5">50%</option>
         <option value="1">100%</option><option value="2">200%</option><option value="4">400%</option>
       </select>
+      <svg class="chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 8.4 10 11.8l3.4-3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </label>
+    <span class="push"></span>
     <button class="choose glassy" type="button" hidden>Choose image…</button>
+    <span class="exports">
     <button class="share glassy icon" type="button" title="Share (⌘⇧S)" aria-label="Share">
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.8v9M6.8 6l3.2-3.2L13.2 6"/><path d="M5 10.6H4.2a1.4 1.4 0 0 0-1.4 1.4v4.2a1.4 1.4 0 0 0 1.4 1.4h11.6a1.4 1.4 0 0 0 1.4-1.4V12a1.4 1.4 0 0 0-1.4-1.4H15"/></svg>
     </button>
     <button class="save glassy icon" type="button" title="Save to a file (⌘S)" aria-label="Save to a file">
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.8v9M6.8 8.6 10 11.8l3.2-3.2"/><path d="M3.4 14v2.2a1.4 1.4 0 0 0 1.4 1.4h10.4a1.4 1.4 0 0 0 1.4-1.4V14"/></svg>
     </button>
+    </span>
     <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘⇧C</kbd></button>
     <button class="copy primary" type="button">Copy and Close <kbd>⌘C</kbd></button>
   </footer>
@@ -246,6 +250,7 @@ function render() {
   copy.hidden = !capture;
   copyOnly.hidden = !capture;
   shareButton.hidden = saveButton.hidden = !capture || !isTauri;
+  app.querySelector<HTMLElement>('.exports')!.hidden = !capture || !isTauri;
   shareButton.disabled = saveButton.disabled = busy || copyPending;
   zoomSelect.parentElement!.hidden = !capture;
   applyZoom();
