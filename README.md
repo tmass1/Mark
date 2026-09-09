@@ -95,10 +95,22 @@ notarization; an Apple Development certificate is only good for this Mac.
    ⌘Z undoes, ⌫ deletes the selection, and Escape backs out one level: first
    the text caret, then the selection, then the editor. ⌘W hides Mark and ⌘Q
    quits it, since an accessory app has no menu bar to quit from.
-6. Press **⌘C** or click **Copy and Close**. A PNG and a TIFF compatibility
-   representation are written to the macOS clipboard. A capture you did not
-   draw on is copied as the original bytes macOS produced; only a drawing is
-   flattened and re-encoded.
+
+   With something selected, ⌘C takes that annotation and ⌘V drops a copy
+   nearby; pasting again cascades instead of stacking. ⌘D does both at once.
+   A copy carries its colour and size, and a pasted or moved redaction
+   re-samples wherever it lands rather than carrying its old patch with it.
+6. **Copy** (⌘⇧C) writes the image to the clipboard and leaves the capture
+   open to keep working on. **Copy and Close** (⌘C) writes it and dismisses the
+   editor. Both put a PNG and a TIFF compatibility representation on the macOS
+   clipboard, and both act on the image whatever is selected.
+
+   ⌘C only reaches the image when nothing is selected, because with a selection
+   it copies that instead. That change of meaning is always announced in the
+   status line, and Escape clears the selection to get the image back.
+
+   A capture you did not draw on is copied as the original bytes macOS
+   produced; only a drawing is flattened and re-encoded.
 
 Escape, ⌘W, or the red traffic-light button closes without copying. Starting a
 new capture hides the old editor; cancel restores it and success replaces it.
@@ -161,7 +173,9 @@ default sizing, shape export geometry, highlighter blending, redaction
 coarseness, selection clamping, and locked-ratio resizing. One browser test
 copies a redacted capture back out and counts distinct colours in the region,
 so redaction is checked for actually destroying the pixels rather than only
-looking like it. Rust tests cover PNG preservation and validation,
+looking like it; another moves a redaction onto different content and reads the
+patch back, since a stale patch would both mislead and leak the region it was
+cut from. Rust tests cover PNG preservation and validation,
 cancellation/error classification, capture re-entry, child-process
 cancellation, and temporary cleanup.
 

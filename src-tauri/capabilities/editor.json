@@ -4,8 +4,8 @@
   "description": "Only Mark's local editor can capture, copy, drag, and remember its size.",
   "windows": ["editor"], "platforms": ["macOS"],
   "permissions": [
-    "allow-current-capture", "allow-capture-region", "allow-copy-and-close",
-    "allow-copy-annotated-and-close",
+    "allow-current-capture", "allow-capture-region",
+    "allow-copy-capture", "allow-copy-edited",
     "allow-dismiss-editor", "allow-open-screen-settings", "allow-quit-app",
     "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize",
     "core:window:allow-inner-size", "core:window:allow-scale-factor", "core:window:allow-set-size",

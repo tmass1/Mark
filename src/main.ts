@@ -3,7 +3,7 @@ import { command, isTauri, watchCapture, type CapturePreview, type Snapshot } fr
 import { copyThenDismiss, type EditorSize } from './model';
 import { preferences } from './preferences';
 import { sampleCapture } from './sample';
-import { AnnotationLayer, COLORS, drawAnnotations, textSize, type Tool } from './annotations';
+import { AnnotationLayer, COLORS, describe, drawAnnotations, textSize, type Tool } from './annotations';
 
 /** Six tools do not fit as words, so the palette is glyphs with real labels
  *  behind them for screen readers and tooltips. */
@@ -58,6 +58,7 @@ app.innerHTML = `
   <footer>
     <span class="dimensions" aria-label="Image dimensions"></span>
     <button class="choose subtle" type="button" hidden>Choose image…</button>
+    <button class="copy-only subtle" type="button" title="Copy the image and keep working">Copy <kbd>⌘⇧C</kbd></button>
     <button class="copy primary" type="button">Copy and Close <kbd>⌘C</kbd></button>
   </footer>
   <input class="file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
@@ -71,6 +72,7 @@ const undoButton = app.querySelector<HTMLButtonElement>('.undo')!;
 const removeButton = app.querySelector<HTMLButtonElement>('.remove')!;
 const empty = app.querySelector<HTMLElement>('.empty')!;
 const copy = app.querySelector<HTMLButtonElement>('.copy')!;
+const copyOnly = app.querySelector<HTMLButtonElement>('.copy-only')!;
 const start = app.querySelector<HTMLButtonElement>('.start')!;
 const choose = app.querySelector<HTMLButtonElement>('.choose')!;
 const input = app.querySelector<HTMLInputElement>('.file-input')!;
@@ -88,6 +90,13 @@ const layer = new AnnotationLayer(overlay, stage, () => syncTools());
 // region drawn before it finished decoding has to be filled in afterwards.
 layer.setSource(image);
 image.addEventListener('load', () => layer.refreshRedactions());
+
+let flashTimer: ReturnType<typeof setTimeout>;
+function flash(text: string) {
+  showMessage(text);
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { if (!disposed) showMessage(null); }, 1800);
+}
 
 function showMessage(text: string | null) {
   message.hidden = !text;
@@ -137,7 +146,9 @@ function render() {
   } else image.removeAttribute('src');
   app.querySelector('.dimensions')!.textContent = capture ? `${capture.width} × ${capture.height} px` : '';
   copy.hidden = !capture;
+  copyOnly.hidden = !capture;
   copy.disabled = busy || copyPending;
+  copyOnly.disabled = busy || copyPending;
   start.disabled = busy;
   start.firstChild!.textContent = isTauri ? (busy ? 'Selecting… ' : 'Capture Region ') : 'Choose image… ';
   start.querySelector('kbd')!.hidden = !isTauri;
@@ -175,15 +186,15 @@ async function flatten(): Promise<HTMLCanvasElement> {
   return canvas;
 }
 
-async function copyCapture() {
+async function copyCapture(close = true) {
   if (!capture || busy || copyPending) return;
   copyPending = true; render(); showMessage(null);
   try {
     if (isTauri) {
       // An untouched capture keeps its original bytes; only a drawing re-encodes.
-      if (layer.empty) await command('copy_and_close');
-      else await command('copy_annotated_and_close', { png: (await flatten()).toDataURL('image/png').split(',')[1] });
-      capture = null;
+      if (layer.empty) await command('copy_capture', { close });
+      else await command('copy_edited', { png: (await flatten()).toDataURL('image/png').split(',')[1], close });
+      if (close) capture = null; else flash('Copied to clipboard.');
     } else {
       // Start clipboard.write inside the gesture; Safari accepts a promised Blob.
       const png = layer.empty
@@ -193,8 +204,8 @@ async function copyCapture() {
       await copyThenDismiss(async () => {
         if (!navigator.clipboard?.write) throw new Error('Image copying needs clipboard access on localhost or HTTPS.');
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
-      }, () => { capture = null; });
-      showMessage('Copied to clipboard.');
+      }, () => { if (close) capture = null; });
+      flash('Copied to clipboard.');
     }
   } catch (error) { report(error); }
   finally { copyPending = false; render(); }
@@ -203,7 +214,8 @@ async function copyCapture() {
 function on<K extends keyof HTMLElementEventMap>(element: HTMLElement, name: K, handler: (event: HTMLElementEventMap[K]) => void) {
   element.addEventListener(name, handler, { signal: abort.signal });
 }
-on(copy, 'click', () => { void copyCapture(); });
+on(copy, 'click', () => { void copyCapture(true); });
+on(copyOnly, 'click', () => { void copyCapture(false); });
 on(start, 'click', () => {
   if (!isTauri) { input.click(); return; }
   void command('capture_region').catch(report);
@@ -265,9 +277,24 @@ document.addEventListener('keydown', event => {
     event.preventDefault(); layer.undo();
   } else if (capture && !typing && (key === 'backspace' || key === 'delete')) {
     event.preventDefault(); layer.deleteSelected();
-  } else if (capture && ((key === 'c' && (event.metaKey || event.ctrlKey)) ||
-      (key === 'enter' && (document.activeElement === document.body || document.activeElement === copy)))) {
-    event.preventDefault(); void copyCapture();
+  } else if (capture && key === 'c' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault(); void copyCapture(false);
+  } else if (capture && key === 'c' && (event.metaKey || event.ctrlKey)) {
+    // With something selected this copies that, not the screenshot. Say so, so
+    // the change of meaning is never silent.
+    event.preventDefault();
+    const taken = layer.copySelection();
+    if (taken) flash(`${describe(taken.kind)} copied. ⌘V pastes it, Escape deselects.`);
+    else void copyCapture(true);
+  } else if (capture && key === 'v' && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault();
+    if (!layer.paste()) flash('Copy an arrow, note or shape first.');
+  } else if (capture && key === 'd' && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault();
+    if (!layer.duplicateSelection()) flash('Select something to duplicate.');
+  } else if (capture && key === 'enter' &&
+      (document.activeElement === document.body || document.activeElement === copy)) {
+    event.preventDefault(); void copyCapture(true);
   }
 }, { signal: abort.signal });
 

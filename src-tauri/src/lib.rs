@@ -180,21 +180,23 @@ fn cancel_selection(app: AppHandle) -> Result<(), String> {
     }).map_err(|e| e.to_string())
 }
 
+/// Closing is the caller's choice: copying to keep working is as common as
+/// copying to be done.
 #[tauri::command]
-fn copy_and_close(app: AppHandle) -> Result<(), String> {
+fn copy_capture(app: AppHandle, close: bool) -> Result<(), String> {
     let state = app.state::<State>();
     let session = state.lock().unwrap();
     if session.busy { return Err("Finish selecting the region first.".into()); }
     let capture = session.capture.as_ref().ok_or("There is no screenshot to copy.")?;
     macos::copy_png(&capture.png)?;
     drop(session);
-    dismiss_editor(app)
+    if close { dismiss_editor(app) } else { Ok(()) }
 }
 
 /// The editor sends a flattened PNG only when something was drawn; an untouched
 /// capture still takes the copy_and_close path and keeps its original bytes.
 #[tauri::command]
-fn copy_annotated_and_close(app: AppHandle, png: String) -> Result<(), String> {
+fn copy_edited(app: AppHandle, png: String, close: bool) -> Result<(), String> {
     // Roughly 96 MB of image once decoded, well past any real screenshot.
     if png.len() > 128 * 1024 * 1024 { return Err("The edited screenshot is too large to copy.".into()); }
     {
@@ -206,7 +208,7 @@ fn copy_annotated_and_close(app: AppHandle, png: String) -> Result<(), String> {
     let bytes = STANDARD.decode(png.as_bytes()).map_err(|_| "The edited screenshot couldn't be read.")?;
     capture::validate_png(&bytes)?;
     macos::copy_png(&bytes)?;
-    dismiss_editor(app)
+    if close { dismiss_editor(app) } else { Ok(()) }
 }
 
 #[tauri::command]
@@ -238,7 +240,7 @@ fn menu_action(app: &AppHandle, id: &str) {
     match id {
         "capture" => { if let Err(e) = capture_region(app.clone()) { report(app, e); } }
         "show" => present(app),
-        "copy" => { if let Err(e) = copy_and_close(app.clone()) { report(app, e); } }
+        "copy" => { if let Err(e) = copy_capture(app.clone(), true) { report(app, e); } }
         "close" => { let _ = dismiss_editor(app.clone()); }
         "quit" => {
             app.exit(0);
@@ -257,7 +259,7 @@ pub fn run() {
             }
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_rect, cancel_selection,
-            copy_and_close, copy_annotated_and_close, dismiss_editor, open_screen_settings, quit_app])
+            copy_capture, copy_edited, dismiss_editor, open_screen_settings, quit_app])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

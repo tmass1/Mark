@@ -359,3 +359,84 @@ test('the redaction shown on screen is of the region it covers', async ({ page }
   expect(middle.r).toBeLessThan(120);
   expect(middle.g).toBeLessThan(200);
 });
+
+test('copies and pastes an annotation, and duplicates one directly', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [600, 300]);
+  await expect(page.locator('.arrow')).toHaveCount(1);
+
+  // The arrow is still selected, so Command-C takes it rather than the image,
+  // and says so instead of quietly changing meaning.
+  await page.keyboard.press('Meta+c');
+  await expect(page.getByRole('status')).toContainText('Arrow copied');
+  await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
+
+  await page.keyboard.press('Meta+v');
+  await expect(page.locator('.arrow')).toHaveCount(2);
+  // Pasting again cascades rather than stacking in one spot.
+  await page.keyboard.press('Meta+v');
+  await expect(page.locator('.arrow')).toHaveCount(3);
+  const paths = await page.locator('.arrow').evaluateAll(nodes => nodes.map(n => n.getAttribute('d')));
+  expect(new Set(paths).size).toBe(3);
+
+  await page.keyboard.press('Meta+d');
+  await expect(page.locator('.arrow')).toHaveCount(4);
+});
+
+test('with nothing selected Command-C still copies the image and closes', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async () => {} } });
+  });
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [600, 300]);
+  await page.keyboard.press('Escape');                 // clears the selection
+  await expect(page.locator('.handle')).toHaveCount(0);
+  await page.keyboard.press('Meta+c');
+  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+});
+
+test('Copy keeps the capture open so you can carry on', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async () => {} } });
+  });
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [600, 300]);
+  await page.getByRole('button', { name: /^Copy/ }).first().click();
+  await expect(page.getByRole('status')).toContainText('Copied to clipboard');
+  await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
+  await expect(page.locator('.arrow')).toHaveCount(1);   // the drawing survives too
+
+  await page.keyboard.press('Meta+Shift+c');             // and again from the keyboard
+  await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
+});
+
+test('a moved redaction hides where it lands, not where it came from', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Redact');
+  await drawArrow(page, [200, 560], [420, 630]);         // over blank white card
+  const patch = page.locator('.shape image');
+  await expect(patch).toHaveCount(1);
+
+  const at = await stage(page);
+  const grab = at(310, 595), drop = at(265, 455);        // onto the blue button
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(drop.x, drop.y, { steps: 10 });
+  await page.mouse.up();
+
+  const middle = await page.evaluate(async () => {
+    const href = document.querySelector('.shape image')!.getAttribute('href')!;
+    const image = new Image();
+    await new Promise(done => { image.onload = done; image.src = href; });
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width; canvas.height = image.height;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(image, 0, 0);
+    const [r, g, b] = context.getImageData(Math.floor(image.width / 2), Math.floor(image.height / 2), 1, 1).data;
+    return { r, g, b };
+  });
+  // Blue: resampled where it now sits. A stale patch would still be showing the
+  // white it was cut from, which both misleads and leaks the old region.
+  expect(middle.b).toBeGreaterThan(180);
+  expect(middle.r).toBeLessThan(140);
+});

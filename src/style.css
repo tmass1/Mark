@@ -83,3 +83,6 @@ h1 { margin: 16px 0 8px; font-size: 19px; font-weight: 600; letter-spacing: -.3p
 .highlight { mix-blend-mode: multiply; opacity: .3; }
 .redact-pending { fill: #1c1c1e; }
 .quit-hint { margin: 20px 0 0; color: var(--muted); font-size: 11px; }
+.copy-only { border: 1px solid var(--line); border-radius: 7px; padding: 6px 11px; color: inherit; }
+.copy-only:hover { border-color: var(--blue); color: var(--blue); }
+@media (max-width: 500px) { .copy-only kbd { display: none; } }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
-  polygonPath, textSize, type Arrow, type Note, type Shape,
+  describe as describeKind, offsetBy, polygonPath, textSize, type Arrow, type Note, type Shape,
 } from './annotations';
 
 const arrow = (over: Partial<Arrow> = {}): Arrow =>
@@ -172,5 +172,28 @@ describe('redaction coarseness', () => {
   it('has a floor, so a small size cannot leave text readable', () => {
     expect(blockSize(1)).toBe(7);
     expect(blockSize(0)).toBe(7);
+  });
+});
+
+describe('copying an annotation', () => {
+  it('shifts a copy off its original so the two can be told apart', () => {
+    const moved = offsetBy(arrow({ x1: 0, y1: 0, x2: 100, y2: 50 }), 10);
+    expect([moved.x1, moved.y1, moved.x2, moved.y2]).toEqual([10, 10, 110, 60]);
+    const shifted = offsetBy(shape({ x: 10, y: 20 }), 10);
+    expect([shifted.x, shifted.y]).toEqual([20, 30]);
+    expect(offsetBy(note({ x: 40, y: 60 }), 5)).toMatchObject({ x: 45, y: 65 });
+  });
+
+  it('leaves the original untouched', () => {
+    const original = arrow({ x1: 0, y1: 0 });
+    offsetBy(original, 25);
+    expect([original.x1, original.y1]).toEqual([0, 0]);
+  });
+
+  it('names each kind for the status line', () => {
+    expect(describeKind('arrow')).toBe('Arrow');
+    expect(describeKind('text')).toBe('Text');
+    expect(describeKind('redact')).toBe('Redaction');
+    expect(describeKind('ellipse')).toBe('Ellipse');
   });
 });

@@ -22,6 +22,21 @@ export const SHAPES: readonly ShapeKind[] = ['box', 'ellipse', 'highlight', 'red
 export function isShape(item: Annotation): item is Shape { return (SHAPES as readonly string[]).includes(item.kind); }
 /** Marker ink has to let the screenshot through. */
 export const HIGHLIGHT_ALPHA = 0.3;
+
+/** What to call a kind in a status line. */
+export function describe(kind: Annotation['kind']): string {
+  return kind === 'text' ? 'Text' : kind === 'redact' ? 'Redaction'
+    : kind.charAt(0).toUpperCase() + kind.slice(1);
+}
+
+/** Shift a copy off its original so the two are distinguishable. */
+export function offsetBy<T extends Annotation>(item: T, distance: number): T {
+  if (item.kind === 'arrow') {
+    return { ...item, x1: item.x1 + distance, y1: item.y1 + distance,
+                      x2: item.x2 + distance, y2: item.y2 + distance };
+  }
+  return { ...item, x: item.x + distance, y: item.y + distance };
+}
 /** Redaction block size, tied to the size control but floored so a small
  *  setting cannot leave legible text behind. */
 export function blockSize(weight: number): number { return Math.max(7, weight * 1.5); }
@@ -187,6 +202,9 @@ export class AnnotationLayer {
   private lastClick: { id: number; time: number } | null = null;
   private gesture = 0;
   private source: HTMLImageElement | null = null;
+  /** Survives a new capture on purpose: the same label often belongs on several
+   *  screenshots in a row. */
+  private clipboard: Annotation | null = null;
   selected: number | null = null;
   tool: Tool = 'arrow';
   base = 12;
@@ -292,6 +310,37 @@ export class AnnotationLayer {
     if (this.selected === null) return false;
     this.selected = null; this.render(); this.onChange();
     return true;
+  }
+
+  get copied(): Annotation | null { return this.clipboard; }
+
+  /** Take the selection, if there is one. Returns what it took, for the caller
+   *  to report. */
+  copySelection(): Annotation | null {
+    const item = this.find(this.selected);
+    if (!item) return null;
+    this.clipboard = { ...item };
+    return this.clipboard;
+  }
+
+  /** Drop the held annotation onto the capture, offset from wherever it came
+   *  from. Pasting again cascades, because the pasted copy becomes the one held. */
+  paste(): Annotation | null {
+    if (!this.clipboard) return null;
+    this.commitHistory();
+    const copy = { ...offsetBy(this.clipboard, this.base * 0.9), id: this.nextId++ };
+    this.items.push(copy);
+    this.selected = copy.id;
+    this.clipboard = copy;
+    // A redaction pasted somewhere else has to hide what is there now, not a
+    // stale patch of wherever it was copied from.
+    if (copy.kind === 'redact') { copy.pixels = undefined; this.settle(copy); }
+    this.render(); this.onChange();
+    return copy;
+  }
+
+  duplicateSelection(): Annotation | null {
+    return this.copySelection() ? this.paste() : null;
   }
 
   /** Restyle the selection, or set the style for the next annotation. */
