@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { arrowPolygon, baseWeight, drawAnnotations, lines, polygonPath, textSize, type Arrow, type Note } from './annotations';
+import {
+  HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
+  polygonPath, textSize, type Arrow, type Note, type Shape,
+} from './annotations';
 
 const arrow = (over: Partial<Arrow> = {}): Arrow =>
   ({ kind: 'arrow', id: 1, x1: 0, y1: 0, x2: 100, y2: 0, color: '#ff3b30', weight: 10, ...over });
@@ -86,5 +89,88 @@ describe('text notes', () => {
     // Second line sits one line-height below the first.
     expect(calls).toContain('text:a@5,7');
     expect(calls).toContain('text:b@5,32');
+  });
+});
+
+const shape = (over: Partial<Shape> = {}): Shape =>
+  ({ kind: 'box', id: 3, x: 10, y: 20, width: 200, height: 100, color: '#34c759', weight: 8, ...over });
+
+/** Records the calls drawAnnotations makes, so export can be checked without a canvas. */
+function recorder() {
+  const calls: string[] = [];
+  const ctx = {
+    set fillStyle(v: string) { calls.push(`fill:${v}`); },
+    set strokeStyle(v: string) { calls.push(`stroke:${v}`); },
+    set lineWidth(v: number) { calls.push(`width:${v}`); },
+    set globalAlpha(v: number) { calls.push(`alpha:${v}`); },
+    set globalCompositeOperation(v: string) { calls.push(`blend:${v}`); },
+    set font(v: string) { calls.push(`font:${v}`); },
+    textBaseline: '', imageSmoothingEnabled: true,
+    save: () => calls.push('save'), restore: () => calls.push('restore'),
+    beginPath: () => calls.push('begin'), closePath: () => {}, stroke: () => calls.push('stroke!'),
+    fill: () => calls.push('fill!'), moveTo: () => {}, lineTo: () => {},
+    fillRect: (x: number, y: number, w: number, h: number) => calls.push(`rect!:${x},${y},${w},${h}`),
+    rect: (x: number, y: number, w: number, h: number) => calls.push(`path:${x},${y},${w},${h}`),
+    ellipse: (x: number, y: number, rx: number, ry: number) => calls.push(`oval:${x},${y},${rx},${ry}`),
+    fillText: () => {}, drawImage: () => calls.push('image'),
+  } as unknown as CanvasRenderingContext2D;
+  return { ctx, calls };
+}
+
+describe('shapes', () => {
+  it('recognises which kinds are rectangles', () => {
+    for (const kind of SHAPES) expect(isShape(shape({ kind }))).toBe(true);
+    expect(isShape(arrow())).toBe(false);
+    expect(isShape(note())).toBe(false);
+  });
+
+  it('insets a box by half its stroke so the outline lands inside the region', () => {
+    const { ctx, calls } = recorder();
+    drawAnnotations(ctx, [shape({ weight: 8 })]);
+    expect(calls).toContain('path:14,24,192,92');   // 10+4, 20+4, 200-8, 100-8
+    expect(calls).toContain('stroke!');
+  });
+
+  it('draws an ellipse centred in its region', () => {
+    const { ctx, calls } = recorder();
+    drawAnnotations(ctx, [shape({ kind: 'ellipse', weight: 8 })]);
+    expect(calls).toContain('oval:110,70,96,46');   // centre 10+100, 20+50; radii inset by weight/2
+  });
+
+  it('lays highlighter ink as translucent multiply, then puts the context back', () => {
+    const { ctx, calls } = recorder();
+    drawAnnotations(ctx, [shape({ kind: 'highlight' }), shape({ kind: 'box' })]);
+    expect(calls).toContain(`alpha:${HIGHLIGHT_ALPHA}`);
+    expect(calls).toContain('blend:multiply');
+    expect(calls).toContain('rect!:10,20,200,100');
+    // save/restore bracket the blend so the box after it is unaffected.
+    expect(calls.indexOf('save')).toBeLessThan(calls.indexOf('blend:multiply'));
+    expect(calls.indexOf('restore')).toBeLessThan(calls.indexOf('stroke!'));
+  });
+
+  it('never strokes a shape with a negative size', () => {
+    const { ctx, calls } = recorder();
+    drawAnnotations(ctx, [shape({ width: 2, height: 2, weight: 20 })]);
+    const path = calls.find(call => call.startsWith('path:'))!.slice(5).split(',').map(Number);
+    expect(path[2]).toBeGreaterThan(0);
+    expect(path[3]).toBeGreaterThan(0);
+  });
+
+  it('skips redaction rather than drawing a hole when the capture is missing', () => {
+    const { ctx, calls } = recorder();
+    drawAnnotations(ctx, [shape({ kind: 'redact' })]);
+    expect(calls).not.toContain('image');
+    expect(calls).not.toContain('stroke!');
+  });
+});
+
+describe('redaction coarseness', () => {
+  it('follows the size control', () => {
+    expect(blockSize(20)).toBe(30);
+    expect(blockSize(40)).toBe(60);
+  });
+  it('has a floor, so a small size cannot leave text readable', () => {
+    expect(blockSize(1)).toBe(7);
+    expect(blockSize(0)).toBe(7);
   });
 });

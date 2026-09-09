@@ -5,6 +5,21 @@ import { preferences } from './preferences';
 import { sampleCapture } from './sample';
 import { AnnotationLayer, COLORS, drawAnnotations, textSize, type Tool } from './annotations';
 
+/** Six tools do not fit as words, so the palette is glyphs with real labels
+ *  behind them for screen readers and tooltips. */
+const STROKE = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
+const TOOLS: { id: Tool; name: string; art: string }[] = [
+  { id: 'arrow', name: 'Arrow', art: `<path d="M5.5 14.5 14 6M5.5 14.5h5.2M5.5 14.5V9.3" ${STROKE}/>` },
+  { id: 'text', name: 'Text', art: `<path d="M5 6h10M10 6v8.5M7.8 14.5h4.4" ${STROKE}/>` },
+  { id: 'box', name: 'Box', art: `<rect x="4.6" y="5.8" width="10.8" height="8.4" rx="1.4" ${STROKE}/>` },
+  { id: 'ellipse', name: 'Ellipse', art: `<ellipse cx="10" cy="10" rx="5.6" ry="4.4" ${STROKE}/>` },
+  { id: 'highlight', name: 'Highlighter', art:
+    `<path d="M4.6 15.6h10.8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" opacity=".45"/>` +
+    `<path d="M6.9 12.4 12.4 6.9l2 2-5.5 5.5z" ${STROKE}/>` },
+  { id: 'redact', name: 'Redact', art:
+    `<path d="M4.8 5.2h4.1v4.1H4.8zM11.1 5.2h4.1v4.1h-4.1zM4.8 10.7h4.1v4.1H4.8zM11.1 10.7h4.1v4.1h-4.1z" fill="currentColor"/>` },
+];
+
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
   <header class="titlebar" data-tauri-drag-region>
@@ -13,8 +28,8 @@ app.innerHTML = `
   </header>
   <div class="toolbar" role="toolbar" aria-label="Annotation tools" hidden>
     <div class="tools" role="radiogroup" aria-label="Tool">
-      <button class="tool" type="button" role="radio" data-tool="arrow" aria-checked="true">Arrow</button>
-      <button class="tool" type="button" role="radio" data-tool="text" aria-checked="false">Text</button>
+      ${TOOLS.map(tool => `<button class="tool" type="button" role="radio" data-tool="${tool.id}"
+        aria-checked="${tool.id === 'arrow'}" title="${tool.name}"><svg viewBox="0 0 20 20" aria-hidden="true">${tool.art}</svg><span class="sr">${tool.name}</span></button>`).join('')}
     </div>
     <div class="swatches" role="radiogroup" aria-label="Color">
       ${COLORS.map(color => `<button class="swatch" type="button" role="radio" aria-checked="false"
@@ -36,6 +51,7 @@ app.innerHTML = `
       <svg class="viewfinder" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M12 5H7a2 2 0 0 0-2 2v5m15-7h5a2 2 0 0 1 2 2v5M5 20v5a2 2 0 0 0 2 2h5m15-7v5a2 2 0 0 1-2 2h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <h1>Capture a region</h1><p class="empty-hint">A little less between seeing and sharing.</p>
       <button class="start primary" type="button">Capture Region <kbd>⌃⌥⌘4</kbd></button>
+      <p class="quit-hint" hidden>⌘W hides Mark · ⌘Q quits it</p>
     </section>
   </main>
   <aside class="message" role="status" aria-live="polite" hidden><span></span><button class="settings" hidden>Open System Settings</button></aside>
@@ -68,6 +84,10 @@ let copyPending = false;
 let disposed = false;
 
 const layer = new AnnotationLayer(overlay, stage, () => syncTools());
+// Redaction samples the capture, so the layer needs the decoded image, and any
+// region drawn before it finished decoding has to be filled in afterwards.
+layer.setSource(image);
+image.addEventListener('load', () => layer.refreshRedactions());
 
 function showMessage(text: string | null) {
   message.hidden = !text;
@@ -81,9 +101,9 @@ function syncTools() {
   const selected = layer.annotations.find(item => item.id === layer.selected);
   if (selected) {
     layer.style.color = selected.color;
-    layer.style.scale = selected.kind === 'arrow'
-      ? selected.weight / layer.base
-      : selected.size / textSize(layer.base);
+    layer.style.scale = selected.kind === 'text'
+      ? selected.size / textSize(layer.base)
+      : selected.weight / layer.base;
   }
   weight.value = layer.style.scale.toFixed(1);
   for (const swatch of app.querySelectorAll<HTMLButtonElement>('.swatch')) {
@@ -97,6 +117,7 @@ function syncTools() {
     button.classList.toggle('active', active);
   }
   overlay.classList.toggle('text-tool', layer.tool === 'text');
+  overlay.classList.toggle('draw-tool', layer.tool !== 'arrow' && layer.tool !== 'text');
   undoButton.disabled = !layer.canUndo;
   removeButton.disabled = layer.selected === null || layer.isEditing;
 }
@@ -150,7 +171,7 @@ async function flatten(): Promise<HTMLCanvasElement> {
   canvas.width = capture!.width; canvas.height = capture!.height;
   const context = canvas.getContext('2d')!;
   context.drawImage(source, 0, 0, canvas.width, canvas.height);
-  drawAnnotations(context, layer.annotations);
+  drawAnnotations(context, layer.annotations, source);
   return canvas;
 }
 
@@ -235,6 +256,9 @@ document.addEventListener('keydown', event => {
     // Escape backs out one level: first the selection, then the editor.
     event.preventDefault();
     if (!layer.deselect()) void dismiss().catch(report);
+  } else if (event.metaKey && key === 'q') {
+    // No menu bar on an accessory app, so nothing else would catch this.
+    event.preventDefault(); void command('quit_app').catch(report);
   } else if ((event.metaKey || event.ctrlKey) && key === 'w') {
     event.preventDefault(); void dismiss().catch(report);
   } else if (capture && (event.metaKey || event.ctrlKey) && key === 'z') {
@@ -285,6 +309,7 @@ async function installPreferences() {
 
 async function init() {
   if (isTauri) {
+    app.querySelector<HTMLElement>('.quit-hint')!.hidden = false;
     const unlisten = await watchCapture(() => { void refresh(); });
     if (disposed) { unlisten(); return; }
     cleanups.push(unlisten); await refresh();

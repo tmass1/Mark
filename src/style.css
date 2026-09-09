@@ -76,3 +76,10 @@ h1 { margin: 16px 0 8px; font-size: 19px; font-weight: 600; letter-spacing: -.3p
   font-weight: 600; line-height: 1.25;
 }
 @media (prefers-color-scheme: dark) { .tools { background: #ffffff14; } }
+.tool { padding: 4px 7px; }
+.tool svg { display: block; width: 18px; height: 18px; }
+.overlay.draw-tool { cursor: crosshair; }
+.shape { cursor: move; }
+.highlight { mix-blend-mode: multiply; opacity: .3; }
+.redact-pending { fill: #1c1c1e; }
+.quit-hint { margin: 20px 0 0; color: var(--muted); font-size: 11px; }

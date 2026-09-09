@@ -18,6 +18,10 @@ pub fn screen_access() -> bool {
     unsafe { CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess() }
 }
 
+/// Reports the current state without prompting, for a check at startup that
+/// must not throw a dialog at someone who only just opened the app.
+pub fn screen_access_granted() -> bool { unsafe { CGPreflightScreenCaptureAccess() } }
+
 pub fn frontmost_pid() -> Option<i32> {
     NSWorkspace::sharedWorkspace().frontmostApplication().map(|app| app.processIdentifier())
 }

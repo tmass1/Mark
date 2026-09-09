@@ -242,3 +242,120 @@ test('arrows and text can be mixed on one capture', async ({ page }) => {
   await expect(page.locator('.note')).toHaveCount(0);
   await expect(page.locator('.arrow')).toHaveCount(1);
 });
+
+async function pick(page: import('@playwright/test').Page, tool: string) {
+  await page.getByRole('radio', { name: tool, exact: true }).click();
+}
+
+test('draws a box and an ellipse, and resizes one by its corner', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Box');
+  await drawArrow(page, [200, 200], [600, 420]);        // a drag is a drag
+  const box = page.locator('.shape rect[stroke="#ff3b30"]');
+  await expect(box).toHaveCount(1);
+  await expect(page.locator('.handle')).toHaveCount(4);  // four corners, not two ends
+
+  const width = Number(await box.getAttribute('width'));
+  const at = await stage(page);
+  const grip = at(600, 420), pull = at(900, 560);
+  await page.mouse.move(grip.x, grip.y);
+  await page.mouse.down();
+  await page.mouse.move(pull.x, pull.y, { steps: 10 });
+  await page.mouse.up();
+  expect(Number(await box.getAttribute('width'))).toBeGreaterThan(width);
+
+  await pick(page, 'Ellipse');
+  await drawArrow(page, [250, 500], [500, 650]);
+  await expect(page.locator('.shape ellipse[stroke="#ff3b30"]')).toHaveCount(1);
+});
+
+test('highlighter ink is translucent so the screenshot reads through it', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Highlighter');
+  await page.locator('.swatch[data-color="#ffcc00"]').click();
+  await drawArrow(page, [150, 280], [700, 330]);
+  const ink = page.locator('.highlight');
+  await expect(ink).toHaveCount(1);
+  await expect(ink).toHaveAttribute('fill', '#ffcc00');
+  const style = await ink.evaluate(node => getComputedStyle(node));
+  expect(Number(style.opacity)).toBeLessThan(1);
+  expect(style.mixBlendMode).toBe('multiply');
+});
+
+test('redaction destroys the pixels underneath, not just the view of them', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async (items: any[]) => {
+      const blob = await items[0].getType('image/png');
+      const bitmap = await createImageBitmap(blob);
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext('2d')!;
+      context.drawImage(bitmap, 0, 0);
+      // Count distinct colours inside the redacted region and in an untouched
+      // strip of the same capture, for comparison.
+      const distinct = (x: number, y: number, w: number, h: number) => {
+        const { data } = context.getImageData(x, y, w, h);
+        const seen = new Set<number>();
+        for (let i = 0; i < data.length; i += 4) seen.add((data[i] << 16) | (data[i + 1] << 8) | data[i + 2]);
+        return seen.size;
+      };
+      document.body.dataset.hidden = String(distinct(160, 240, 520, 40));
+      document.body.dataset.untouched = String(distinct(160, 300, 520, 40));
+    } } });
+  });
+  await page.goto('/');
+  await pick(page, 'Redact');
+  // Over the headline, which is antialiased text and so full of distinct greys.
+  await drawArrow(page, [150, 230], [700, 290]);
+  await expect(page.locator('.shape image')).toHaveCount(1);
+
+  await page.getByRole('button', { name: /Copy and Close/ }).click();
+  await expect.poll(async () => await page.locator('body').getAttribute('data-hidden')).not.toBeNull();
+  const hidden = Number(await page.locator('body').getAttribute('data-hidden'));
+  const untouched = Number(await page.locator('body').getAttribute('data-untouched'));
+  // Blocks, not a smear: far fewer colours than the text it replaced...
+  expect(hidden).toBeLessThan(90);
+  expect(untouched).toBeGreaterThan(hidden * 2);
+  // ...but sampled from the real image, not painted over with one flat colour.
+  expect(hidden).toBeGreaterThan(1);
+});
+
+test('a redaction keeps covering its region while it is being dragged', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Redact');
+  const at = await stage(page);
+  const from = at(200, 200), to = at(600, 400);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 6 });
+  // Mid-drag there is no patch yet, so it must be an opaque block, never see-through.
+  await expect(page.locator('.redact-pending')).toHaveCount(1);
+  await page.mouse.up();
+  await expect(page.locator('.redact-pending')).toHaveCount(0);
+  await expect(page.locator('.shape image')).toHaveCount(1);
+});
+
+test('the redaction shown on screen is of the region it covers', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Redact');
+  // Straight over the sample's blue call-to-action button.
+  await drawArrow(page, [170, 430], [360, 480]);
+  const patch = page.locator('.shape image');
+  await expect(patch).toHaveCount(1);
+
+  const middle = await page.evaluate(async () => {
+    const href = document.querySelector('.shape image')!.getAttribute('href')!;
+    const image = new Image();
+    await new Promise(done => { image.onload = done; image.src = href; });
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width; canvas.height = image.height;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(image, 0, 0);
+    const [r, g, b] = context.getImageData(Math.floor(image.width / 2), Math.floor(image.height / 2), 1, 1).data;
+    return { r, g, b };
+  });
+  // Blue, because that is what is underneath -- not the colour of the image's
+  // top-left corner, which is what a source rectangle left at the origin gives.
+  expect(middle.b).toBeGreaterThan(200);
+  expect(middle.r).toBeLessThan(120);
+  expect(middle.g).toBeLessThan(200);
+});

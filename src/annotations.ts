@@ -7,8 +7,24 @@
 
 export interface Arrow { kind: 'arrow'; id: number; x1: number; y1: number; x2: number; y2: number; color: string; weight: number }
 export interface Note { kind: 'text'; id: number; x: number; y: number; text: string; color: string; size: number }
-export type Annotation = Arrow | Note;
-export type Tool = 'arrow' | 'text';
+/** Everything drawn as a rectangle: outlines, marker ink, and redaction. */
+export type ShapeKind = 'box' | 'ellipse' | 'highlight' | 'redact';
+export interface Shape {
+  kind: ShapeKind; id: number; x: number; y: number; width: number; height: number;
+  color: string; weight: number;
+  /** Redaction only: the pixelated patch, rebuilt when the region settles. */
+  pixels?: string;
+}
+export type Annotation = Arrow | Note | Shape;
+export type Tool = 'arrow' | 'text' | ShapeKind;
+
+export const SHAPES: readonly ShapeKind[] = ['box', 'ellipse', 'highlight', 'redact'];
+export function isShape(item: Annotation): item is Shape { return (SHAPES as readonly string[]).includes(item.kind); }
+/** Marker ink has to let the screenshot through. */
+export const HIGHLIGHT_ALPHA = 0.3;
+/** Redaction block size, tied to the size control but floored so a small
+ *  setting cannot leave legible text behind. */
+export function blockSize(weight: number): number { return Math.max(7, weight * 1.5); }
 export type Point = [number, number];
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -59,10 +75,72 @@ export function polygonPath(points: Point[]): string {
 
 export function lines(note: Note): string[] { return note.text.split('\n'); }
 
-/** Paint onto a 2D context at natural size, so the copied PNG matches the screen. */
-export function drawAnnotations(ctx: CanvasRenderingContext2D, items: readonly Annotation[]): void {
+/** Replace a region with coarse blocks sampled from the capture. Averaging down
+ *  and blowing back up with smoothing off destroys the detail rather than
+ *  smearing it, which is the point: a blur can be partly undone. */
+export function pixelateRegion(
+  target: CanvasRenderingContext2D, source: CanvasImageSource, shape: Shape,
+  /** Where to paint it. Defaults to where it was sampled from; the display
+   *  patch draws into a canvas of its own and so starts at the origin. */
+  destinationX = shape.x, destinationY = shape.y,
+): void {
+  const width = Math.max(1, Math.round(shape.width)), height = Math.max(1, Math.round(shape.height));
+  const block = blockSize(shape.weight);
+  const columns = Math.max(1, Math.round(width / block)), rows = Math.max(1, Math.round(height / block));
+  const small = document.createElement('canvas');
+  small.width = columns; small.height = rows;
+  const reduce = small.getContext('2d');
+  if (!reduce) return;
+  reduce.drawImage(source, shape.x, shape.y, width, height, 0, 0, columns, rows);
+  const smoothing = target.imageSmoothingEnabled;
+  target.imageSmoothingEnabled = false;
+  target.drawImage(small, 0, 0, columns, rows, destinationX, destinationY, width, height);
+  target.imageSmoothingEnabled = smoothing;
+}
+
+/** The same pixelation as an image, for the SVG overlay to show, so what is on
+ *  screen is what gets copied. */
+export function redactionPatch(source: CanvasImageSource, shape: Shape): string | null {
+  const width = Math.max(1, Math.round(shape.width)), height = Math.max(1, Math.round(shape.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  pixelateRegion(ctx, source, shape, 0, 0);
+  return canvas.toDataURL('image/png');
+}
+
+/** Paint onto a 2D context at natural size, so the copied PNG matches the screen.
+ *  Redaction samples the capture itself, which is why the source is needed. */
+export function drawAnnotations(
+  ctx: CanvasRenderingContext2D, items: readonly Annotation[], source?: CanvasImageSource,
+): void {
   for (const item of items) {
     ctx.fillStyle = item.color;
+    if (isShape(item)) {
+      const { x, y, width, height } = item;
+      if (item.kind === 'redact') { if (source) pixelateRegion(ctx, source, item); continue; }
+      if (item.kind === 'highlight') {
+        ctx.save();
+        ctx.globalAlpha = HIGHLIGHT_ALPHA;
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillRect(x, y, width, height);
+        ctx.restore();
+        continue;
+      }
+      ctx.strokeStyle = item.color;
+      ctx.lineWidth = item.weight;
+      ctx.beginPath();
+      if (item.kind === 'ellipse') {
+        ctx.ellipse(x + width / 2, y + height / 2, Math.max(width / 2 - item.weight / 2, 0.5),
+                    Math.max(height / 2 - item.weight / 2, 0.5), 0, 0, Math.PI * 2);
+      } else {
+        const inset = item.weight / 2;
+        ctx.rect(x + inset, y + inset, Math.max(width - item.weight, 1), Math.max(height - item.weight, 1));
+      }
+      ctx.stroke();
+      continue;
+    }
     if (item.kind === 'arrow') {
       const points = arrowPolygon(item);
       ctx.beginPath();
@@ -77,10 +155,19 @@ export function drawAnnotations(ctx: CanvasRenderingContext2D, items: readonly A
   }
 }
 
+type Corner = 'nw' | 'ne' | 'se' | 'sw';
+const CORNERS: readonly Corner[] = ['nw', 'ne', 'se', 'sw'];
+
 type Drag =
-  | { kind: 'create'; id: number }
+  | { kind: 'create'; id: number; ox: number; oy: number }
   | { kind: 'move'; id: number; ox: number; oy: number; from: Annotation }
-  | { kind: 'reshape'; id: number; end: 1 | 2 };
+  | { kind: 'reshape'; id: number; end: 1 | 2 }
+  | { kind: 'corner'; id: number; corner: Corner; from: Shape };
+
+/** A rectangle from two opposite points, always with a positive size. */
+function span(ax: number, ay: number, bx: number, by: number) {
+  return { x: Math.min(ax, bx), y: Math.min(ay, by), width: Math.abs(bx - ax), height: Math.abs(by - ay) };
+}
 
 export interface LayerStyle { color: string; scale: number }
 
@@ -99,6 +186,7 @@ export class AnnotationLayer {
    *  the reopen-on-second-click. */
   private lastClick: { id: number; time: number } | null = null;
   private gesture = 0;
+  private source: HTMLImageElement | null = null;
   selected: number | null = null;
   tool: Tool = 'arrow';
   base = 12;
@@ -131,6 +219,26 @@ export class AnnotationLayer {
   get canUndo(): boolean { return this.past.length > 0; }
   get isEditing(): boolean { return this.editing !== null; }
   private get weight(): number { return this.base * this.style.scale; }
+
+  /** The capture itself, which redaction samples. */
+  setSource(source: HTMLImageElement): void { this.source = source; }
+
+  /** Rebuild a redaction's pixels. Deferred until a drag ends: re-encoding the
+   *  patch on every pointermove is work nobody sees. */
+  private settle(shape: Annotation | undefined): void {
+    if (shape?.kind !== 'redact') return;
+    const source = this.source;
+    if (!source?.complete || !source.naturalWidth) { shape.pixels = undefined; return; }
+    shape.pixels = redactionPatch(source, shape) ?? undefined;
+  }
+
+  /** The capture finished decoding after a redaction was already drawn on it. */
+  refreshRedactions(): void {
+    const pending = this.items.filter(item => item.kind === 'redact' && !item.pixels);
+    if (!pending.length) return;
+    pending.forEach(item => this.settle(item));
+    this.render();
+  }
 
   /** Point to the new capture. Drawings never carry across captures. */
   setImage(width: number, height: number): void {
@@ -192,7 +300,10 @@ export class AnnotationLayer {
     if (item) {
       this.commitHistory();
       item.color = this.style.color;
-      if (item.kind === 'arrow') item.weight = this.weight; else item.size = textSize(this.weight);
+      if (item.kind === 'text') item.size = textSize(this.weight);
+      else item.weight = this.weight;
+      // Coarseness follows the size control, so the patch must be rebuilt.
+      this.settle(item);
     }
     if (this.editing !== null) this.placeEditor();
     this.render(); this.onChange();
@@ -291,9 +402,15 @@ export class AnnotationLayer {
     const end = target.getAttribute?.('data-handle');
     const hit = this.targetId(target);
 
-    if (end && this.selected !== null && this.find(this.selected)?.kind === 'arrow') {
+    const corner = target.getAttribute?.('data-corner') as Corner | null;
+    const current = this.find(this.selected);
+
+    if (end && current?.kind === 'arrow') {
       this.commitHistory();
-      this.drag = { kind: 'reshape', id: this.selected, end: end === '1' ? 1 : 2 };
+      this.drag = { kind: 'reshape', id: current.id, end: end === '1' ? 1 : 2 };
+    } else if (corner && current && isShape(current)) {
+      this.commitHistory();
+      this.drag = { kind: 'corner', id: current.id, corner, from: { ...current } };
     } else if (hit !== null) {
       const from = this.find(hit);
       if (!from) return;
@@ -314,12 +431,21 @@ export class AnnotationLayer {
       this.svg.releasePointerCapture(event.pointerId);
       this.edit(note, true);
       return;
-    } else {
+    } else if (this.tool === 'arrow') {
       this.commitHistory();
       const arrow: Arrow = { kind: 'arrow', id: this.nextId++, x1: x, y1: y, x2: x, y2: y, color: this.style.color, weight: this.weight };
       this.items.push(arrow);
       this.selected = arrow.id;
-      this.drag = { kind: 'create', id: arrow.id };
+      this.drag = { kind: 'create', id: arrow.id, ox: x, oy: y };
+    } else {
+      this.commitHistory();
+      const shape: Shape = {
+        kind: this.tool as ShapeKind, id: this.nextId++, x, y, width: 0, height: 0,
+        color: this.style.color, weight: this.weight,
+      };
+      this.items.push(shape);
+      this.selected = shape.id;
+      this.drag = { kind: 'create', id: shape.id, ox: x, oy: y };
     }
     this.render(); this.onChange();
   };
@@ -334,13 +460,22 @@ export class AnnotationLayer {
       if (item.kind === 'arrow' && from.kind === 'arrow') {
         item.x1 = from.x1 + dx; item.y1 = from.y1 + dy;
         item.x2 = from.x2 + dx; item.y2 = from.y2 + dy;
-      } else if (item.kind === 'text' && from.kind === 'text') {
+      } else if (item.kind !== 'arrow' && from.kind !== 'arrow') {
         item.x = from.x + dx; item.y = from.y + dy;
       }
+    } else if (this.drag.kind === 'corner' && isShape(item)) {
+      // Drag one corner and the opposite corner stays put.
+      const { from, corner } = this.drag;
+      const anchorX = corner === 'nw' || corner === 'sw' ? from.x + from.width : from.x;
+      const anchorY = corner === 'nw' || corner === 'ne' ? from.y + from.height : from.y;
+      Object.assign(item, span(anchorX, anchorY, x, y));
     } else if (item.kind === 'arrow') {
       if (this.drag.kind === 'create') { item.x2 = x; item.y2 = y; }
-      else if (this.drag.end === 1) { item.x1 = x; item.y1 = y; }
-      else { item.x2 = x; item.y2 = y; }
+      else if (this.drag.kind === 'reshape') {
+        if (this.drag.end === 1) { item.x1 = x; item.y1 = y; } else { item.x2 = x; item.y2 = y; }
+      }
+    } else if (this.drag.kind === 'create' && isShape(item)) {
+      Object.assign(item, span(this.drag.ox, this.drag.oy, x, y));
     }
     this.render();
   };
@@ -356,13 +491,15 @@ export class AnnotationLayer {
       const shifted = Math.hypot(x - drag.ox, y - drag.oy) >= this.base * 0.5;
       this.lastClick = shifted ? null : { id: drag.id, time: performance.now() };
     } else this.lastClick = null;
-    // A click rather than a drag: drop the stillborn arrow and clear the selection.
-    if (drag.kind === 'create' && item?.kind === 'arrow' &&
-        Math.hypot(item.x2 - item.x1, item.y2 - item.y1) < this.base) {
+    // A click rather than a drag leaves nothing behind but a cleared selection.
+    const stillborn = drag.kind === 'create' && item !== undefined && (item.kind === 'arrow'
+      ? Math.hypot(item.x2 - item.x1, item.y2 - item.y1) < this.base
+      : isShape(item) && (item.width < this.base || item.height < this.base));
+    if (stillborn && item) {
       this.items = this.items.filter(other => other.id !== item.id);
       this.selected = null;
       this.past.pop();
-    }
+    } else this.settle(item);
     this.render(); this.onChange();
   };
 
@@ -379,6 +516,8 @@ export class AnnotationLayer {
         path.setAttribute('data-item', String(item.id));
         path.setAttribute('class', 'arrow');
         this.svg.append(path);
+      } else if (isShape(item)) {
+        this.svg.append(this.shapeNode(item));
       } else {
         const group = document.createElementNS(SVG, 'g');
         group.setAttribute('data-item', String(item.id));
@@ -393,11 +532,11 @@ export class AnnotationLayer {
         text.setAttribute('dominant-baseline', 'text-before-edge');
         text.setAttribute('xml:space', 'preserve');
         lines(item).forEach((line, i) => {
-          const span = document.createElementNS(SVG, 'tspan');
-          span.setAttribute('x', String(item.x));
-          span.setAttribute('dy', i ? String(item.size * LINE) : '0');
-          span.textContent = line || ' ';
-          text.append(span);
+          const piece = document.createElementNS(SVG, 'tspan');
+          piece.setAttribute('x', String(item.x));
+          piece.setAttribute('dy', i ? String(item.size * LINE) : '0');
+          piece.textContent = line || ' ';
+          text.append(piece);
         });
         // Glyph outlines alone are a poor drag target, so a transparent box
         // sized from the rendered text takes the pointer instead.
@@ -408,30 +547,105 @@ export class AnnotationLayer {
         const bounds = text.getBBox();
         box.setAttribute('x', String(bounds.x)); box.setAttribute('y', String(bounds.y));
         box.setAttribute('width', String(bounds.width)); box.setAttribute('height', String(bounds.height));
-        if (item.id === this.selected) {
-          const outline = document.createElementNS(SVG, 'rect');
-          const pad = item.size * 0.16;
-          outline.setAttribute('x', String(bounds.x - pad)); outline.setAttribute('y', String(bounds.y - pad));
-          outline.setAttribute('width', String(bounds.width + pad * 2));
-          outline.setAttribute('height', String(bounds.height + pad * 2));
-          outline.setAttribute('class', 'note-outline');
-          outline.setAttribute('stroke-width', String(1.5 / this.scale));
-          outline.setAttribute('stroke-dasharray', `${4 / this.scale} ${3 / this.scale}`);
-          group.append(outline);
-        }
+        if (item.id === this.selected) group.append(this.dashedOutline(bounds, item.size * 0.16));
       }
     }
     const chosen = this.find(this.selected);
-    if (chosen?.kind !== 'arrow') return;
-    for (const end of [1, 2] as const) {
-      const handle = document.createElementNS(SVG, 'circle');
-      handle.setAttribute('cx', String(end === 1 ? chosen.x1 : chosen.x2));
-      handle.setAttribute('cy', String(end === 1 ? chosen.y1 : chosen.y2));
-      handle.setAttribute('r', String(this.handleRadius));
-      handle.setAttribute('data-handle', String(end));
-      handle.setAttribute('class', 'handle');
-      handle.setAttribute('stroke-width', String(this.handleRadius * 0.34));
-      this.svg.append(handle);
+    if (chosen?.kind === 'arrow') {
+      this.svg.append(this.grip(chosen.x1, chosen.y1, 'data-handle', '1'),
+                      this.grip(chosen.x2, chosen.y2, 'data-handle', '2'));
+    } else if (chosen && isShape(chosen)) {
+      this.svg.append(this.dashedOutline(chosen, 0));
+      for (const corner of CORNERS) {
+        this.svg.append(this.grip(
+          chosen.x + (corner === 'ne' || corner === 'se' ? chosen.width : 0),
+          chosen.y + (corner === 'sw' || corner === 'se' ? chosen.height : 0),
+          'data-corner', corner));
+      }
     }
+  }
+
+  private grip(cx: number, cy: number, attribute: string, value: string): SVGElement {
+    const handle = document.createElementNS(SVG, 'circle');
+    handle.setAttribute('cx', String(cx));
+    handle.setAttribute('cy', String(cy));
+    handle.setAttribute('r', String(this.handleRadius));
+    handle.setAttribute(attribute, value);
+    handle.setAttribute('class', 'handle');
+    handle.setAttribute('stroke-width', String(this.handleRadius * 0.34));
+    return handle;
+  }
+
+  private dashedOutline(bounds: { x: number; y: number; width: number; height: number }, pad: number): SVGElement {
+    const outline = document.createElementNS(SVG, 'rect');
+    outline.setAttribute('x', String(bounds.x - pad)); outline.setAttribute('y', String(bounds.y - pad));
+    outline.setAttribute('width', String(Math.max(bounds.width + pad * 2, 1)));
+    outline.setAttribute('height', String(Math.max(bounds.height + pad * 2, 1)));
+    outline.setAttribute('class', 'note-outline');
+    outline.setAttribute('stroke-width', String(1.5 / this.scale));
+    outline.setAttribute('stroke-dasharray', `${4 / this.scale} ${3 / this.scale}`);
+    return outline;
+  }
+
+  private shapeNode(item: Shape): SVGElement {
+    const group = document.createElementNS(SVG, 'g');
+    group.setAttribute('data-item', String(item.id));
+    group.setAttribute('class', 'shape');
+    const { x, y, width, height } = item;
+    const size = (node: SVGElement) => {
+      if (item.kind === 'ellipse') {
+        node.setAttribute('cx', String(x + width / 2)); node.setAttribute('cy', String(y + height / 2));
+        node.setAttribute('rx', String(Math.max(width / 2 - item.weight / 2, 0.5)));
+        node.setAttribute('ry', String(Math.max(height / 2 - item.weight / 2, 0.5)));
+      } else {
+        node.setAttribute('x', String(x + item.weight / 2)); node.setAttribute('y', String(y + item.weight / 2));
+        node.setAttribute('width', String(Math.max(width - item.weight, 1)));
+        node.setAttribute('height', String(Math.max(height - item.weight, 1)));
+      }
+      return node;
+    };
+    const cover = (node: SVGElement) => {
+      node.setAttribute('x', String(x)); node.setAttribute('y', String(y));
+      node.setAttribute('width', String(Math.max(width, 1)));
+      node.setAttribute('height', String(Math.max(height, 1)));
+      return node;
+    };
+
+    if (item.kind === 'redact') {
+      if (item.pixels) {
+        const patch = cover(document.createElementNS(SVG, 'image'));
+        patch.setAttribute('href', item.pixels);
+        patch.setAttribute('preserveAspectRatio', 'none');
+        group.append(patch);
+      } else {
+        // While the region is still moving, cover it outright. A redaction that
+        // flickers see-through is worse than a plain block.
+        const block = cover(document.createElementNS(SVG, 'rect'));
+        block.setAttribute('class', 'redact-pending');
+        group.append(block);
+      }
+      return group;
+    }
+
+    if (item.kind === 'highlight') {
+      const ink = cover(document.createElementNS(SVG, 'rect'));
+      ink.setAttribute('fill', item.color);
+      ink.setAttribute('class', 'highlight');
+      group.append(ink);
+      return group;
+    }
+
+    const tag = item.kind === 'ellipse' ? 'ellipse' : 'rect';
+    // An outline is a thin target, so an invisible fat stroke takes the pointer.
+    const grab = size(document.createElementNS(SVG, tag));
+    grab.setAttribute('fill', 'none');
+    grab.setAttribute('stroke', 'transparent');
+    grab.setAttribute('stroke-width', String(Math.max(item.weight, 16 / this.scale)));
+    const line = size(document.createElementNS(SVG, tag));
+    line.setAttribute('fill', 'none');
+    line.setAttribute('stroke', item.color);
+    line.setAttribute('stroke-width', String(item.weight));
+    group.append(grab, line);
+    return group;
   }
 }

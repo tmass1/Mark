@@ -222,6 +222,11 @@ fn dismiss_editor(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// An accessory app has no menu bar, so Command-Q never reaches a menu. The
+/// editor forwards it here instead.
+#[tauri::command]
+fn quit_app(app: AppHandle) { app.exit(0); }
+
 #[tauri::command]
 fn open_screen_settings() -> Result<(), String> {
     std::process::Command::new("/usr/bin/open")
@@ -252,7 +257,7 @@ pub fn run() {
             }
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_rect, cancel_selection,
-            copy_and_close, copy_annotated_and_close, dismiss_editor, open_screen_settings])
+            copy_and_close, copy_annotated_and_close, dismiss_editor, open_screen_settings, quit_app])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -280,6 +285,12 @@ pub fn run() {
             let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER), Code::Digit4);
             if let Err(error) = app.global_shortcut().register(shortcut) {
                 report(app.handle(), format!("The capture shortcut is unavailable ({error}). Use Capture Region in Mark's menu."));
+            }
+            // Say up front that capture will not work, rather than letting the
+            // first Capture Region be the thing that discovers it.
+            if !macos::screen_access_granted() {
+                app.state::<State>().lock().unwrap().error =
+                    Some("Mark needs screen access to capture. Open System Settings to allow it, then reopen Mark.".into());
             }
             // Launching Mark must show something. A tray-only start looks like a
             // failed launch, so open the editor on its empty state, which names the

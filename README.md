@@ -1,10 +1,10 @@
 # Mark
 
 Mark is a fast, small macOS screenshot utility built with Tauri v2. Press a
-global shortcut, drag across a region, mark it up with arrows and text, then
-copy and close.
+global shortcut, drag across a region, mark it up, then copy and close.
 
-Annotation is arrows and text. There are no accounts, settings window, cloud
+Annotation is arrows, text, boxes, ellipses, a highlighter, and redaction.
+There are no accounts, settings window, cloud
 features, or screen recording. The UI uses the system WKWebView; the native
 shell is Rust. There is no Xcode project and no Swift source.
 
@@ -78,16 +78,23 @@ notarization; an Apple Development certificate is only good for this Mac.
    delay. A delayed shot clears the screen immediately so you can open the menu
    or hover state you are capturing, and counts down in the menu bar rather
    than over the shot. Escape cancels.
-5. Choose **Arrow** or **Text** in the toolbar.
-   - Arrow: drag on the capture. Drag its body to move it, or either end to
-     reshape it.
-   - Text: click, then type. Enter starts a new line and Escape finishes.
+5. Pick a tool in the toolbar.
+   - **Arrow**: drag. Drag its body to move it, or either end to reshape it.
+   - **Text**: click, then type. Enter starts a new line and Escape finishes.
      Click a note to move it; click it again to edit it.
+   - **Box** and **Ellipse**: drag out an outline. Grab the outline to move it,
+     or a corner to resize.
+   - **Highlighter**: drag a band of translucent ink over what matters.
+   - **Redact**: drag over anything that must not leave the machine. The region
+     is replaced with coarse blocks averaged from the capture, and the size
+     control sets how coarse. This is pixelation rather than blur on purpose:
+     a blur can be partly undone and still leaks the shape of what is under it.
 
-   Color and size come from the toolbar and drive both tools. Selecting an
+   Color and size come from the toolbar and drive every tool. Selecting an
    annotation adopts its style, so the toolbar always describes the next edit.
    ⌘Z undoes, ⌫ deletes the selection, and Escape backs out one level: first
-   the text caret, then the selection, then the editor.
+   the text caret, then the selection, then the editor. ⌘W hides Mark and ⌘Q
+   quits it, since an accessory app has no menu bar to quit from.
 6. Press **⌘C** or click **Copy and Close**. A PNG and a TIFF compatibility
    representation are written to the macOS clipboard. A capture you did not
    draw on is copied as the original bytes macOS produced; only a drawing is
@@ -105,8 +112,12 @@ new capture hides the old editor; cancel restores it and success replaces it.
   `screencapture -R` reads. macOS's own picker is not used; it returns an image
   and nothing else, so it cannot hold a selection open for resizing, exact
   sizing, or a delayed shutter.
-- `src/annotations.ts` owns arrow geometry, text notes, the SVG overlay, and
-  hit-testing. Coordinates are image pixels, never screen pixels, so a drawing
+- `src/annotations.ts` owns arrow geometry, text notes, rectangle shapes, the
+  SVG overlay, and hit-testing. Redaction samples the capture itself, averaging
+  each block down and drawing it back with smoothing off, so the detail is gone
+  from the pixels rather than hidden behind them; the patch is rebuilt when a
+  region settles rather than on every frame of a drag, and the region stays
+  covered by a solid block in the meantime. Coordinates are image pixels, never screen pixels, so a drawing
   survives a resize and composites at full resolution. One routine paints each
   shape to SVG for display and to a canvas for export, so the copied image
   matches the screen.
@@ -146,7 +157,11 @@ clipboard failures, keyboard dismissal, local image loading, preference sync,
 and the annotation lifecycle: drawing, typing, restyling, moving, reopening a
 note, deleting, undo, mixing both tools, and that a copied image carries the
 annotation at full resolution. Unit tests cover arrow geometry, text layout,
-default sizing, selection clamping, and locked-ratio resizing. Rust tests cover PNG preservation and validation,
+default sizing, shape export geometry, highlighter blending, redaction
+coarseness, selection clamping, and locked-ratio resizing. One browser test
+copies a redacted capture back out and counts distinct colours in the region,
+so redaction is checked for actually destroying the pixels rather than only
+looking like it. Rust tests cover PNG preservation and validation,
 cancellation/error classification, capture re-entry, child-process
 cancellation, and temporary cleanup.
 
