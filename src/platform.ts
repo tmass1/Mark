@@ -1,6 +1,10 @@
 export const isTauri = '__TAURI_INTERNALS__' in window;
 
-export interface CapturePreview { dataUrl: string; width: number; height: number }
+export interface CapturePreview {
+  dataUrl: string; width: number; height: number;
+  /** Image pixels per screen point: 2 for a Retina grab, 1 otherwise. */
+  scale?: number;
+}
 export interface Snapshot { capture: CapturePreview | null; error: string | null; busy: boolean }
 
 export async function command<T>(name: string, args?: Record<string, unknown>): Promise<T> {

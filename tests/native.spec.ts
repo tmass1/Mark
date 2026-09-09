@@ -158,3 +158,27 @@ test('Escape over the overlay cancels through Rust', async ({ page }) => {
   await page.keyboard.press('Escape');
   await waitFor(page, 'cancel_selection');
 });
+
+test('a Retina capture is shown at the size it was taken, not at its pixel count', async ({ page }) => {
+  // 480x320 pixels off a 2x display: a 240x160 region of screen.
+  await installBridge(page, { capture: { ...CAPTURE, width: 480, height: 320, scale: 2 } });
+  await page.goto('/');
+  await expect(page.locator('.zoom-select')).toHaveValue('1');
+  const box = (await page.locator('.stage').boundingBox())!;
+  // 240, not 480: 100% means what was on screen, not one CSS pixel per image pixel.
+  expect(Math.round(box.width)).toBe(240);
+  expect(Math.round(box.height)).toBe(160);
+
+  await page.locator('.zoom-select').selectOption('2');
+  expect(Math.round((await page.locator('.stage').boundingBox())!.width)).toBe(480);
+});
+
+test('a capture too big for the window arrives fitted rather than scrolled', async ({ page }) => {
+  await installBridge(page, { capture: { ...CAPTURE, width: 5000, height: 3000, scale: 2 } });
+  await page.goto('/');
+  await expect(page.locator('.zoom-select')).toHaveValue('fit');
+  const box = (await page.locator('.stage').boundingBox())!;
+  const room = (await page.locator('.canvas').boundingBox())!;
+  expect(box.width).toBeLessThanOrEqual(room.width);
+  expect(box.height).toBeLessThanOrEqual(room.height);
+});

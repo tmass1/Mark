@@ -4,7 +4,13 @@ use std::{io::Cursor, path::Path, process::{Command, Stdio}};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Clone)]
-pub struct Capture { pub png: Vec<u8>, pub width: u32, pub height: u32 }
+pub struct Capture {
+    pub png: Vec<u8>, pub width: u32, pub height: u32,
+    /// Image pixels per screen point. A Retina grab comes back at 2, and the
+    /// editor needs it to show the capture at the size it was actually taken
+    /// rather than twice that.
+    pub scale: f64,
+}
 
 /// A region in global screen points, as Mark's own selection overlay reports it.
 #[derive(Clone, Copy, Debug)]
@@ -20,11 +26,14 @@ impl Rect {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Preview { pub data_url: String, pub width: u32, pub height: u32 }
+pub struct Preview { pub data_url: String, pub width: u32, pub height: u32, pub scale: f64 }
 
 impl Capture {
     pub fn preview(&self) -> Preview {
-        Preview { data_url: format!("data:image/png;base64,{}", STANDARD.encode(&self.png)), width: self.width, height: self.height }
+        Preview {
+            data_url: format!("data:image/png;base64,{}", STANDARD.encode(&self.png)),
+            width: self.width, height: self.height, scale: self.scale,
+        }
     }
 }
 
@@ -39,7 +48,9 @@ pub fn parse_result(bytes: Option<Vec<u8>>, code: Option<i32>, stderr: &[u8]) ->
     }
     let bytes = bytes.ok_or("No screenshot was returned.")?;
     let (width, height) = validate_png(&bytes)?;
-    Ok(Some(Capture { png: bytes, width, height }))
+    // Density is only knowable from the region that was asked for, so the
+    // caller fills it in; on its own a PNG says nothing about it.
+    Ok(Some(Capture { png: bytes, width, height, scale: 1.0 }))
 }
 
 /// Decode fully, so only a complete PNG can reach the clipboard. Used for the

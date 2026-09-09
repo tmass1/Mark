@@ -184,7 +184,13 @@ fn take_selection(app: &AppHandle, rect: capture::Rect, delay: u32) {
                 session.busy = false; session.capturing = false;
                 if session.quitting { drop(session); handle.exit(0); return; }
                 match result {
-                    Ok(Some(capture)) => { session.capture = Some(capture); true }
+                    Ok(Some(mut capture)) => {
+                        // Pixels divided by the points asked for: exactly the
+                        // density of the display it came off.
+                        if rect.width >= 1.0 { capture.scale = f64::from(capture.width) / rect.width; }
+                        session.capture = Some(capture);
+                        true
+                    }
                     Ok(None) => session.editor_was_visible,
                     Err(error) => { session.error = Some(error); true }
                 }

@@ -665,11 +665,16 @@ test('drawing lands on the same pixels whatever the zoom', async ({ page }) => {
   expect(Math.abs(dy - fy)).toBeLessThan(3);
 });
 
-test('a new capture comes back to Fit', async ({ page }) => {
+test('a new capture opens at actual size when it fits', async ({ page }) => {
   await page.goto('/');
+  // The 1200x740 sample is bigger than the window, so it arrives fitted.
+  await expect(page.locator('.zoom-select')).toHaveValue('fit');
   await page.locator('.zoom-select').selectOption('4');
-  await expect(page.locator('.zoom-select')).toHaveValue('4');
+
   await page.locator('input[type=file]').setInputFiles('src-tauri/icons/128x128.png');
   await expect(page.locator('.dimensions')).toHaveText('128 × 128 px');
-  await expect(page.locator('.zoom-select')).toHaveValue('fit');
+  // Small enough to show whole, so it opens at 100% rather than fitted or at
+  // whatever zoom the last capture was left on.
+  await expect(page.locator('.zoom-select')).toHaveValue('1');
+  expect(Math.round((await page.locator('.stage').boundingBox())!.width)).toBe(128);
 });

@@ -134,10 +134,15 @@ let shown: CapturePreview | null = null;
 let mustFlatten = false;
 const past: Past[] = [];
 let pastId = 1;
-/** 'fit' scales the capture to the window; a number is a fixed multiple of its
- *  real pixels, with the canvas scrolling when that overflows. */
-let zoom: 'fit' | number = 'fit';
+/** 'fit' scales the capture to the window; a number is a multiple of the size
+ *  the capture was taken at, with the canvas scrolling when that overflows.
+ *  Multiples of the captured size rather than of its pixels: a Retina grab has
+ *  twice the pixels of the region it came from, so 100% of those pixels would
+ *  show every screenshot at double the size it was on screen. */
+let zoom: 'fit' | number = 1;
 const ZOOMS = [0.25, 0.5, 1, 2, 4];
+/** CSS pixels per image pixel at a given zoom. */
+function pixelRatio(at: number): number { return at / (capture?.scale || 1); }
 const crops: { capture: CapturePreview; dx: number; dy: number; depth: number }[] = [];
 
 const layer = new AnnotationLayer(overlay, stage, () => syncTools());
@@ -202,7 +207,7 @@ function render() {
       image.src = capture.dataUrl;
       stage.style.setProperty('--ratio', `${capture.width} / ${capture.height}`);
       layer.setImage(capture.width, capture.height);
-      shown = capture; mustFlatten = false; crops.length = 0; zoom = 'fit';
+      shown = capture; mustFlatten = false; crops.length = 0; zoom = startingZoom(capture);
     }
     image.alt = `Captured screenshot, ${capture.width} by ${capture.height} pixels`;
   } else {
@@ -325,13 +330,24 @@ const observer = new ResizeObserver(() => layer.measure());
 observer.observe(stage);
 cleanups.push(() => observer.disconnect());
 
+/** Actual size, unless that would not fit: a capture bigger than the window is
+ *  better met fitted than already scrolled. */
+function startingZoom(next: CapturePreview): 'fit' | number {
+  const room = canvasArea.getBoundingClientRect();
+  if (!room.width || !room.height) return 1;      // before first layout
+  const ratio = 1 / (next.scale || 1);
+  const fits = next.width * ratio <= room.width - 52 && next.height * ratio <= room.height - 52;
+  return fits ? 1 : 'fit';
+}
+
 function applyZoom() {
   const fitted = zoom === 'fit';
   stage.classList.toggle('zoomed', !fitted);
   canvasArea.classList.toggle('scrolls', !fitted);
   if (!fitted && capture) {
-    stage.style.width = `${Math.round(capture.width * (zoom as number))}px`;
-    stage.style.height = `${Math.round(capture.height * (zoom as number))}px`;
+    const ratio = pixelRatio(zoom as number);
+    stage.style.width = `${Math.round(capture.width * ratio)}px`;
+    stage.style.height = `${Math.round(capture.height * ratio)}px`;
   } else {
     stage.style.width = ''; stage.style.height = '';
   }
@@ -346,7 +362,7 @@ function setZoom(next: 'fit' | number) { zoom = next; applyZoom(); }
 function stepZoom(direction: 1 | -1) {
   if (!capture) return;
   const showing = zoom === 'fit'
-    ? (stage.getBoundingClientRect().width || capture.width) / capture.width
+    ? ((stage.getBoundingClientRect().width || capture.width) / capture.width) * (capture.scale || 1)
     : zoom;
   const index = ZOOMS.findIndex(stop => direction > 0 ? stop > showing + 0.001 : stop < showing - 0.001);
   if (direction > 0) setZoom(index === -1 ? ZOOMS[ZOOMS.length - 1] : ZOOMS[index]);
@@ -409,6 +425,7 @@ function restore(entry: Past) {
   layer.setImage(entry.capture.width, entry.capture.height);
   layer.load(entry.annotations);
   shown = entry.capture;
+  zoom = startingZoom(entry.capture);
   render();
 }
 

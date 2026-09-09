@@ -127,11 +127,17 @@ notarization; an Apple Development certificate is only good for this Mac.
 
    A capture you did not draw on is copied as the original bytes macOS
    produced; only a drawing is flattened and re-encoded.
-7. **Fit** in the footer scales the capture to the window. Pick a percentage
-   instead and the canvas scrolls; ⌘+ and ⌘- step through the stops, ⌘0 goes
-   back to Fit and ⌘1 shows actual pixels. Drawing works the same at any zoom,
-   because annotations are stored in image pixels rather than screen ones. A
-   new capture starts at Fit.
+7. A capture opens at **100%**, meaning the size it was on screen. That is not
+   the same as one screen pixel per image pixel: a Retina grab has twice the
+   pixels of the region it came from, so a literal 1:1 view would show every
+   screenshot at double the size it was taken. Rust reports each capture's
+   density — its pixel count divided by the region asked for — and the zoom
+   stops are multiples of that. A capture too large to show whole opens fitted
+   instead, since arriving already scrolled is a worse first sight.
+
+   **Fit** and the percentages are in the footer; ⌘+ and ⌘- step through the
+   stops, ⌘0 fits and ⌘1 returns to 100%. Drawing works the same at any zoom,
+   because annotations are stored in image pixels rather than screen ones.
 8. A closed capture is not gone. **Recent** on the empty state holds the last
    six, drawing and all, so closing one by accident costs a click rather than
    the shot. It lives in memory only and does not survive quitting Mark:
