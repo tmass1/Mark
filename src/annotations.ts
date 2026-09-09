@@ -5,7 +5,15 @@
  *  its position when the window resizes and composites at full resolution.
  */
 
-export interface Arrow { kind: 'arrow'; id: number; x1: number; y1: number; x2: number; y2: number; color: string; weight: number }
+/** Two ends and a weight: an arrow and a plain line differ only in whether a
+ *  head is drawn, so they share every behaviour that moves or reshapes them.
+ *  Separate interfaces rather than one with a union discriminant, because
+ *  TypeScript narrows a union of types and not a union inside one. */
+interface Ends { id: number; x1: number; y1: number; x2: number; y2: number; color: string; weight: number }
+export interface Arrow extends Ends { kind: 'arrow' }
+export interface Line extends Ends { kind: 'line' }
+export type Segment = Arrow | Line;
+export interface Stroke { kind: 'pen'; id: number; points: Point[]; color: string; weight: number }
 export interface Note { kind: 'text'; id: number; x: number; y: number; text: string; color: string; size: number }
 /** Everything drawn as a rectangle: outlines, marker ink, and redaction. */
 export type ShapeKind = 'box' | 'ellipse' | 'highlight' | 'redact';
@@ -15,8 +23,9 @@ export interface Shape {
   /** Redaction only: the pixelated patch, rebuilt when the region settles. */
   pixels?: string;
 }
-export type Annotation = Arrow | Note | Shape;
-export type Tool = 'arrow' | 'text' | ShapeKind | 'crop';
+export type Annotation = Segment | Stroke | Note | Shape;
+export type Tool = 'arrow' | 'line' | 'pen' | 'text' | ShapeKind | 'crop';
+export function isSegment(item: Annotation): item is Segment { return item.kind === 'arrow' || item.kind === 'line'; }
 
 export const SHAPES: readonly ShapeKind[] = ['box', 'ellipse', 'highlight', 'redact'];
 export function isShape(item: Annotation): item is Shape { return (SHAPES as readonly string[]).includes(item.kind); }
@@ -31,7 +40,10 @@ export function describe(kind: Annotation['kind']): string {
 
 /** Shift a copy off its original so the two are distinguishable. */
 export function offsetBy<T extends Annotation>(item: T, distance: number): T {
-  if (item.kind === 'arrow') {
+  if (item.kind === 'pen') {
+    return { ...item, points: item.points.map(([x, y]) => [x + distance, y + distance] as Point) };
+  }
+  if (isSegment(item)) {
     return { ...item, x1: item.x1 + distance, y1: item.y1 + distance,
                       x2: item.x2 + distance, y2: item.y2 + distance };
   }
@@ -86,6 +98,35 @@ export function arrowPolygon(a: Arrow): Point[] {
     [a.x2, a.y2],
     off(bx, by, -halfHead), off(bx, by, -baseHalf), off(a.x1, a.y1, -tailHalf),
   ];
+}
+
+/** A freehand stroke, smoothed through the midpoints of the samples so it reads
+ *  as a drawn line rather than the polyline the pointer actually reported. */
+export function penPath(points: readonly Point[]): string {
+  if (!points.length) return '';
+  const [first, ...rest] = points;
+  if (!rest.length) return `M${first[0].toFixed(2)} ${first[1].toFixed(2)}l0.01 0`;
+  let d = `M${first[0].toFixed(2)} ${first[1].toFixed(2)}`;
+  for (let i = 0; i < rest.length - 1; i++) {
+    const [x, y] = rest[i], [nx, ny] = rest[i + 1];
+    d += `Q${x.toFixed(2)} ${y.toFixed(2)} ${((x + nx) / 2).toFixed(2)} ${((y + ny) / 2).toFixed(2)}`;
+  }
+  const last = rest[rest.length - 1];
+  return d + `L${last[0].toFixed(2)} ${last[1].toFixed(2)}`;
+}
+
+/** Drop samples the pointer reported too close together to matter; a dense
+ *  polyline costs memory and export time and looks no different. */
+export function thin(points: readonly Point[], least: number): Point[] {
+  const kept: Point[] = [];
+  for (const point of points) {
+    const last = kept[kept.length - 1];
+    if (!last || Math.hypot(point[0] - last[0], point[1] - last[1]) >= least) kept.push(point);
+  }
+  if (points.length > 1 && kept[kept.length - 1] !== points[points.length - 1]) {
+    kept.push(points[points.length - 1]);
+  }
+  return kept;
 }
 
 export function polygonPath(points: Point[]): string {
@@ -160,7 +201,26 @@ export function drawAnnotations(
       ctx.stroke();
       continue;
     }
-    if (item.kind === 'arrow') {
+    if (item.kind === 'pen' || item.kind === 'line') {
+      ctx.strokeStyle = item.color;
+      ctx.lineWidth = item.weight;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      if (item.kind === 'pen') {
+        const [first, ...rest] = item.points;
+        if (!first) continue;
+        ctx.moveTo(first[0], first[1]);
+        for (let i = 0; i < rest.length - 1; i++) {
+          const [x, y] = rest[i], [nx, ny] = rest[i + 1];
+          ctx.quadraticCurveTo(x, y, (x + nx) / 2, (y + ny) / 2);
+        }
+        const last = rest[rest.length - 1];
+        if (last) ctx.lineTo(last[0], last[1]);
+        else ctx.lineTo(first[0] + 0.01, first[1]);
+      } else { ctx.moveTo(item.x1, item.y1); ctx.lineTo(item.x2, item.y2); }
+      ctx.stroke();
+    } else if (item.kind === 'arrow') {
       const points = arrowPolygon(item);
       ctx.beginPath();
       points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
@@ -186,9 +246,14 @@ type Drag =
 
 /** The box an annotation occupies, for drawing a selection outline round it. */
 function bounds(item: Annotation): { x: number; y: number; width: number; height: number } {
-  if (item.kind === 'arrow') {
+  if (isSegment(item)) {
     return { x: Math.min(item.x1, item.x2), y: Math.min(item.y1, item.y2),
              width: Math.abs(item.x2 - item.x1), height: Math.abs(item.y2 - item.y1) };
+  }
+  if (item.kind === 'pen') {
+    const xs = item.points.map(([x]) => x), ys = item.points.map(([, y]) => y);
+    const x = Math.min(...xs), y = Math.min(...ys);
+    return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
   }
   if (item.kind === 'text') return { x: item.x, y: item.y, width: 1, height: 1 };
   return item;
@@ -279,7 +344,8 @@ export class AnnotationLayer {
    *  editor pairs the shift with the capture it belongs to. */
   shiftBy(dx: number, dy: number): void {
     for (const item of this.items) {
-      if (item.kind === 'arrow') { item.x1 += dx; item.y1 += dy; item.x2 += dx; item.y2 += dy; }
+      if (isSegment(item)) { item.x1 += dx; item.y1 += dy; item.x2 += dx; item.y2 += dy; }
+      else if (item.kind === 'pen') item.points = item.points.map(([x, y]) => [x + dx, y + dy] as Point);
       else { item.x += dx; item.y += dy; }
       // Coordinates moved, so every redaction patch is now of the wrong region.
       if (item.kind === 'redact') item.pixels = undefined;
@@ -586,7 +652,7 @@ export class AnnotationLayer {
       return;
     }
 
-    if (end && current?.kind === 'arrow') {
+    if (end && current && isSegment(current)) {
       this.commitHistory();
       this.drag = { kind: 'reshape', id: current.id, end: end === '1' ? 1 : 2 };
     } else if (corner && current && isShape(current)) {
@@ -623,12 +689,20 @@ export class AnnotationLayer {
       this.svg.releasePointerCapture(event.pointerId);
       this.edit(note, true);
       return;
-    } else if (this.tool === 'arrow') {
+    } else if (this.tool === 'arrow' || this.tool === 'line') {
       this.commitHistory();
-      const arrow: Arrow = { kind: 'arrow', id: this.nextId++, x1: x, y1: y, x2: x, y2: y, color: this.style.color, weight: this.weight };
-      this.items.push(arrow);
-      this.chosen = new Set([arrow.id]);
-      this.drag = { kind: 'create', id: arrow.id, ox: x, oy: y };
+      const segment: Segment = { kind: this.tool, id: this.nextId++, x1: x, y1: y, x2: x, y2: y,
+                                 color: this.style.color, weight: this.weight };
+      this.items.push(segment);
+      this.chosen = new Set([segment.id]);
+      this.drag = { kind: 'create', id: segment.id, ox: x, oy: y };
+    } else if (this.tool === 'pen') {
+      this.commitHistory();
+      const stroke: Stroke = { kind: 'pen', id: this.nextId++, points: [[x, y]],
+                               color: this.style.color, weight: this.weight * 0.7 };
+      this.items.push(stroke);
+      this.chosen = new Set([stroke.id]);
+      this.drag = { kind: 'create', id: stroke.id, ox: x, oy: y };
     } else {
       this.commitHistory();
       const shape: Shape = {
@@ -658,10 +732,14 @@ export class AnnotationLayer {
       for (const from of this.drag.from) {
         const live = this.find(from.id);
         if (!live) continue;
-        if (live.kind === 'arrow' && from.kind === 'arrow') {
+        if (isSegment(live) && isSegment(from)) {
           live.x1 = from.x1 + dx; live.y1 = from.y1 + dy;
           live.x2 = from.x2 + dx; live.y2 = from.y2 + dy;
-        } else if (live.kind !== 'arrow' && from.kind !== 'arrow') {
+        } else if (live.kind === 'pen' && from.kind === 'pen') {
+          live.points = from.points.map(([x, y]) => [x + dx, y + dy] as Point);
+        } else if (live.kind === 'text' && from.kind === 'text') {
+          live.x = from.x + dx; live.y = from.y + dy;
+        } else if (isShape(live) && isShape(from)) {
           live.x = from.x + dx; live.y = from.y + dy;
         }
       }
@@ -671,11 +749,16 @@ export class AnnotationLayer {
       const anchorX = corner === 'nw' || corner === 'sw' ? from.x + from.width : from.x;
       const anchorY = corner === 'nw' || corner === 'ne' ? from.y + from.height : from.y;
       Object.assign(item, span(anchorX, anchorY, x, y));
-    } else if (item.kind === 'arrow') {
+    } else if (isSegment(item)) {
       if (this.drag.kind === 'create') { item.x2 = x; item.y2 = y; }
       else if (this.drag.kind === 'reshape') {
         if (this.drag.end === 1) { item.x1 = x; item.y1 = y; } else { item.x2 = x; item.y2 = y; }
       }
+    } else if (this.drag.kind === 'create' && item.kind === 'pen') {
+      // Every sample is kept while drawing and thinned once, on release: a
+      // stroke that simplifies as you draw it visibly changes shape behind the
+      // pointer.
+      item.points.push([x, y]);
     } else if (this.drag.kind === 'create' && isShape(item)) {
       Object.assign(item, span(this.drag.ox, this.drag.oy, x, y));
     }
@@ -700,9 +783,15 @@ export class AnnotationLayer {
       this.lastClick = shifted ? null : { id: drag.id, time: performance.now() };
     } else this.lastClick = null;
     // A click rather than a drag leaves nothing behind but a cleared selection.
-    const stillborn = drag.kind === 'create' && item !== undefined && (item.kind === 'arrow'
+    // A stroke is thinned once here rather than while it is being drawn.
+    if (drag.kind === 'create' && item?.kind === 'pen') {
+      item.points = thin(item.points, this.base * 0.12);
+    }
+    const stillborn = drag.kind === 'create' && item !== undefined && (isSegment(item)
       ? Math.hypot(item.x2 - item.x1, item.y2 - item.y1) < this.base
-      : isShape(item) && (item.width < this.base || item.height < this.base));
+      : item.kind === 'pen'
+        ? item.points.length < 2
+        : isShape(item) && (item.width < this.base || item.height < this.base));
     if (stillborn && item) {
       this.items = this.items.filter(other => other.id !== item.id);
       this.chosen.clear();
@@ -722,6 +811,19 @@ export class AnnotationLayer {
         const path = document.createElementNS(SVG, 'path');
         path.setAttribute('d', polygonPath(arrowPolygon(item)));
         path.setAttribute('fill', item.color);
+        path.setAttribute('data-item', String(item.id));
+        path.setAttribute('class', 'arrow');
+        this.svg.append(path);
+      } else if (item.kind === 'line' || item.kind === 'pen') {
+        const path = document.createElementNS(SVG, 'path');
+        path.setAttribute('d', item.kind === 'line'
+          ? `M${item.x1} ${item.y1}L${item.x2} ${item.y2}`
+          : penPath(item.points));
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', item.color);
+        path.setAttribute('stroke-width', String(item.weight));
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
         path.setAttribute('data-item', String(item.id));
         path.setAttribute('class', 'arrow');
         this.svg.append(path);
@@ -768,7 +870,7 @@ export class AnnotationLayer {
       }
     }
     const chosen = this.find(this.selected);
-    if (chosen?.kind === 'arrow') {
+    if (chosen && isSegment(chosen)) {
       this.svg.append(this.grip(chosen.x1, chosen.y1, 'data-handle', '1'),
                       this.grip(chosen.x2, chosen.y2, 'data-handle', '2'));
     } else if (chosen && isShape(chosen)) {

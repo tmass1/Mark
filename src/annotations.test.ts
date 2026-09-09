@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
-  describe as describeKind, offsetBy, polygonPath, textSize, type Arrow, type Note, type Shape,
+  describe as describeKind, isSegment, offsetBy, penPath, polygonPath, textSize, thin,
+  type Arrow, type Note, type Point, type Shape,
 } from './annotations';
 
 const arrow = (over: Partial<Arrow> = {}): Arrow =>
@@ -195,5 +196,65 @@ describe('copying an annotation', () => {
     expect(describeKind('text')).toBe('Text');
     expect(describeKind('redact')).toBe('Redaction');
     expect(describeKind('ellipse')).toBe('Ellipse');
+  });
+});
+
+describe('freehand strokes', () => {
+  const points: Point[] = [[0, 0], [10, 0], [20, 10], [30, 10]];
+
+  it('curves through the midpoints rather than joining the samples straight', () => {
+    const d = penPath(points);
+    expect(d.startsWith('M0.00 0.00')).toBe(true);
+    expect(d).toContain('Q');                    // smoothed, not a polyline
+    expect(d.endsWith('L30.00 10.00')).toBe(true);
+  });
+
+  it('still draws something for a single tap', () => {
+    expect(penPath([[5, 5]])).toBe('M5.00 5.00l0.01 0');
+    expect(penPath([])).toBe('');
+  });
+
+  it('thins samples the pointer reported too close together', () => {
+    const dense: Point[] = [[0, 0], [1, 0], [2, 0], [3, 0], [40, 0]];
+    const kept = thin(dense, 10);
+    expect(kept[0]).toEqual([0, 0]);
+    expect(kept.at(-1)).toEqual([40, 0]);        // the end is never dropped
+    expect(kept.length).toBeLessThan(dense.length);
+  });
+
+  it('keeps a stroke that is all one place from collapsing to nothing', () => {
+    expect(thin([[7, 7]], 10)).toEqual([[7, 7]]);
+  });
+
+  it('offsets every point together', () => {
+    const moved = offsetBy({ kind: 'pen', id: 1, points, color: '#000', weight: 8 } as never, 5) as
+      { points: Point[] };
+    expect(moved.points).toEqual([[5, 5], [15, 5], [25, 15], [35, 15]]);
+  });
+});
+
+describe('lines', () => {
+  const line = (over = {}) =>
+    ({ kind: 'line', id: 9, x1: 0, y1: 0, x2: 100, y2: 50, color: '#007aff', weight: 12, ...over }) as const;
+
+  it('counts as a segment, so it moves and reshapes like an arrow', () => {
+    expect(isSegment(line() as never)).toBe(true);
+    expect(isSegment(arrow())).toBe(true);
+    expect(isSegment(note())).toBe(false);
+    expect(isSegment(shape())).toBe(false);
+  });
+
+  it('is stroked end to end with no head, unlike an arrow', () => {
+    const { ctx, calls } = recorder();
+    drawAnnotations(ctx, [line() as never]);
+    expect(calls).toContain('stroke:#007aff');
+    expect(calls).toContain('width:12');
+    expect(calls).toContain('stroke!');
+    expect(calls).not.toContain('shape');        // no filled polygon: no arrowhead
+  });
+
+  it('offsets both ends together', () => {
+    const moved = offsetBy(line() as never, 10) as ReturnType<typeof line>;
+    expect([moved.x1, moved.y1, moved.x2, moved.y2]).toEqual([10, 10, 110, 60]);
   });
 });

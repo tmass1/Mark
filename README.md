@@ -3,8 +3,8 @@
 Mark is a fast, small macOS screenshot utility built with Tauri v2. Press a
 global shortcut, drag across a region, mark it up, then copy and close.
 
-Annotation is arrows, text, boxes, ellipses, a highlighter, redaction, and a
-crop. Finished work goes to the clipboard, to a file, or to macOS's share
+Annotation is arrows, lines, freehand, text, boxes, ellipses, a highlighter,
+redaction, and a crop. Finished work goes to the clipboard, to a file, or to macOS's share
 sheet. There are no accounts, settings window, cloud
 features, or screen recording. The UI uses the system WKWebView; the native
 shell is Rust. There is no Xcode project and no Swift source.
@@ -89,6 +89,12 @@ notarization; an Apple Development certificate is only good for this Mac.
    than over the shot. Escape cancels.
 5. Pick a tool in the toolbar.
    - **Arrow**: drag. Drag its body to move it, or either end to reshape it.
+   - **Line**: drag. The same two ends as an arrow, without the head, so it
+     moves and reshapes the same way.
+   - **Pen**: drag to scribble. The stroke is smoothed through the midpoints of
+     what the pointer reported, and thinned once on release rather than while
+     you draw — a stroke that simplifies under the pointer visibly changes
+     shape as you make it.
    - **Text**: click, then type. Enter starts a new line and Escape finishes.
      Click a note to move it; click it again to edit it.
    - **Box** and **Ellipse**: drag out an outline. Grab the outline to move it,
@@ -290,8 +296,8 @@ clipboard failures, keyboard dismissal, local image loading,
 and the annotation lifecycle: drawing, typing, restyling, moving, reopening a
 note, deleting, undo, mixing both tools, and that a copied image carries the
 annotation at full resolution. Unit tests cover arrow geometry, text layout,
-default sizing, shape export geometry, highlighter blending, redaction
-coarseness, selection clamping, and locked-ratio resizing. One browser test
+default sizing, shape export geometry, line and freehand stroke geometry,
+highlighter blending, redaction coarseness, selection clamping, and locked-ratio resizing. One browser test
 copies a redacted capture back out and counts distinct colours in the region,
 so redaction is checked for actually destroying the pixels rather than only
 looking like it; another moves a redaction onto different content and reads the

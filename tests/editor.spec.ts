@@ -780,3 +780,87 @@ test('the empty state has no footer to act on', async ({ page }) => {
   await page.locator('.recent').click();
   await expect(page.locator('footer')).toBeVisible();
 });
+
+test('draws a line with no arrowhead, and reshapes it by an end', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Line');
+  await drawArrow(page, [200, 250], [700, 400]);
+  const line = page.locator('.overlay path[stroke="#ff3b30"]');
+  await expect(line).toHaveCount(1);
+  await expect(line).toHaveAttribute('fill', 'none');       // stroked, not a filled head
+  // One move and one line: no curve, no closed polygon, no head.
+  const ends = (d: string) => d.match(/-?[\d.]+/g)!.map(Number);
+  expect((await line.getAttribute('d'))!).toMatch(/^M[-\d.]+ [-\d.]+L[-\d.]+ [-\d.]+$/);
+  expect(ends((await line.getAttribute('d'))!).map(Math.round)).toEqual([200, 250, 700, 400]);
+  await expect(page.locator('.handle')).toHaveCount(2);     // ends, like an arrow
+
+  const at = await stage(page);
+  const grip = at(700, 400), pull = at(500, 620);
+  await page.mouse.move(grip.x, grip.y);
+  await page.mouse.down();
+  await page.mouse.move(pull.x, pull.y, { steps: 8 });
+  await page.mouse.up();
+  const [x1, y1, x2, y2] = ends((await line.getAttribute('d'))!);
+  expect([Math.round(x1), Math.round(y1)]).toEqual([200, 250]);   // the other end stayed
+  expect(Math.abs(x2 - 500)).toBeLessThan(3);
+  expect(Math.abs(y2 - 620)).toBeLessThan(3);
+});
+
+test('draws a freehand stroke that follows the pointer', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Pen');
+  const at = await stage(page);
+  const start = at(200, 500);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  for (let step = 1; step <= 12; step++) {
+    const point = at(200 + step * 45, 500 - Math.sin(step / 2) * 130);
+    await page.mouse.move(point.x, point.y);
+  }
+  await page.mouse.up();
+
+  const stroke = page.locator('.overlay path[stroke="#ff3b30"]');
+  await expect(stroke).toHaveCount(1);
+  const d = (await stroke.getAttribute('d'))!;
+  expect(d.startsWith('M')).toBe(true);
+  expect(d).toContain('Q');                                 // smoothed, not a polyline
+  // Thinned on release, so it is not one node per pointermove.
+  expect(d.split('Q').length).toBeLessThan(14);
+  await expect(page.locator('.handle')).toHaveCount(0);     // no ends to grab
+});
+
+test('a stroke moves, restyles and undoes like everything else', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Pen');
+  const at = await stage(page);
+  const start = at(300, 300);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  for (let step = 1; step <= 8; step++) await page.mouse.move(...Object.values(at(300 + step * 50, 300 + step * 20)) as [number, number]);
+  await page.mouse.up();
+  const stroke = page.locator('.overlay path[fill="none"]');
+  await expect(stroke).toHaveCount(1);
+
+  await page.locator('.swatch[data-color="#34c759"]').click();
+  await expect(stroke).toHaveAttribute('stroke', '#34c759');
+
+  const before = await stroke.getAttribute('d');
+  const grab = at(500, 380), drop = at(560, 560);
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(drop.x, drop.y, { steps: 8 });
+  await page.mouse.up();
+  expect(await stroke.getAttribute('d')).not.toEqual(before);
+
+  await page.keyboard.press('Meta+z');
+  await expect(stroke).toHaveAttribute('d', before!);
+});
+
+test('a tap with the pen leaves nothing behind', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Pen');
+  const at = await stage(page);
+  const spot = at(400, 300);
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.locator('.overlay path[fill="none"]')).toHaveCount(0);
+});

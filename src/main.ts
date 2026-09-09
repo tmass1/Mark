@@ -41,6 +41,9 @@ const CAPTURE_MODES: { mode: string; name: string; hint: string; art: string }[]
 
 const TOOLS: { id: Tool; name: string; art: string }[] = [
   { id: 'arrow', name: 'Arrow', art: `<path d="M5.5 14.5 14 6M5.5 14.5h5.2M5.5 14.5V9.3" ${STROKE}/>` },
+  { id: 'line', name: 'Line', art: `<path d="M5.4 14.6 14.6 5.4" ${STROKE}/>` },
+  { id: 'pen', name: 'Pen', art:
+    `<path d="M4.2 13.8c1.9-4.6 3.2 2.3 5.1-1.1s2.9 3 4.4-1.2 1.4 2 2.1.9" ${STROKE}/>` },
   { id: 'text', name: 'Text', art: `<path d="M5 6h10M10 6v8.5M7.8 14.5h4.4" ${STROKE}/>` },
   { id: 'box', name: 'Box', art: `<rect x="4.6" y="5.8" width="10.8" height="8.4" rx="1.4" ${STROKE}/>` },
   { id: 'ellipse', name: 'Ellipse', art: `<ellipse cx="10" cy="10" rx="5.6" ry="4.4" ${STROKE}/>` },
@@ -242,7 +245,8 @@ function syncTools() {
     button.classList.toggle('active', active);
   }
   overlay.classList.toggle('text-tool', layer.tool === 'text');
-  overlay.classList.toggle('draw-tool', layer.tool !== 'arrow' && layer.tool !== 'text');
+  overlay.classList.toggle('draw-tool', layer.tool !== 'arrow' && layer.tool !== 'text' && layer.tool !== 'pen');
+  overlay.classList.toggle('pen-tool', layer.tool === 'pen');
   overlay.classList.toggle('crop-tool', layer.tool === 'crop');
   const crop = layer.pendingCrop;
   cropBar.hidden = !crop;

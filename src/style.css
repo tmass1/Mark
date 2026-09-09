@@ -217,6 +217,7 @@ footer > * { flex: none; }
 .capture { display: block; width: 100%; height: 100%; border-radius: inherit; user-select: none; -webkit-user-select: none; }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
 .overlay.text-tool { cursor: text; }
+.overlay.pen-tool { cursor: crosshair; }
 .overlay.draw-tool, .overlay.crop-tool { cursor: crosshair; }
 
 .arrow, .note, .shape { cursor: move; }
@@ -267,7 +268,7 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
   .size, .undo, .remove, .zoom, .choose { display: none; }
   .tool { padding: 5px 6px; }
   .swatch { width: 16px; height: 16px; }
-  .swatches { gap: 5px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .swatches, .tools { gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .copy kbd, .copy-only kbd, .capture-go kbd { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .primary:active { transform: none; } }
