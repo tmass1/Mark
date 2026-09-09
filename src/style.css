@@ -231,3 +231,7 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
   .copy kbd, .copy-only kbd, .capture-go kbd { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .primary:active { transform: none; } }
+.chosen { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.subtle.icon { display: flex; padding: 5px 6px; }
+.subtle.icon svg { display: block; width: 18px; height: 18px; }
+@media (max-width: 560px) { .chosen, .back, .front { display: none; } }

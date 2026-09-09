@@ -60,6 +60,13 @@ app.innerHTML = `
       <input class="weight" type="range" min="0.5" max="2.5" step="0.1" value="1" aria-label="Size" />
     </label>
     <span class="spacer"></span>
+    <span class="chosen" hidden aria-live="polite"></span>
+    <button class="back subtle icon" type="button" title="Send backward (⌘[)" aria-label="Send backward">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.2" y="3.2" width="9" height="9" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 15.2a1.6 1.6 0 0 0 1.6 1.6h5.6a1.6 1.6 0 0 0 1.6-1.6V9.6A1.6 1.6 0 0 0 15.2 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+    <button class="front subtle icon" type="button" title="Bring forward (⌘])" aria-label="Bring forward">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 4.8a1.6 1.6 0 0 0-1.6-1.6H4.8A1.6 1.6 0 0 0 3.2 4.8v5.6A1.6 1.6 0 0 0 4.8 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="7.8" y="7.8" width="9" height="9" rx="1.6" fill="currentColor" opacity=".9"/></svg>
+    </button>
     <button class="undo subtle" type="button" title="Undo (⌘Z)">Undo</button>
     <button class="remove subtle" type="button" title="Delete selection (⌫)">Delete</button>
   </div>
@@ -106,6 +113,9 @@ const overlay = app.querySelector<SVGSVGElement>('.overlay')!;
 const toolbar = app.querySelector<HTMLElement>('.toolbar')!;
 const weight = app.querySelector<HTMLInputElement>('.weight')!;
 const undoButton = app.querySelector<HTMLButtonElement>('.undo')!;
+const backButton = app.querySelector<HTMLButtonElement>('.back')!;
+const frontButton = app.querySelector<HTMLButtonElement>('.front')!;
+const chosenCount = app.querySelector<HTMLElement>('.chosen')!;
 const removeButton = app.querySelector<HTMLButtonElement>('.remove')!;
 const empty = app.querySelector<HTMLElement>('.empty')!;
 const copy = app.querySelector<HTMLButtonElement>('.copy')!;
@@ -167,7 +177,14 @@ function showMessage(text: string | null) {
 /** Selecting an arrow adopts its look, so the swatches and slider always describe
  *  whatever the next edit will affect. */
 function syncTools() {
-  const selected = layer.annotations.find(item => item.id === layer.selected);
+  const picked = layer.selection;
+  // Say what a colour or size change is about to land on. Restyling the thing
+  // just drawn is right, but it should never be a surprise.
+  chosenCount.hidden = picked.length === 0;
+  chosenCount.textContent = picked.length === 1
+    ? `${describe(picked[0].kind)} selected`
+    : `${picked.length} selected`;
+  const selected = layer.styleSource;
   if (selected) {
     layer.style.color = selected.color;
     layer.style.scale = selected.kind === 'text'
@@ -192,7 +209,8 @@ function syncTools() {
   cropBar.hidden = !crop;
   if (crop) cropSize.textContent = `Crop to ${Math.round(crop.width)} × ${Math.round(crop.height)} px`;
   undoButton.disabled = !layer.canUndo && !crops.length;
-  removeButton.disabled = layer.selected === null || layer.isEditing;
+  removeButton.disabled = picked.length === 0 || layer.isEditing;
+  backButton.disabled = frontButton.disabled = picked.length === 0 || layer.isEditing;
 }
 
 function render() {
@@ -324,6 +342,8 @@ on(undoButton, 'click', () => { stepBack(); });
 on(app.querySelector<HTMLButtonElement>('.crop-apply')!, 'click', () => { void applyCrop().catch(report); });
 on(app.querySelector<HTMLButtonElement>('.crop-cancel')!, 'click', () => layer.clearCrop());
 on(removeButton, 'click', () => { layer.deleteSelected(); });
+on(backButton, 'click', () => { layer.reorder('backward'); });
+on(frontButton, 'click', () => { layer.reorder('forward'); });
 
 // The overlay scales with the window; handles are sized from the drawn width.
 const observer = new ResizeObserver(() => layer.measure());
@@ -522,6 +542,15 @@ document.addEventListener('keydown', event => {
     event.preventDefault(); void command('quit_app').catch(report);
   } else if ((event.metaKey || event.ctrlKey) && key === 'w') {
     event.preventDefault(); void dismiss().catch(report);
+  } else if (capture && (event.metaKey || event.ctrlKey) && key === 'a') {
+    event.preventDefault();
+    if (!layer.selectAll()) flash('Nothing drawn to select.');
+  } else if (capture && (event.metaKey || event.ctrlKey) && (key === ']' || key === '}')) {
+    event.preventDefault();
+    if (!layer.reorder(event.shiftKey ? 'front' : 'forward')) flash('Select something to reorder.');
+  } else if (capture && (event.metaKey || event.ctrlKey) && (key === '[' || key === '{')) {
+    event.preventDefault();
+    if (!layer.reorder(event.shiftKey ? 'back' : 'backward')) flash('Select something to reorder.');
   } else if (capture && (event.metaKey || event.ctrlKey) && (key === '=' || key === '+')) {
     event.preventDefault(); stepZoom(1);
   } else if (capture && (event.metaKey || event.ctrlKey) && key === '-') {
@@ -542,14 +571,15 @@ document.addEventListener('keydown', event => {
     event.preventDefault();
     if (layer.pendingCrop) { flash('Finish or cancel the crop first.'); return; }
     const taken = layer.copySelection();
-    if (taken) flash(`${describe(taken.kind)} copied. ⌘V pastes it, Escape deselects.`);
+    if (taken.length === 1) flash(`${describe(taken[0].kind)} copied. ⌘V pastes it, Escape deselects.`);
+    else if (taken.length) flash(`${taken.length} annotations copied. ⌘V pastes them.`);
     else void copyCapture(true);
   } else if (capture && key === 'v' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
-    if (!layer.paste()) flash('Copy an arrow, note or shape first.');
+    if (!layer.paste().length) flash('Copy an arrow, note or shape first.');
   } else if (capture && key === 'd' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
-    if (!layer.duplicateSelection()) flash('Select something to duplicate.');
+    if (!layer.duplicateSelection().length) flash('Select something to duplicate.');
   } else if (capture && key === 'enter' && layer.pendingCrop) {
     event.preventDefault(); void applyCrop().catch(report);
   } else if (capture && key === 'enter' &&

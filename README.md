@@ -103,6 +103,15 @@ notarization; an Apple Development certificate is only good for this Mac.
      control sets how coarse. This is pixelation rather than blur on purpose:
      a blur can be partly undone and still leaks the shape of what is under it.
 
+   Shift-click gathers several annotations, and ⌘A takes the lot; they then
+   move, restyle and delete together. The toolbar says what is selected, so a
+   colour or size change never lands somewhere unannounced.
+
+   Annotations stack in the order they were drawn, which a highlighter band
+   will happily bury something under. ⌘[ and ⌘] step the selection back and
+   forward, ⌘⇧[ and ⌘⇧] send it all the way, and the two buttons beside Delete
+   do the same.
+
    Color and size come from the toolbar and drive every tool. Selecting an
    annotation adopts its style, so the toolbar always describes the next edit.
    ⌘Z undoes, ⌫ deletes the selection, and Escape backs out one level: first
@@ -239,7 +248,9 @@ looking like it; another moves a redaction onto different content and reads the
 patch back, since a stale patch would both mislead and leak the region it was
 cut from. Cropping is covered for the trim itself, for carrying the drawing
 along, for undo ordering against drawing, and for re-sampling a redaction into
-the cropped image's coordinates. Recent captures are covered for round-tripping a
+the cropped image's coordinates. Selecting several at once is covered for
+gathering, ungathering, moving, restyling and deleting together, and reordering
+for both the buttons and the shortcuts. Recent captures are covered for round-tripping a
 drawing through a close, for ordering, and for copying something restored after
 Rust has forgotten it. Zoom is covered for scaling, for the keyboard, for
 resetting on a new capture, and for drawing landing on the same image pixels

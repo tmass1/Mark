@@ -179,10 +179,20 @@ const CORNERS: readonly Corner[] = ['nw', 'ne', 'se', 'sw'];
 
 type Drag =
   | { kind: 'create'; id: number; ox: number; oy: number }
-  | { kind: 'move'; id: number; ox: number; oy: number; from: Annotation }
+  | { kind: 'move'; id: number; ox: number; oy: number; from: Annotation[] }
   | { kind: 'reshape'; id: number; end: 1 | 2 }
   | { kind: 'corner'; id: number; corner: Corner; from: Shape }
   | { kind: 'crop'; ox: number; oy: number };
+
+/** The box an annotation occupies, for drawing a selection outline round it. */
+function bounds(item: Annotation): { x: number; y: number; width: number; height: number } {
+  if (item.kind === 'arrow') {
+    return { x: Math.min(item.x1, item.x2), y: Math.min(item.y1, item.y2),
+             width: Math.abs(item.x2 - item.x1), height: Math.abs(item.y2 - item.y1) };
+  }
+  if (item.kind === 'text') return { x: item.x, y: item.y, width: 1, height: 1 };
+  return item;
+}
 
 /** A rectangle from two opposite points, always with a positive size. */
 function span(ax: number, ay: number, bx: number, by: number) {
@@ -209,11 +219,13 @@ export class AnnotationLayer {
   private source: HTMLImageElement | null = null;
   /** Survives a new capture on purpose: the same label often belongs on several
    *  screenshots in a row. */
-  private clipboard: Annotation | null = null;
+  private clipboard: Annotation[] = [];
   /** A crop the user is drawing out but has not confirmed. Not an annotation:
    *  it changes the capture rather than sitting on top of it. */
   pendingCrop: Rect | null = null;
-  selected: number | null = null;
+  /** Ids, not objects, so reordering and undo cannot leave it holding stale
+   *  copies of things that have since been replaced. */
+  private chosen = new Set<number>();
   tool: Tool = 'arrow';
   base = 12;
   style: LayerStyle = { color: COLORS[0].value, scale: 1 };
@@ -241,6 +253,15 @@ export class AnnotationLayer {
   }
 
   get annotations(): readonly Annotation[] { return this.items; }
+  /** Selected annotations, in the order they are drawn. */
+  get selection(): Annotation[] { return this.items.filter(item => this.chosen.has(item.id)); }
+  /** The sole selection, or null when none or several are chosen. Handles and
+   *  text editing only make sense for exactly one. */
+  get selected(): number | null {
+    return this.chosen.size === 1 ? [...this.chosen][0] : null;
+  }
+  /** What the toolbar should describe: the last of the selection in draw order. */
+  get styleSource(): Annotation | undefined { return this.selection.at(-1); }
   get empty(): boolean { return this.items.length === 0; }
   get canUndo(): boolean { return this.past.length > 0; }
   /** How many annotation edits deep we are, so the editor can tell whether a
@@ -278,7 +299,7 @@ export class AnnotationLayer {
   load(items: readonly Annotation[]): void {
     this.items = items.map(item => ({ ...item }));
     this.nextId = this.items.reduce((most, item) => Math.max(most, item.id), 0) + 1;
-    this.past = []; this.selected = null; this.pendingCrop = null;
+    this.past = []; this.chosen.clear(); this.pendingCrop = null;
     this.render(); this.onChange();
   }
 
@@ -306,7 +327,7 @@ export class AnnotationLayer {
   setImage(width: number, height: number): void {
     this.width = width; this.height = height;
     this.base = baseWeight(width, height);
-    this.items = []; this.past = []; this.selected = null; this.drag = null;
+    this.items = []; this.past = []; this.chosen.clear(); this.drag = null;
     this.editing = null; this.editor.hidden = true;
     this.svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     this.measure(); this.render();
@@ -322,7 +343,7 @@ export class AnnotationLayer {
   measure(): void {
     this.handleRadius = 7 / this.scale;
     if (this.editing !== null) this.placeEditor();
-    if (this.selected !== null || this.editing !== null) this.render();
+    if (this.chosen.size || this.editing !== null) this.render();
   }
 
   private commitHistory(): void {
@@ -335,68 +356,119 @@ export class AnnotationLayer {
     const previous = this.past.pop();
     if (!previous) return false;
     this.items = previous;
-    if (!this.items.some(item => item.id === this.selected)) this.selected = null;
+    // Undo can remove things that were selected; drop them rather than keeping
+    // ids that no longer name anything.
+    for (const id of [...this.chosen]) { if (!this.find(id)) this.chosen.delete(id); }
     this.render(); this.onChange();
     return true;
   }
 
   deleteSelected(): boolean {
-    if (this.selected === null || this.editing !== null) return false;
+    if (!this.chosen.size || this.editing !== null) return false;
     this.commitHistory();
-    this.items = this.items.filter(item => item.id !== this.selected);
-    this.selected = null;
+    this.items = this.items.filter(item => !this.chosen.has(item.id));
+    this.chosen.clear();
     this.render(); this.onChange();
     return true;
   }
 
   deselect(): boolean {
     if (this.editing !== null) { this.commit(); return true; }
-    if (this.selected === null) return false;
-    this.selected = null; this.render(); this.onChange();
+    if (!this.chosen.size) return false;
+    this.chosen.clear(); this.render(); this.onChange();
     return true;
   }
 
-  get copied(): Annotation | null { return this.clipboard; }
+  selectAll(): boolean {
+    if (this.editing !== null || !this.items.length) return false;
+    if (this.chosen.size === this.items.length) return false;
+    this.items.forEach(item => this.chosen.add(item.id));
+    this.render(); this.onChange();
+    return true;
+  }
+
+  /** Step the selection one place towards the front, or the back. Selected
+   *  annotations keep their order relative to each other. */
+  reorder(direction: 'forward' | 'backward' | 'front' | 'back'): boolean {
+    if (!this.chosen.size || this.editing !== null) return false;
+    const next = [...this.items];
+    if (direction === 'front' || direction === 'back') {
+      const picked = next.filter(item => this.chosen.has(item.id));
+      const rest = next.filter(item => !this.chosen.has(item.id));
+      if (!rest.length) return false;
+      this.commitHistory();
+      this.items = direction === 'front' ? [...rest, ...picked] : [...picked, ...rest];
+    } else {
+      // Swap past the nearest neighbour that is not itself selected, walking
+      // from the edge we are moving towards so a run of items shuffles whole.
+      let moved = false;
+      if (direction === 'forward') {
+        for (let i = next.length - 2; i >= 0; i--) {
+          if (this.chosen.has(next[i].id) && !this.chosen.has(next[i + 1].id)) {
+            [next[i], next[i + 1]] = [next[i + 1], next[i]]; moved = true;
+          }
+        }
+      } else {
+        for (let i = 1; i < next.length; i++) {
+          if (this.chosen.has(next[i].id) && !this.chosen.has(next[i - 1].id)) {
+            [next[i], next[i - 1]] = [next[i - 1], next[i]]; moved = true;
+          }
+        }
+      }
+      if (!moved) return false;
+      this.commitHistory();
+      this.items = next;
+    }
+    this.render(); this.onChange();
+    return true;
+  }
+
+  get copied(): readonly Annotation[] { return this.clipboard; }
 
   /** Take the selection, if there is one. Returns what it took, for the caller
    *  to report. */
-  copySelection(): Annotation | null {
-    const item = this.find(this.selected);
-    if (!item) return null;
-    this.clipboard = { ...item };
+  copySelection(): Annotation[] {
+    const picked = this.selection;
+    if (!picked.length) return [];
+    this.clipboard = picked.map(item => ({ ...item }));
     return this.clipboard;
   }
 
   /** Drop the held annotation onto the capture, offset from wherever it came
    *  from. Pasting again cascades, because the pasted copy becomes the one held. */
-  paste(): Annotation | null {
-    if (!this.clipboard) return null;
+  paste(): Annotation[] {
+    if (!this.clipboard.length) return [];
     this.commitHistory();
-    const copy = { ...offsetBy(this.clipboard, this.base * 0.9), id: this.nextId++ };
-    this.items.push(copy);
-    this.selected = copy.id;
-    this.clipboard = copy;
+    const copies = this.clipboard.map(item =>
+      ({ ...offsetBy(item, this.base * 0.9), id: this.nextId++ }));
+    this.items.push(...copies);
+    this.chosen = new Set(copies.map(copy => copy.id));
+    this.clipboard = copies;
     // A redaction pasted somewhere else has to hide what is there now, not a
     // stale patch of wherever it was copied from.
-    if (copy.kind === 'redact') { copy.pixels = undefined; this.settle(copy); }
+    for (const copy of copies) {
+      if (copy.kind === 'redact') { copy.pixels = undefined; this.settle(copy); }
+    }
     this.render(); this.onChange();
-    return copy;
+    return copies;
   }
 
-  duplicateSelection(): Annotation | null {
-    return this.copySelection() ? this.paste() : null;
+  duplicateSelection(): Annotation[] {
+    return this.copySelection().length ? this.paste() : [];
   }
 
   /** Restyle the selection, or set the style for the next annotation. */
   applyStyle(): void {
-    const item = this.find(this.selected);
-    if (item) {
+    const picked = this.selection;
+    if (picked.length) {
       this.commitHistory();
-      item.color = this.style.color;
-      if (item.kind === 'text') item.size = textSize(this.weight);
-      else item.weight = this.weight;
-      // Coarseness follows the size control, so the patch must be rebuilt.
-      this.settle(item);
+      for (const item of picked) {
+        item.color = this.style.color;
+        if (item.kind === 'text') item.size = textSize(this.weight);
+        else item.weight = this.weight;
+        // Coarseness follows the size control, so the patch must be rebuilt.
+        this.settle(item);
+      }
     }
     if (this.editing !== null) this.placeEditor();
     this.render(); this.onChange();
@@ -421,7 +493,7 @@ export class AnnotationLayer {
   private edit(note: Note, fresh = false): void {
     this.editing = note.id;
     this.editingIsNew = fresh;
-    this.selected = note.id;
+    this.chosen = new Set([note.id]);
     this.editor.hidden = false;
     this.editor.value = note.text;
     this.placeEditor();
@@ -475,7 +547,7 @@ export class AnnotationLayer {
     const text = this.editor.value.replace(/\s+$/, '');
     if (!text) {
       this.items = this.items.filter(item => item.id !== note.id);
-      if (this.selected === note.id) this.selected = null;
+      this.chosen.delete(note.id);
       // A box that never held anything leaves no trace, not even in undo. Text
       // cleared out of an existing note is a real edit and stays undoable.
       if (wasNew) this.past.pop();
@@ -509,7 +581,7 @@ export class AnnotationLayer {
         this.drag = { kind: 'crop', ox: x, oy: y };
         this.pendingCrop = { x, y, width: 0, height: 0 };
       }
-      this.selected = null;
+      this.chosen.clear();
       this.render(); this.onChange();
       return;
     }
@@ -523,16 +595,27 @@ export class AnnotationLayer {
     } else if (hit !== null) {
       const from = this.find(hit);
       if (!from) return;
+      // Shift adds to or removes from the selection, and never starts a drag:
+      // extending a selection and moving it are different intentions.
+      if (event.shiftKey) {
+        this.svg.releasePointerCapture(event.pointerId);
+        if (this.chosen.has(hit)) this.chosen.delete(hit); else this.chosen.add(hit);
+        this.lastClick = null;
+        this.render(); this.onChange();
+        return;
+      }
       const repeat = this.lastClick?.id === hit && performance.now() - this.lastClick.time < 450;
       this.commitHistory();
-      if (repeat && from.kind === 'text') {
+      if (repeat && from.kind === 'text' && this.chosen.size <= 1) {
         this.lastClick = null;
         this.svg.releasePointerCapture(event.pointerId);
         this.edit(from);
         return;
       }
-      this.selected = hit;
-      this.drag = { kind: 'move', id: hit, ox: x, oy: y, from: { ...from } };
+      // Pressing inside an existing selection drags the whole of it; pressing
+      // anything else selects just that.
+      if (!this.chosen.has(hit)) this.chosen = new Set([hit]);
+      this.drag = { kind: 'move', id: hit, ox: x, oy: y, from: this.selection.map(item => ({ ...item })) };
     } else if (this.tool === 'text') {
       this.commitHistory();
       const note: Note = { kind: 'text', id: this.nextId++, x, y, text: '', color: this.style.color, size: textSize(this.weight) };
@@ -544,7 +627,7 @@ export class AnnotationLayer {
       this.commitHistory();
       const arrow: Arrow = { kind: 'arrow', id: this.nextId++, x1: x, y1: y, x2: x, y2: y, color: this.style.color, weight: this.weight };
       this.items.push(arrow);
-      this.selected = arrow.id;
+      this.chosen = new Set([arrow.id]);
       this.drag = { kind: 'create', id: arrow.id, ox: x, oy: y };
     } else {
       this.commitHistory();
@@ -553,7 +636,7 @@ export class AnnotationLayer {
         color: this.style.color, weight: this.weight,
       };
       this.items.push(shape);
-      this.selected = shape.id;
+      this.chosen = new Set([shape.id]);
       this.drag = { kind: 'create', id: shape.id, ox: x, oy: y };
     }
     this.render(); this.onChange();
@@ -571,12 +654,16 @@ export class AnnotationLayer {
     if (!item) return;
     const [x, y] = this.at(event);
     if (this.drag.kind === 'move') {
-      const dx = x - this.drag.ox, dy = y - this.drag.oy, from = this.drag.from;
-      if (item.kind === 'arrow' && from.kind === 'arrow') {
-        item.x1 = from.x1 + dx; item.y1 = from.y1 + dy;
-        item.x2 = from.x2 + dx; item.y2 = from.y2 + dy;
-      } else if (item.kind !== 'arrow' && from.kind !== 'arrow') {
-        item.x = from.x + dx; item.y = from.y + dy;
+      const dx = x - this.drag.ox, dy = y - this.drag.oy;
+      for (const from of this.drag.from) {
+        const live = this.find(from.id);
+        if (!live) continue;
+        if (live.kind === 'arrow' && from.kind === 'arrow') {
+          live.x1 = from.x1 + dx; live.y1 = from.y1 + dy;
+          live.x2 = from.x2 + dx; live.y2 = from.y2 + dy;
+        } else if (live.kind !== 'arrow' && from.kind !== 'arrow') {
+          live.x = from.x + dx; live.y = from.y + dy;
+        }
       }
     } else if (this.drag.kind === 'corner' && isShape(item)) {
       // Drag one corner and the opposite corner stays put.
@@ -618,9 +705,10 @@ export class AnnotationLayer {
       : isShape(item) && (item.width < this.base || item.height < this.base));
     if (stillborn && item) {
       this.items = this.items.filter(other => other.id !== item.id);
-      this.selected = null;
+      this.chosen.clear();
       this.past.pop();
-    } else this.settle(item);
+    } else if (drag.kind === 'move') drag.from.forEach(from => this.settle(this.find(from.id)));
+    else this.settle(item);
     this.render(); this.onChange();
   };
 
@@ -668,10 +756,17 @@ export class AnnotationLayer {
         const bounds = text.getBBox();
         box.setAttribute('x', String(bounds.x)); box.setAttribute('y', String(bounds.y));
         box.setAttribute('width', String(bounds.width)); box.setAttribute('height', String(bounds.height));
-        if (item.id === this.selected) group.append(this.dashedOutline(bounds, item.size * 0.16));
+        if (this.chosen.has(item.id)) group.append(this.dashedOutline(bounds, item.size * 0.16));
       }
     }
     if (this.pendingCrop) { this.renderCrop(this.pendingCrop); return; }
+    // Handles belong to a single selection; several at once get outlines only,
+    // because a handle would be ambiguous about which shape it resizes.
+    for (const item of this.selection) {
+      if (this.chosen.size > 1 && item.kind !== 'text') {
+        this.svg.append(this.dashedOutline(bounds(item), this.base * 0.25));
+      }
+    }
     const chosen = this.find(this.selected);
     if (chosen?.kind === 'arrow') {
       this.svg.append(this.grip(chosen.x1, chosen.y1, 'data-handle', '1'),

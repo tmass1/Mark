@@ -678,3 +678,111 @@ test('a new capture opens at actual size when it fits', async ({ page }) => {
   await expect(page.locator('.zoom-select')).toHaveValue('1');
   expect(Math.round((await page.locator('.stage').boundingBox())!.width)).toBe(128);
 });
+
+/** Ids in draw order: later is painted on top, in the overlay and in export. */
+function drawOrder(page: import('@playwright/test').Page) {
+  return page.locator('.overlay > [data-item]')
+    .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-item')));
+}
+async function clickAt(page: import('@playwright/test').Page, point: { x: number; y: number }, shift = false) {
+  if (shift) await page.keyboard.down('Shift');
+  await page.mouse.click(point.x, point.y);
+  if (shift) await page.keyboard.up('Shift');
+}
+
+test('shift-click gathers several annotations, and they move and restyle together', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [500, 200]);
+  await drawArrow(page, [200, 400], [500, 400]);
+  await expect(page.locator('.chosen')).toHaveText('Arrow selected');
+
+  const at = await stage(page);
+  await clickAt(page, at(480, 200), true);                 // add the first one
+  await expect(page.locator('.chosen')).toHaveText('2 selected');
+  // Two selected means outlines, not handles: a handle would be ambiguous.
+  await expect(page.locator('.handle')).toHaveCount(0);
+  await expect(page.locator('.note-outline')).toHaveCount(2);
+
+  await page.locator('.swatch[data-color="#34c759"]').click();
+  await expect(page.locator('.arrow[fill="#34c759"]')).toHaveCount(2);
+
+  const before = await page.locator('.arrow').evaluateAll(n => n.map(a => a.getAttribute('d')));
+  const grab = at(480, 400), drop = at(560, 560);
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(drop.x, drop.y, { steps: 10 });
+  await page.mouse.up();
+  const after = await page.locator('.arrow').evaluateAll(n => n.map(a => a.getAttribute('d')));
+  expect(after[0]).not.toEqual(before[0]);                 // both moved, not just the grabbed one
+  expect(after[1]).not.toEqual(before[1]);
+
+  await page.keyboard.press('Backspace');
+  await expect(page.locator('.arrow')).toHaveCount(0);
+});
+
+test('shift-click also takes an annotation back out of the selection', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [500, 200]);
+  await drawArrow(page, [200, 400], [500, 400]);
+  const at = await stage(page);
+  await clickAt(page, at(480, 200), true);
+  await expect(page.locator('.chosen')).toHaveText('2 selected');
+  await clickAt(page, at(480, 200), true);
+  await expect(page.locator('.chosen')).toHaveText('Arrow selected');
+});
+
+test('Command-A takes everything, Escape lets it go', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [500, 200]);
+  await pick(page, 'Box');
+  await drawArrow(page, [200, 400], [600, 600]);
+  await page.keyboard.press('Meta+a');
+  await expect(page.locator('.chosen')).toHaveText('2 selected');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.chosen')).toBeHidden();
+});
+
+test('an annotation buried under a highlighter can be brought back out', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [250, 250], [550, 300]);
+  await pick(page, 'Highlighter');
+  await drawArrow(page, [200, 200], [700, 400]);           // laid over the arrow
+  const [arrow, band] = await drawOrder(page);
+  expect(await drawOrder(page)).toEqual([arrow, band]);    // the band is on top
+
+  await page.locator('.back').click();                     // send it back
+  expect(await drawOrder(page)).toEqual([band, arrow]);
+  await page.locator('.front').click();                    // and forward again
+  expect(await drawOrder(page)).toEqual([arrow, band]);
+  await page.keyboard.press('Meta+BracketLeft');           // same from the keyboard
+  expect(await drawOrder(page)).toEqual([band, arrow]);
+});
+
+test('a shifted bracket goes straight to the front or the back', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [150, 150], [350, 250]);
+  await drawArrow(page, [200, 300], [400, 400]);
+  await drawArrow(page, [250, 450], [450, 550]);
+  const [first, second, third] = await drawOrder(page);
+
+  const at = await stage(page);
+  await clickAt(page, at(340, 245));                       // the earliest arrow
+  await expect(page.locator('.chosen')).toHaveText('Arrow selected');
+  await page.keyboard.press('Meta+Shift+BracketRight');    // straight to the front
+  expect(await drawOrder(page)).toEqual([second, third, first]);
+  await page.keyboard.press('Meta+Shift+BracketLeft');     // and straight back
+  expect(await drawOrder(page)).toEqual([first, second, third]);
+});
+
+test('copying a multiple selection pastes all of it', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [500, 200]);
+  await drawArrow(page, [200, 400], [500, 400]);
+  const at = await stage(page);
+  await clickAt(page, at(480, 200), true);
+  await page.keyboard.press('Meta+c');
+  await expect(page.getByRole('status')).toContainText('2 annotations copied');
+  await page.keyboard.press('Meta+v');
+  await expect(page.locator('.arrow')).toHaveCount(4);
+  await expect(page.locator('.chosen')).toHaveText('2 selected');
+});
