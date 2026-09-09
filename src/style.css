@@ -6,6 +6,11 @@
  * painting over it: fills are translucent, separators are hairlines, and
  * nothing is allowed to become an opaque slab except the capture, which
  * has to be exact.
+ *
+ * --scrim is the one knob for how much of that material comes through.
+ * Frosted rather than see-through is the point: a screenshot editor you can
+ * read the desktop through is harder to look at, not nicer. Lower the alpha
+ * for more glass, raise it for more solidity.
  */
 
 :root {
@@ -19,13 +24,14 @@
   --ink: #1c1c1e;
   --muted: #61616b;
   --hairline: #00000012;
-  --chrome: #ffffff4d;        /* bars, laid over the material */
-  --canvas: #00000008;        /* the well the capture sits in */
+  --chrome: #ffffff8c;        /* bars, laid over the scrim */
+  --canvas: #00000012;        /* the well the capture sits in */
   --control: #ffffff8f;
   --control-hover: #ffffffc9;
   --control-line: #0000001f;
   --sunken: #0000000f;
-  --glass: #fbfbfdeb;         /* menus and popovers */
+  --glass: #fbfbfdf2;         /* menus and popovers */
+  --scrim: #ffffffd1;         /* ~82% over the material */
   --blue: #007aff;
   --hover: #0069dc;
   --shadow: #00000024;
@@ -35,13 +41,14 @@
     --ink: #f5f5f7;
     --muted: #9d9da6;
     --hairline: #ffffff1c;
-    --chrome: #ffffff0d;
-    --canvas: #00000038;
+    --chrome: #ffffff14;
+    --canvas: #00000042;
     --control: #ffffff1a;
     --control-hover: #ffffff2e;
     --control-line: #ffffff2b;
     --sunken: #00000042;
-    --glass: #262629eb;
+    --glass: #262629f2;
+    --scrim: #1d1d1fdb;       /* ~86%; dark vibrancy shows through more readily */
     --blue: #0a84ff;
     --hover: #359aff;
     --shadow: #00000059;
@@ -62,7 +69,10 @@ button:disabled { opacity: .4; }
 button:focus-visible { outline: 2.5px solid var(--blue); outline-offset: 2px; }
 kbd { font: inherit; font-size: 11px; opacity: .55; margin-left: 10px; }
 
-#app { position: relative; height: 100dvh; display: flex; flex-direction: column; min-width: 300px; }
+#app {
+  position: relative; height: 100dvh; display: flex; flex-direction: column; min-width: 300px;
+  background: var(--scrim);
+}
 
 /* ---- chrome ------------------------------------------------------------- */
 
