@@ -2,8 +2,16 @@ import './style.css';
 import { command, isTauri, watchCapture, type CapturePreview, type Snapshot } from './platform';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
-import { AnnotationLayer, COLORS, describe, drawAnnotations, textSize,
+import { AnnotationLayer, COLORS, arrowPolygon, describe, drawAnnotations, polygonPath, textSize,
          type Annotation, type Tool } from './annotations';
+
+/** The app's mark: the same arrow the icon is built from, and the same function
+ *  every arrow in the editor comes out of, so the empty state cannot drift away
+ *  from what is in the Dock. */
+const MARK_ARROW = polygonPath(arrowPolygon(
+  { kind: 'arrow', id: 0, x1: 792, y1: 232, x2: 322, y2: 702, color: '', weight: 74 }));
+const MARK_FRAME = 'M258 396V308a50 50 0 0 1 50-50h88M628 258h88a50 50 0 0 1 50 50v88'
+  + 'M766 628v88a50 50 0 0 1-50 50h-88M396 766h-88a50 50 0 0 1-50-50v-88';
 
 /** Captures kept after they leave the editor, newest first. Memory only: this
  *  is an undo for closing, not a library. */
@@ -75,7 +83,10 @@ app.innerHTML = `
       <svg class="overlay" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Arrow annotations"></svg>
     </div>
     <section class="empty" hidden>
-      <svg class="viewfinder" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M12 5H7a2 2 0 0 0-2 2v5m15-7h5a2 2 0 0 1 2 2v5M5 20v5a2 2 0 0 0 2 2h5m15-7v5a2 2 0 0 1-2 2h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <svg class="viewfinder" viewBox="0 0 1024 1024" aria-hidden="true">
+        <path d="${MARK_FRAME}" fill="none" stroke="currentColor" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" opacity=".38"/>
+        <path d="${MARK_ARROW}" fill="var(--brand)"/>
+      </svg>
       <h1>Capture a region</h1><p class="empty-hint">A little less between seeing and sharing.</p>
       <button class="start primary" type="button">Capture Region <kbd>⌃⌥⌘4</kbd></button>
       <section class="recents" hidden aria-label="Recent captures">

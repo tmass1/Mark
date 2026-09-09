@@ -186,6 +186,11 @@ Red is the brand; blue stays the system accent for controls. Identity and
 interface should not compete, and the red is the colour Mark draws with by
 default anyway.
 
+The editor's empty state draws the same mark, from the same call to
+`arrowPolygon`, so what greets you on launch and what sits in the Dock cannot
+drift apart. The menu bar glyph is the arrow without the frame, which is the
+same degradation the icon makes at that size.
+
 `scripts/build-icon.mjs` regenerates every size, the `.icns` and the menu bar
 icon from those definitions.
 
