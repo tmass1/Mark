@@ -21,8 +21,10 @@ const SELECTOR: &str = "selector-";
 const CHROME: f64 = 46.0 + 48.0 + 62.0;
 /// The canvas breathes 26pt on each side.
 const CANVAS_PADDING: f64 = 52.0;
-/// Enough for the empty state and a row of recents, and no more.
-const COMPACT: (f64, f64) = (560.0, 460.0);
+/// Enough for the empty state and a row of recents, and no more. Shorter than
+/// the chrome above suggests, because the footer is not there with nothing to
+/// act on.
+const COMPACT: (f64, f64) = (560.0, 452.0);
 
 /// Size the window to its contents: the capture at actual size where the screen
 /// allows, and small when there is nothing to show. A screenshot editor whose

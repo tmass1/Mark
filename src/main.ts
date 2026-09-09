@@ -246,6 +246,9 @@ function render() {
   }
   drawRecents();
   app.querySelector('.dimensions')!.textContent = capture ? `${capture.width} × ${capture.height} px` : '';
+  // With nothing captured every control in the footer is hidden, which left an
+  // empty band of chrome across the bottom of the empty state.
+  app.querySelector<HTMLElement>('footer')!.hidden = !capture;
   copy.hidden = !capture;
   copyOnly.hidden = !capture;
   shareButton.hidden = saveButton.hidden = !capture || !isTauri;

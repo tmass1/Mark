@@ -769,3 +769,14 @@ test('copying a multiple selection pastes all of it', async ({ page }) => {
   await expect(page.locator('.arrow')).toHaveCount(4);
   await expect(page.locator('.chosen')).toHaveText('2 selected');
 });
+
+test('the empty state has no footer to act on', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('footer')).toBeVisible();     // a capture is showing
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(page.locator('footer')).toBeHidden();
+  // And it comes back with the capture.
+  await page.locator('.recent').click();
+  await expect(page.locator('footer')).toBeVisible();
+});
