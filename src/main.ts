@@ -94,8 +94,8 @@ app.innerHTML = `
         <option value="1">100%</option><option value="2">200%</option><option value="4">400%</option>
       </select>
     </label>
-    <button class="choose subtle" type="button" hidden>Choose image…</button>
-    <button class="copy-only subtle" type="button" title="Copy the image and keep working">Copy <kbd>⌘⇧C</kbd></button>
+    <button class="choose glassy" type="button" hidden>Choose image…</button>
+    <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘⇧C</kbd></button>
     <button class="copy primary" type="button">Copy and Close <kbd>⌘C</kbd></button>
   </footer>
   <input class="file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />

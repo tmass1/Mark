@@ -179,8 +179,20 @@ new capture hides the old editor; cancel restores it and success replaces it.
   lifecycle.
 - `src-tauri/capabilities/editor.json` is the complete per-window API allowlist.
 
-The transparent overlay needs Tauri's `macos-private-api`, which rules out Mac
-App Store distribution. Mark does not target it.
+The editor window is transparent and sits on a native `underWindowBackground`
+vibrancy material, which macOS 26 draws with its Liquid Glass treatment. The
+stylesheet therefore tints that surface rather than painting over it: fills are
+translucent, separators are hairlines, and the only opaque thing in the window
+is the capture itself, which has to be exact. AppKit's own Liquid Glass API,
+`NSGlassEffectView`, is not exposed by Tauri, so the glass here is the system
+material rather than that view.
+
+Transparency, both for this window and for the selection overlay, needs Tauri's
+`macos-private-api`, which rules out Mac App Store distribution. Mark does not
+target it.
+
+The browser preview has no material behind it and paints a plain ground
+instead, so it shows the layout faithfully but not the glass.
 
 The frontend cannot run shell commands or read arbitrary files. Native capture calls
 `/usr/sbin/screencapture` directly with fixed arguments and a rectangle that is
