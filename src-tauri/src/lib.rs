@@ -5,7 +5,10 @@ mod session;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use session::{Session, Snapshot, State};
 use std::{path::Path, sync::{Mutex, atomic::Ordering}, time::Duration};
-use tauri::{AppHandle, Emitter, Manager, menu::{Menu, MenuItem, PredefinedMenuItem, Submenu}, tray::TrayIconBuilder};
+use tauri::{AppHandle, Emitter, Manager, menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu}, tray::TrayIconBuilder};
+
+/// Kept so the tick can be corrected when macOS disagrees with what was asked.
+struct LoginToggle(CheckMenuItem<tauri::Wry>);
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const EDITOR: &str = "editor";
@@ -236,12 +239,34 @@ fn open_screen_settings() -> Result<(), String> {
         .spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
+fn open_settings_pane(pane: &str) {
+    let _ = std::process::Command::new("/usr/bin/open").arg(pane).spawn();
+}
+
+/// macOS is the source of truth here, not the menu: the tick is set from the
+/// status after the change, never from what was requested.
+fn toggle_login_item(app: &AppHandle) {
+    let was_on = macos::login_item_status() == macos::LOGIN_ENABLED;
+    if let Err(error) = macos::set_login_item(!was_on) {
+        app.state::<LoginToggle>().0.set_checked(was_on).ok();
+        report(app, error);
+        return;
+    }
+    let status = macos::login_item_status();
+    app.state::<LoginToggle>().0.set_checked(status == macos::LOGIN_ENABLED).ok();
+    if status == macos::LOGIN_NEEDS_APPROVAL {
+        report(app, "Allow Mark under Login Items in System Settings to finish turning this on.".into());
+        open_settings_pane("x-apple.systempreferences:com.apple.LoginItems-Settings.extension");
+    }
+}
+
 fn menu_action(app: &AppHandle, id: &str) {
     match id {
         "capture" => { if let Err(e) = capture_region(app.clone()) { report(app, e); } }
         "show" => present(app),
         "copy" => { if let Err(e) = copy_capture(app.clone(), true) { report(app, e); } }
         "close" => { let _ = dismiss_editor(app.clone()); }
+        "login" => toggle_login_item(app),
         "quit" => {
             app.exit(0);
         }
@@ -274,14 +299,17 @@ pub fn run() {
             let show = MenuItem::with_id(app, "show", "Show Editor", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Mark", true, Some("Super+Q"))?;
             let separator = PredefinedMenuItem::separator(app)?;
-            let tray_menu = Menu::with_items(app, &[&capture, &show, &separator, &quit])?;
+            let login = CheckMenuItem::with_id(app, "login", "Open at Login", true,
+                macos::login_item_status() == macos::LOGIN_ENABLED, None::<&str>)?;
+            app.manage(LoginToggle(login.clone()));
+            let tray_menu = Menu::with_items(app, &[&capture, &show, &separator, &login, &separator, &quit])?;
             TrayIconBuilder::with_id("mark")
                 .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
                 .icon_as_template(true).tooltip("Mark — Capture Region (⌃⌥⌘4)")
                 .menu(&tray_menu).build(app)?;
             let copy = MenuItem::with_id(app, "copy", "Copy and Close", true, Some("Super+C"))?;
             let close = MenuItem::with_id(app, "close", "Close", true, Some("Super+W"))?;
-            let main = Submenu::with_items(app, "Mark", true, &[&capture, &show, &separator, &quit])?;
+            let main = Submenu::with_items(app, "Mark", true, &[&capture, &show, &separator, &login, &separator, &quit])?;
             let edit = Submenu::with_items(app, "Edit", true, &[&copy, &close])?;
             app.set_menu(Menu::with_items(app, &[&main, &edit])?)?;
             let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER), Code::Digit4);
@@ -294,10 +322,14 @@ pub fn run() {
                 app.state::<State>().lock().unwrap().error =
                     Some("Mark needs screen access to capture. Open System Settings to allow it, then reopen Mark.".into());
             }
-            // Launching Mark must show something. A tray-only start looks like a
-            // failed launch, so open the editor on its empty state, which names the
-            // shortcut. Escape or Command-W sends it back to the tray.
-            present(app.handle());
+            // A login launch should be silent; every other launch must show
+            // something, because a tray-only start looks like a failed one. Both
+            // signals have to agree, so anything ambiguous -- a login item opened
+            // by hand, a second session without a reboot -- errs towards showing
+            // the window, which is the harmless direction to be wrong in.
+            let at_login = macos::login_item_status() == macos::LOGIN_ENABLED
+                && macos::seconds_since_boot() < 300.0;
+            if !at_login { present(app.handle()); }
             Ok(())
         })
         .build(tauri::generate_context!())

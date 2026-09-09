@@ -53,7 +53,7 @@ app.innerHTML = `
       <svg class="viewfinder" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M12 5H7a2 2 0 0 0-2 2v5m15-7h5a2 2 0 0 1 2 2v5M5 20v5a2 2 0 0 0 2 2h5m15-7v5a2 2 0 0 1-2 2h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <h1>Capture a region</h1><p class="empty-hint">A little less between seeing and sharing.</p>
       <button class="start primary" type="button">Capture Region <kbd>⌃⌥⌘4</kbd></button>
-      <p class="quit-hint" hidden>⌘W hides Mark · ⌘Q quits it</p>
+      <p class="quit-hint" hidden>Mark lives in the menu bar · ⌘W hides it · ⌘Q quits</p>
     </section>
   </main>
   <aside class="message" role="status" aria-live="polite" hidden><span></span><button class="settings" hidden>Open System Settings</button></aside>

@@ -67,7 +67,11 @@ notarization; an Apple Development certificate is only good for this Mac.
 ## Use
 
 1. Launch Mark. The editor opens on its empty state so the launch is visible.
-   Mark itself lives in the menu bar and never appears in the Dock.
+   Mark itself lives in the menu bar and never appears in the Dock. Turn on
+   **Open at Login** in that menu to have Mark running after a restart; macOS
+   may ask you to approve it under Login Items in System Settings. A login
+   start is deliberately silent, while every other launch still opens the
+   editor, because a start with no window at all reads as a failed launch.
 2. Press **⌃⌥⌘4**, or choose **Capture Region** from Mark's menu.
 3. Grant Screen Recording access when macOS asks. This permission is also used
    for still screenshots; Mark does not capture audio or video.
@@ -145,7 +149,11 @@ new capture hides the old editor; cancel restores it and success replaces it.
 - `src-tauri/src/capture.rs` owns region capture, PNG validation, cancellation,
   and temporary-file cleanup.
 - `src-tauri/src/macos.rs` contains the small AppKit/Core Graphics bridge for
-  permissions, clipboard output, and focus restoration.
+  permissions, clipboard output, focus restoration, overlay window level, and
+  login-item registration. SMAppService is reached through the Objective-C
+  runtime rather than a binding crate, and reports `notFound` rather than
+  `notRegistered` until the app has been registered once, so status is compared
+  against `enabled` rather than tested for absence.
 - `src-tauri/src/session.rs` owns the single in-memory capture session.
 - `src-tauri/src/lib.rs` wires the tray, shortcut, window, commands, and app
   lifecycle.

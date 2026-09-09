@@ -1,4 +1,5 @@
-use objc2::{AnyThread, MainThreadMarker};
+use objc2::runtime::{AnyClass, AnyObject};
+use objc2::{msg_send, rc::Retained, AnyThread, MainThreadMarker};
 use objc2_app_kit::{NSApplication, NSImage, NSPasteboard, NSRunningApplication, NSApplicationActivationOptions,
                     NSWindow, NSWindowCollectionBehavior, NSWorkspace};
 use objc2_foundation::{NSData, NSString};
@@ -21,6 +22,49 @@ pub fn screen_access() -> bool {
 /// Reports the current state without prompting, for a check at startup that
 /// must not throw a dialog at someone who only just opened the app.
 pub fn screen_access_granted() -> bool { unsafe { CGPreflightScreenCaptureAccess() } }
+
+/// Seconds since the machine booted, used to tell a login launch from someone
+/// opening Mark themselves.
+pub fn seconds_since_boot() -> f64 {
+    unsafe {
+        let class = match AnyClass::get(c"NSProcessInfo") { Some(class) => class, None => return f64::MAX };
+        let info: Retained<AnyObject> = msg_send![class, processInfo];
+        msg_send![&*info, systemUptime]
+    }
+}
+
+/// SMAppService, reached through the runtime rather than a dedicated crate.
+/// Status values are SMAppServiceStatus: 0 not registered, 1 enabled,
+/// 2 awaiting approval in System Settings, 3 not found.
+pub const LOGIN_ENABLED: i64 = 1;
+pub const LOGIN_NEEDS_APPROVAL: i64 = 2;
+/// Distinct from SMAppServiceStatus's own values, so "the API is not there" is
+/// never mistaken for anything it reports.
+pub const LOGIN_UNAVAILABLE: i64 = -1;
+
+fn app_service() -> Option<Retained<AnyObject>> {
+    let class = AnyClass::get(c"SMAppService")?;
+    unsafe { msg_send![class, mainAppService] }
+}
+
+pub fn login_item_status() -> i64 {
+    let Some(service) = app_service() else { return LOGIN_UNAVAILABLE };
+    unsafe { msg_send![&*service, status] }
+}
+
+pub fn set_login_item(enabled: bool) -> Result<(), String> {
+    let Some(service) = app_service() else {
+        return Err("Opening at login needs macOS 13 or newer.".into());
+    };
+    let mut failure: *mut AnyObject = std::ptr::null_mut();
+    let ok: bool = unsafe {
+        if enabled { msg_send![&*service, registerAndReturnError: &mut failure] }
+        else { msg_send![&*service, unregisterAndReturnError: &mut failure] }
+    };
+    if ok { return Ok(()); }
+    Err(if enabled { "Mark couldn't be added to your login items.".into() }
+        else { "Mark couldn't be removed from your login items.".into() })
+}
 
 pub fn frontmost_pid() -> Option<i32> {
     NSWorkspace::sharedWorkspace().frontmostApplication().map(|app| app.processIdentifier())
