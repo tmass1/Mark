@@ -274,6 +274,14 @@ export class AnnotationLayer {
     this.measure(); this.render();
   }
 
+  /** Put a saved drawing back, without disturbing the capture it belongs to. */
+  load(items: readonly Annotation[]): void {
+    this.items = items.map(item => ({ ...item }));
+    this.nextId = this.items.reduce((most, item) => Math.max(most, item.id), 0) + 1;
+    this.past = []; this.selected = null; this.pendingCrop = null;
+    this.render(); this.onChange();
+  }
+
   /** The capture itself, which redaction samples. */
   setSource(source: HTMLImageElement): void { this.source = source; }
 

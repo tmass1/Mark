@@ -98,3 +98,9 @@ h1 { margin: 16px 0 8px; font-size: 19px; font-weight: 600; letter-spacing: -.3p
 .crop-size { color: #b8b8bd; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .crop-bar .subtle { color: #b8b8bd; }
 .crop-bar .subtle:hover { color: #fff; }
+.recents { margin-top: 28px; }
+.recents-label { margin: 0 0 10px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+.recent-list { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.recent { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--chrome); color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.recent:hover { border-color: var(--blue); color: var(--blue); }
+.recent img { display: block; width: 84px; height: auto; max-height: 60px; object-fit: cover; border-radius: 4px; }

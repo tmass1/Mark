@@ -202,11 +202,11 @@ fn copy_capture(app: AppHandle, close: bool) -> Result<(), String> {
 fn copy_edited(app: AppHandle, png: String, close: bool) -> Result<(), String> {
     // Roughly 96 MB of image once decoded, well past any real screenshot.
     if png.len() > 128 * 1024 * 1024 { return Err("The edited screenshot is too large to copy.".into()); }
-    {
-        let state = app.state::<State>();
-        let session = state.lock().unwrap();
-        if session.busy { return Err("Finish selecting the region first.".into()); }
-        if session.capture.is_none() { return Err("There is no screenshot to copy.".into()); }
+    // No check for a live session capture: the editor also sends images it
+    // restored from its own history, which Rust no longer holds. The bytes are
+    // validated below, which is what actually matters here.
+    if app.state::<State>().lock().unwrap().busy {
+        return Err("Finish selecting the region first.".into());
     }
     let bytes = STANDARD.decode(png.as_bytes()).map_err(|_| "The edited screenshot couldn't be read.")?;
     capture::validate_png(&bytes)?;

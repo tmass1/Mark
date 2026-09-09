@@ -540,3 +540,66 @@ test('a redaction is re-sampled after a crop moves it', async ({ page }) => {
   expect(middle.b).toBeGreaterThan(180);
   expect(middle.r).toBeLessThan(140);
 });
+
+test('a closed capture comes back from Recent, drawing and all', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [600, 300]);
+  await page.locator('.swatch[data-color="#34c759"]').click();
+  const drawn = await page.locator('.arrow').getAttribute('d');
+
+  await page.keyboard.press('Escape');                    // clear the selection
+  await page.keyboard.press('Escape');                    // and close
+  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(page.locator('.recent')).toHaveCount(1);
+  await expect(page.locator('.recent')).toContainText('1200 × 740');
+  // The thumbnail is a real picture, not a placeholder.
+  const thumb = await page.locator('.recent img').getAttribute('src');
+  expect(thumb!.startsWith('data:image/png;base64,')).toBe(true);
+  expect(thumb!.length).toBeGreaterThan(500);
+
+  await page.locator('.recent').click();
+  await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
+  await expect(page.locator('.dimensions')).toHaveText('1200 × 740 px');
+  // The arrow is back, in the colour it was left in.
+  await expect(page.locator('.arrow')).toHaveCount(1);
+  await expect(page.locator('.arrow')).toHaveAttribute('fill', '#34c759');
+  expect(await page.locator('.arrow').getAttribute('d')).toEqual(drawn);
+});
+
+test('a restored capture can still be copied', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async (items: any[]) => {
+      const bitmap = await createImageBitmap(await items[0].getType('image/png'));
+      document.body.dataset.copiedSize = `${bitmap.width}x${bitmap.height}`;
+    } } });
+  });
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [600, 300]);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await page.locator('.recent').click();
+  await expect(page.locator('.arrow')).toHaveCount(1);
+  await page.getByRole('button', { name: /Copy and Close/ }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-copied-size', '1200x740');
+});
+
+test('Recent lists the newest capture first', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Escape');                    // close the sample
+  await expect(page.locator('.recent')).toHaveCount(1);
+
+  await page.locator('input[type=file]').setInputFiles('src-tauri/icons/128x128.png');
+  await expect(page.locator('.dimensions')).toHaveText('128 × 128 px');
+  await page.keyboard.press('Escape');
+
+  await expect(page.locator('.recent')).toHaveCount(2);
+  await expect(page.locator('.recent').first()).toContainText('128 × 128');
+  await expect(page.locator('.recent').nth(1)).toContainText('1200 × 740');
+});
+
+test('no Recent section until something has been closed', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.recents')).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.recents')).toBeVisible();
+});

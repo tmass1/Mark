@@ -3,7 +3,15 @@ import { command, isTauri, watchCapture, type CapturePreview, type Snapshot } fr
 import { copyThenDismiss, type EditorSize } from './model';
 import { preferences } from './preferences';
 import { sampleCapture } from './sample';
-import { AnnotationLayer, COLORS, describe, drawAnnotations, textSize, type Tool } from './annotations';
+import { AnnotationLayer, COLORS, describe, drawAnnotations, textSize,
+         type Annotation, type Tool } from './annotations';
+
+/** Captures kept after they leave the editor, newest first. Memory only: this
+ *  is an undo for closing, not a library. */
+interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[] }
+const KEPT = 6;
+/** Roughly 90 MB of image once decoded from base64. */
+const KEPT_CHARS = 120_000_000;
 
 /** Six tools do not fit as words, so the palette is glyphs with real labels
  *  behind them for screen readers and tooltips. */
@@ -53,6 +61,10 @@ app.innerHTML = `
       <svg class="viewfinder" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M12 5H7a2 2 0 0 0-2 2v5m15-7h5a2 2 0 0 1 2 2v5M5 20v5a2 2 0 0 0 2 2h5m15-7v5a2 2 0 0 1-2 2h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <h1>Capture a region</h1><p class="empty-hint">A little less between seeing and sharing.</p>
       <button class="start primary" type="button">Capture Region <kbd>⌃⌥⌘4</kbd></button>
+      <section class="recents" hidden aria-label="Recent captures">
+        <p class="recents-label">Recent</p>
+        <div class="recent-list"></div>
+      </section>
       <p class="quit-hint" hidden>Mark lives in the menu bar · ⌘W hides it · ⌘Q quits</p>
     </section>
   </main>
@@ -86,6 +98,8 @@ const input = app.querySelector<HTMLInputElement>('.file-input')!;
 const message = app.querySelector<HTMLElement>('.message')!;
 const settings = app.querySelector<HTMLButtonElement>('.settings')!;
 const cropBar = app.querySelector<HTMLElement>('.crop-bar')!;
+const recents = app.querySelector<HTMLElement>('.recents')!;
+const recentList = app.querySelector<HTMLElement>('.recent-list')!;
 const cropSize = app.querySelector<HTMLElement>('.crop-size')!;
 const abort = new AbortController();
 const cleanups: (() => void)[] = [];
@@ -94,7 +108,9 @@ let busy = false;
 let copyPending = false;
 let disposed = false;
 let shown: CapturePreview | null = null;
-let cropped = false;
+let mustFlatten = false;
+const past: Past[] = [];
+let pastId = 1;
 const crops: { capture: CapturePreview; dx: number; dy: number; depth: number }[] = [];
 
 const layer = new AnnotationLayer(overlay, stage, () => syncTools());
@@ -155,13 +171,19 @@ function render() {
     // A different capture means a different drawing surface. A crop swaps the
     // image in place and updates `shown` itself, so it is not mistaken for one.
     if (capture !== shown) {
+      if (shown) remember(shown);
       image.src = capture.dataUrl;
       stage.style.setProperty('--ratio', `${capture.width} / ${capture.height}`);
       layer.setImage(capture.width, capture.height);
-      shown = capture; cropped = false; crops.length = 0;
+      shown = capture; mustFlatten = false; crops.length = 0;
     }
     image.alt = `Captured screenshot, ${capture.width} by ${capture.height} pixels`;
-  } else image.removeAttribute('src');
+  } else {
+    // The capture is on its way out, so keep it before the layer is reset.
+    if (shown) { remember(shown); shown = null; mustFlatten = false; crops.length = 0; }
+    image.removeAttribute('src');
+  }
+  drawRecents();
   app.querySelector('.dimensions')!.textContent = capture ? `${capture.width} × ${capture.height} px` : '';
   copy.hidden = !capture;
   copyOnly.hidden = !capture;
@@ -211,7 +233,7 @@ async function copyCapture(close = true) {
     if (isTauri) {
       // An untouched capture keeps its original bytes; only a drawing re-encodes.
       // A crop makes the original bytes wrong, so it forces a re-encode too.
-      if (layer.empty && !cropped) await command('copy_capture', { close });
+      if (layer.empty && !mustFlatten) await command('copy_capture', { close });
       else await command('copy_edited', { png: (await flatten()).toDataURL('image/png').split(',')[1], close });
       if (close) capture = null; else flash('Copied to clipboard.');
     } else {
@@ -262,6 +284,64 @@ const observer = new ResizeObserver(() => layer.measure());
 observer.observe(stage);
 cleanups.push(() => observer.disconnect());
 
+/** A small picture of the capture as it stood, drawing and all, so a recent
+ *  entry is recognisable at a glance rather than a grey rectangle. */
+function thumbnail(width = 168): string {
+  const scale = Math.min(1, width / (image.naturalWidth || width));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext('2d')!;
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.scale(scale, scale);
+  drawAnnotations(context, layer.annotations, image);
+  return canvas.toDataURL('image/png');
+}
+
+/** Hold on to a capture that is leaving the editor. */
+function remember(leaving: CapturePreview) {
+  if (!image.complete || !image.naturalWidth) return;
+  past.unshift({ id: pastId++, capture: leaving, thumb: thumbnail(),
+                 annotations: layer.annotations.map(item => ({ ...item })) });
+  let total = 0;
+  for (let index = 0; index < past.length; index++) {
+    total += past[index].capture.dataUrl.length;
+    if (index >= KEPT || total > KEPT_CHARS) { past.length = Math.max(1, index); break; }
+  }
+}
+
+/** Bring a kept capture back, drawing and all. Rust no longer holds it, so
+ *  copying will go through the flatten path from here on. */
+function restore(entry: Past) {
+  capture = entry.capture;
+  mustFlatten = true;
+  crops.length = 0;
+  image.src = entry.capture.dataUrl;
+  stage.style.setProperty('--ratio', `${entry.capture.width} / ${entry.capture.height}`);
+  layer.setImage(entry.capture.width, entry.capture.height);
+  layer.load(entry.annotations);
+  shown = entry.capture;
+  render();
+}
+
+function drawRecents() {
+  recents.hidden = !!capture || past.length === 0;
+  if (recents.hidden) { recentList.replaceChildren(); return; }
+  recentList.replaceChildren(...past.map(entry => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'recent';
+    button.title = `Reopen this ${entry.capture.width} × ${entry.capture.height} capture`;
+    const thumb = document.createElement('img');
+    thumb.src = entry.thumb; thumb.alt = '';
+    const size = document.createElement('span');
+    size.textContent = `${entry.capture.width} × ${entry.capture.height}`;
+    button.append(thumb, size);
+    button.addEventListener('click', () => restore(entry), { signal: abort.signal });
+    return button;
+  }));
+}
+
 /** Trim the capture to the pending rectangle. The drawing comes along, shifted
  *  to match, so a crop never silently discards work. */
 async function applyCrop() {
@@ -277,7 +357,7 @@ async function applyCrop() {
   crops.push({ capture, dx: crop.x, dy: crop.y, depth: layer.undoDepth });
   layer.shiftBy(-crop.x, -crop.y);
   capture = { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
-  cropped = true;
+  mustFlatten = true;
   swapImage(capture);
 }
 
@@ -297,7 +377,7 @@ function stepBack() {
     crops.pop();
     layer.shiftBy(last.dx, last.dy);
     capture = last.capture;
-    cropped = crops.length > 0;
+    mustFlatten = crops.length > 0 || mustFlatten;
     swapImage(last.capture);
     return;
   }

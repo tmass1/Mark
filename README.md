@@ -122,6 +122,10 @@ notarization; an Apple Development certificate is only good for this Mac.
 
    A capture you did not draw on is copied as the original bytes macOS
    produced; only a drawing is flattened and re-encoded.
+7. A closed capture is not gone. **Recent** on the empty state holds the last
+   six, drawing and all, so closing one by accident costs a click rather than
+   the shot. It lives in memory only and does not survive quitting Mark:
+   it is an undo for closing, not a library.
 
 Escape, ⌘W, or the red traffic-light button closes without copying. Starting a
 new capture hides the old editor; cancel restores it and success replaces it.
@@ -135,6 +139,12 @@ new capture hides the old editor; cancel restores it and success replaces it.
   `screencapture -R` reads. macOS's own picker is not used; it returns an image
   and nothing else, so it cannot hold a selection open for resizing, exact
   sizing, or a delayed shutter.
+- `src/main.ts` keeps the recent captures, with each entry holding the image,
+  a thumbnail drawn with its annotations, and the annotations themselves, so a
+  restored capture comes back as it was left. Rust no longer holds a restored
+  capture, so copying one goes through the flatten path; `copy_edited`
+  deliberately does not require a live session capture, and validates the bytes
+  it is given instead.
 - `src/annotations.ts` owns arrow geometry, text notes, rectangle shapes, the
   SVG overlay, and hit-testing. Redaction samples the capture itself, averaging
   each block down and drawing it back with smoothing off, so the detail is gone
@@ -192,7 +202,9 @@ looking like it; another moves a redaction onto different content and reads the
 patch back, since a stale patch would both mislead and leak the region it was
 cut from. Cropping is covered for the trim itself, for carrying the drawing
 along, for undo ordering against drawing, and for re-sampling a redaction into
-the cropped image's coordinates. Rust tests cover PNG preservation and validation,
+the cropped image's coordinates. Recent captures are covered for round-tripping a
+drawing through a close, for ordering, and for copying something restored after
+Rust has forgotten it. Rust tests cover PNG preservation and validation,
 cancellation/error classification, capture re-entry, child-process
 cancellation, and temporary cleanup.
 
