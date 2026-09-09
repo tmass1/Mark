@@ -241,8 +241,27 @@ whatever the zoom. Rust tests cover PNG preservation and validation,
 cancellation/error classification, capture re-entry, child-process
 cancellation, and temporary cleanup.
 
-For a manual release check, verify the shortcut from another app, screen-access
-grant and denial, selection on every attached display, a delayed capture that
-catches an open menu, Copy and Close into
-Preview, cancellation with an existing editor, focus restoration, and quit
-during selection.
+A stand-in for Tauri's bridge (`tests/bridge.ts`) lets the browser tests run the
+editor's real native path — `isTauri` true, the real `invoke`, the real plugin
+traffic — and assert on what reaches Rust. That covers command names and
+arguments, which nothing else does: in the ordinary browser preview capture
+falls back to a file picker and copying goes to the web clipboard, so a renamed
+command or a dropped argument would only surface in the built app. It covers the
+delay surviving the trip to Rust, an untouched capture copying by reference
+while a drawing switches to the flattened path, and the overlay reporting its
+selection in global points — the display's own origin added, which is what keeps
+a second monitor from capturing whatever sits at those coordinates on the first.
+
+Four things no test can reach, because they need a real screen, a real pointer,
+or a restart:
+
+1. **Whole Screen** grabs the display the pointer is on, not another one.
+2. **Timed Region** opens with the delay already armed, the screen clears at
+   once, and the count runs in the menu bar.
+3. A selection on a second display captures that display's content.
+4. With **Open at Login** on, a restart brings Mark back with no editor window,
+   while opening it by hand still shows one.
+
+Beyond those, check the shortcut from another app, screen-access grant and
+denial, Copy and Close into Preview, cancellation with an existing editor,
+focus restoration, and quit during selection.
