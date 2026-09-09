@@ -126,7 +126,7 @@ pub fn share_file(handle: *mut std::ffi::c_void, path: &std::path::Path) -> Resu
     };
     if handle.is_null() { return Err("Mark's window isn't available to share from.".into()); }
     let text = path.to_str().ok_or("That file path can't be shared.")?;
-    let url = unsafe { NSURL::fileURLWithPath(&NSString::from_str(text)) };
+    let url = NSURL::fileURLWithPath(&NSString::from_str(text));
     // The picker takes a heterogeneous list, so the URL goes in as a plain object.
     let item: Rc<AnyObject> = unsafe { Rc::cast_unchecked(url) };
     let items = NSArray::from_retained_slice(&[item]);
