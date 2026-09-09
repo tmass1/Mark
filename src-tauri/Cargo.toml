@@ -17,7 +17,6 @@ tauri-build = { version = "2.6", features = [] }
 # App Store distribution, which Mark does not target.
 tauri = { version = "2.11", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-global-shortcut = "2.3"
-tauri-plugin-store = "2.4"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

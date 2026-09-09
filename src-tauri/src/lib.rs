@@ -16,6 +16,35 @@ const EDITOR: &str = "editor";
 /// One overlay window per display, labelled selector-0, selector-1, and so on.
 const SELECTOR: &str = "selector-";
 
+/// Title bar, toolbar and footer, in points: the height the editor needs before
+/// any of the capture is visible.
+const CHROME: f64 = 46.0 + 48.0 + 62.0;
+/// The canvas breathes 26pt on each side.
+const CANVAS_PADDING: f64 = 52.0;
+/// Enough for the empty state and a row of recents, and no more.
+const COMPACT: (f64, f64) = (560.0, 460.0);
+
+/// Size the window to its contents: the capture at actual size where the screen
+/// allows, and small when there is nothing to show. A screenshot editor whose
+/// window is whatever size it was left at last time is arbitrary twice over --
+/// too big for the empty state, the wrong shape for the next capture.
+fn fit_window(app: &AppHandle, to: Option<(f64, f64)>) {
+    let Some(window) = app.get_webview_window(EDITOR) else { return };
+    let (mut width, mut height) = match to {
+        Some((w, h)) => (w + CANVAS_PADDING, h + CANVAS_PADDING + CHROME),
+        None => COMPACT,
+    };
+    // Never larger than the screen it will appear on, less a margin so the
+    // window does not sit edge to edge.
+    if let Ok(Some(monitor)) = window.current_monitor().or_else(|_| app.primary_monitor()) {
+        let visible = monitor.size().to_logical::<f64>(monitor.scale_factor());
+        width = width.min(visible.width - 80.0);
+        height = height.min(visible.height - 120.0);
+    }
+    let size = tauri::LogicalSize::new(width.max(COMPACT.0.min(380.0)).max(380.0), height.max(280.0));
+    if window.set_size(size).is_ok() { let _ = window.center(); }
+}
+
 fn changed(app: &AppHandle) {
     if let Err(error) = app.emit_to(EDITOR, "capture-changed", ()) { eprintln!("[Mark] {error}"); }
 }
@@ -179,6 +208,7 @@ fn take_selection(app: &AppHandle, rect: capture::Rect, delay: u32) {
             Path::new("/usr/sbin/screencapture"), &std::env::temp_dir(), &cancelled, Some(rect));
         let handle = app.clone();
         if let Err(error) = app.run_on_main_thread(move || {
+            let mut wanted: Option<(f64, f64)> = None;
             let show = {
                 let state = handle.state::<State>();
                 let mut session = state.lock().unwrap();
@@ -189,6 +219,7 @@ fn take_selection(app: &AppHandle, rect: capture::Rect, delay: u32) {
                         // Pixels divided by the points asked for: exactly the
                         // density of the display it came off.
                         if rect.width >= 1.0 { capture.scale = f64::from(capture.width) / rect.width; }
+                        wanted = Some((rect.width, rect.height));
                         session.capture = Some(capture);
                         true
                     }
@@ -197,6 +228,9 @@ fn take_selection(app: &AppHandle, rect: capture::Rect, delay: u32) {
                 }
             };
             changed(&handle);
+            // Resize before showing, so the window arrives at its size rather
+            // than being seen to grow into it.
+            if wanted.is_some() { fit_window(&handle, wanted); }
             if show { present(&handle); }
         }) { eprintln!("[Mark] {error}"); }
     });
@@ -258,6 +292,8 @@ fn dismiss_editor(app: AppHandle) -> Result<(), String> {
     session.capture = None; session.error = None;
     let previous = session.previous_pid.take();
     drop(session);
+    // Back to the empty state, so back to the small window.
+    fit_window(&app, None);
     changed(&app); macos::restore_focus(previous);
     Ok(())
 }
@@ -363,7 +399,6 @@ fn menu_action(app: &AppHandle, id: &str) {
 pub fn run() {
     tauri::Builder::default()
         .manage(Mutex::new(Session::default()))
-        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
             if event.state() == ShortcutState::Pressed {

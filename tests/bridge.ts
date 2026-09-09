@@ -37,9 +37,6 @@ export async function installBridge(page: Page, snapshot: {
       async invoke(cmd: string, args: Record<string, unknown> = {}) {
         // Plugin traffic is plumbing, not contract; answer it and move on.
         if (cmd.startsWith('plugin:event|')) return next++;
-        if (cmd === 'plugin:store|load' || cmd === 'plugin:store|get_store') return next++;
-        if (cmd === 'plugin:store|get') return [null, false];
-        if (cmd.startsWith('plugin:store|')) return undefined;
         sent.push({ cmd, args });
         if (state.fails[cmd]) throw state.fails[cmd];
         if (cmd === 'current_capture') {

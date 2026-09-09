@@ -1,7 +1,6 @@
 import './style.css';
 import { command, isTauri, watchCapture, type CapturePreview, type Snapshot } from './platform';
-import { copyThenDismiss, type EditorSize } from './model';
-import { preferences } from './preferences';
+import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
 import { AnnotationLayer, COLORS, describe, drawAnnotations, textSize,
          type Annotation, type Tool } from './annotations';
@@ -629,42 +628,6 @@ document.addEventListener('keydown', event => {
   }
 }, { signal: abort.signal });
 
-async function installPreferences() {
-  const store = await preferences();
-  let lastSize = await store.getSize();
-  let applying = false;
-  const applySize = async (size: EditorSize | null) => {
-    if (!size || disposed) return;
-    lastSize = size;
-    if (isTauri) {
-      const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
-      applying = true;
-      try { await getCurrentWindow().setSize(new LogicalSize(Math.min(size.width, screen.availWidth), Math.min(size.height, screen.availHeight))); }
-      finally { applying = false; }
-    }
-  };
-  // Subscribe before reading again so another window's update cannot get lost.
-  const unsubscribe = await store.onSizeChange(size => {
-    if (size?.width !== lastSize?.width || size?.height !== lastSize?.height) void applySize(size).catch(report);
-  });
-  if (disposed) { unsubscribe(); return; }
-  cleanups.push(unsubscribe);
-  await applySize(await store.getSize());
-  let timer: ReturnType<typeof setTimeout>;
-  const remember = () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      if (applying || disposed) return;
-      const size = { width: window.innerWidth, height: window.innerHeight };
-      if (size.width === lastSize?.width && size.height === lastSize?.height) return;
-      lastSize = size;
-      void store.setSize(size).catch(report);
-    }, 180);
-  };
-  window.addEventListener('resize', remember, { signal: abort.signal });
-  cleanups.push(() => clearTimeout(timer));
-}
-
 async function init() {
   if (isTauri) {
     app.querySelector<HTMLElement>('.quit-hint')!.hidden = false;
@@ -677,7 +640,6 @@ async function init() {
     choose.hidden = false;
     capture = sampleCapture(); render();
   }
-  await installPreferences();
 }
 render();
 void init().catch(report);

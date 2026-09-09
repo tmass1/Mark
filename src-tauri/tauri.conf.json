@@ -8,7 +8,7 @@
   "app": {
     "macOSPrivateApi": true,
     "windows": [{
-      "label": "editor", "title": "Mark", "width": 800, "height": 580,
+      "label": "editor", "title": "Mark", "width": 560, "height": 460,
       "minWidth": 380, "minHeight": 280, "visible": false, "center": true,
       "resizable": true, "alwaysOnTop": true, "skipTaskbar": true,
       "titleBarStyle": "Overlay", "hiddenTitle": true, "dragDropEnabled": false,

@@ -28,23 +28,6 @@ test('clipboard denial retains the capture and Escape dismisses without copying'
   await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
 });
 
-test('localStorage size preferences notify another browser window', async ({ context }) => {
-  const first = await context.newPage();
-  const second = await context.newPage();
-  await first.goto('/'); await second.goto('/');
-  await second.evaluate(async () => {
-    const { preferences } = await import('/src/preferences.ts');
-    const store = await preferences();
-    await store.onSizeChange(size => { document.body.dataset.observedSize = JSON.stringify(size); });
-  });
-  await first.evaluate(async () => {
-    const { preferences } = await import('/src/preferences.ts');
-    await (await preferences()).setSize({ width: 900, height: 620 });
-  });
-  await expect(second.locator('body')).toHaveAttribute('data-observed-size', '{"width":900,"height":620}');
-  expect(await second.evaluate(() => JSON.parse(localStorage.getItem('mark.editorSize')!))).toEqual({ width: 900, height: 620 });
-});
-
 test('choosing a local image updates dimensions and copy uses PNG', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'clipboard', { value: { write: async (items: ClipboardItem[]) => {

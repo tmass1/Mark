@@ -36,9 +36,8 @@ pnpm dev
 ```
 
 Open `http://127.0.0.1:1420`. The browser preview supplies a local sample image
-and a file picker. It never calls native commands. Persistence uses localStorage
-and storage events in a browser, and `tauri-plugin-store` with `onKeyChange` in
-the app. Screenshots are never persisted.
+and a file picker. It never calls native commands. Nothing is written to disk
+unless you save a file: no preferences, no history, no screenshots.
 
 ## Build the app
 
@@ -186,7 +185,6 @@ new capture hides the old editor; cancel restores it and success replaces it.
   shape to SVG for display and to a canvas for export, so the copied image
   matches the screen.
 - `src/platform.ts` is the only frontend boundary for native commands.
-- `src/preferences.ts` selects the shared Tauri store or browser localStorage.
 - `src-tauri/src/capture.rs` owns region capture, PNG validation, cancellation,
   and temporary-file cleanup.
 - `src-tauri/src/macos.rs` contains the small AppKit/Core Graphics bridge for
@@ -200,7 +198,12 @@ new capture hides the old editor; cancel restores it and success replaces it.
   against `enabled` rather than tested for absence.
 - `src-tauri/src/session.rs` owns the single in-memory capture session.
 - `src-tauri/src/lib.rs` wires the tray, shortcut, window, commands, and app
-  lifecycle.
+  lifecycle, and sizes the editor to what it is showing: the capture at actual
+  size where the screen allows, and a compact window when there is nothing to
+  show. Mark does not remember a window size between captures, because a window
+  that fits its contents cannot also restore an arbitrary earlier one — and a
+  remembered size is arbitrary twice over, too big for the empty state and the
+  wrong shape for the next capture.
 - `src-tauri/capabilities/editor.json` is the complete per-window API allowlist.
 
 The editor window is transparent and sits on a native `underWindowBackground`
@@ -249,7 +252,7 @@ Browser screenshots are written to `test-results/editor-light.png` and
 `test-results/editor-dark.png`. The selection overlay has its own spec, covering
 the drag, the size fields, the ratio lock, the whole-display button, and the
 timer -- including a delay armed before the overlay opened. Browser tests cover responsive rendering,
-clipboard failures, keyboard dismissal, local image loading, preference sync,
+clipboard failures, keyboard dismissal, local image loading,
 and the annotation lifecycle: drawing, typing, restyling, moving, reopening a
 note, deleting, undo, mixing both tools, and that a copied image carries the
 annotation at full resolution. Unit tests cover arrow geometry, text layout,
