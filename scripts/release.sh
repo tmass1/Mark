@@ -15,9 +15,13 @@ step() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 fail() { printf '\n\033[31m%s\033[0m\n' "$1" >&2; }
 
 step "Looking for a Developer ID certificate"
-IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
-  | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)".*/\1/' || true)
-if [ -z "$IDENTITY" ]; then
+# Chosen by fingerprint, never by name. Two certificates can carry the same
+# name -- through a renewal you hold the old one and the new one at once -- and
+# codesign refuses an ambiguous name rather than picking for you. Taking the
+# first match would sign with whichever the keychain happened to list first.
+MATCHES=$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" || true)
+COUNT=$(printf '%s' "$MATCHES" | grep -c . || true)
+if [ "$COUNT" -eq 0 ]; then
   fail "No Developer ID Application certificate in your keychain."
   cat >&2 <<'HELP'
 
@@ -34,6 +38,33 @@ Then run this again.
 HELP
   exit 1
 fi
+
+if [ -n "${MARK_SIGNING_IDENTITY:-}" ]; then
+  MATCHES=$(printf '%s\n' "$MATCHES" | grep -F "$MARK_SIGNING_IDENTITY" || true)
+  if [ -z "$MATCHES" ]; then
+    fail "No Developer ID certificate matches MARK_SIGNING_IDENTITY='$MARK_SIGNING_IDENTITY'."
+    exit 1
+  fi
+  COUNT=$(printf '%s' "$MATCHES" | grep -c . || true)
+fi
+
+if [ "$COUNT" -gt 1 ]; then
+  fail "$COUNT Developer ID Application certificates. Which one should sign this?"
+  printf '%s\n' "$MATCHES" >&2
+  cat >&2 <<'HELP'
+
+Say which, by fingerprint:
+
+  MARK_SIGNING_IDENTITY=<fingerprint> ./scripts/release.sh
+
+or delete the one you have finished with, in Keychain Access > login >
+My Certificates.
+HELP
+  exit 1
+fi
+
+IDENTITY=$(printf '%s\n' "$MATCHES" | awk '{print $2}')
+echo "  $(printf '%s\n' "$MATCHES" | sed -E 's/.*"(.*)".*/\1/')"
 echo "  $IDENTITY"
 
 step "Checking notarization credentials"
