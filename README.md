@@ -160,6 +160,32 @@ notarization; an Apple Development certificate is only good for this Mac.
 Escape, ⌘W, or the red traffic-light button closes without copying. Starting a
 new capture hides the old editor; cancel restores it and success replaces it.
 
+## The mark
+
+Mark's icon is a red arrow on a dark ground, over three faint lines standing in
+for whatever was captured: a screenshot with a mark on it, which is the whole
+of what the app does.
+
+The arrow is not drawn by hand. It comes out of `arrowPolygon` in
+`src/annotations.ts`, the same function that draws every arrow in the editor,
+so the identity is literally the thing the product makes and cannot drift from
+it.
+
+Artwork is drawn per size rather than scaled from one image. The lines are the
+idea at 128px and up, and noise below that, so smaller sizes simply do not draw
+them and the icon degrades to the arrow alone. The shape is a superellipse
+rather than a rounded rectangle, which is what macOS's continuous corners
+actually are, inset to Apple's 824-of-1024 grid. The menu bar icon is the same
+arrow as alpha only, so macOS can tint it for light, dark and highlighted
+states.
+
+Red is the brand; blue stays the system accent for controls. Identity and
+interface should not compete, and the red is the colour Mark draws with by
+default anyway.
+
+`scripts/build-icon.mjs` regenerates every size, the `.icns` and the menu bar
+icon from those definitions.
+
 ## Architecture
 
 - `src/` is framework-free TypeScript, HTML, and CSS for the editor.
