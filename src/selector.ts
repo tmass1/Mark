@@ -3,7 +3,13 @@ import { clampRect, fitRatio, type Rect } from './region';
 
 /** Injected per window by Rust: where this display starts in the global point
  *  space that screencapture -R also uses, and how big it is. */
-declare global { interface Window { __MARK_DISPLAY__?: { x: number; y: number; width: number; height: number; scale: number } } }
+declare global {
+  interface Window {
+    __MARK_DISPLAY__?: { x: number; y: number; width: number; height: number; scale: number };
+    /** A delay chosen before the overlay opened, from Capture's menu. */
+    __MARK_DELAY__?: number;
+  }
+}
 const display = window.__MARK_DISPLAY__ ?? { x: 0, y: 0, width: innerWidth, height: innerHeight, scale: 1 };
 const inTauri = '__TAURI_INTERNALS__' in window;
 const DELAYS = [0, 3, 5, 10];
@@ -49,7 +55,7 @@ const delayButton = root.querySelector<HTMLButtonElement>('.delay')!;
 let rect: Rect | null = null;
 let ratio = 1;
 let locked = false;
-let delay = 0;
+let delay = DELAYS.includes(window.__MARK_DELAY__ ?? 0) ? window.__MARK_DELAY__! : 0;
 let drag: { kind: 'new' | 'move' | 'grip'; grip?: string; ox: number; oy: number; from: Rect } | null = null;
 let sent = false;
 
@@ -172,8 +178,7 @@ lock.addEventListener('click', () => {
   lock.setAttribute('aria-pressed', String(locked));
   if (locked && rect) ratio = rect.width / Math.max(rect.height, 1);
 });
-delayButton.addEventListener('click', () => {
-  delay = DELAYS[(DELAYS.indexOf(delay) + 1) % DELAYS.length];
+function showDelay() {
   delayButton.classList.toggle('armed', delay > 0);
   delayButton.title = delay ? `Capture ${delay} seconds after you press Capture` : 'Capture after a delay';
   const label = delayButton.querySelector('.delay-label');
@@ -181,7 +186,12 @@ delayButton.addEventListener('click', () => {
     if (label) label.textContent = `${delay}s`;
     else delayButton.insertAdjacentHTML('beforeend', `<span class="delay-label">${delay}s</span>`);
   } else label?.remove();
+}
+delayButton.addEventListener('click', () => {
+  delay = DELAYS[(DELAYS.indexOf(delay) + 1) % DELAYS.length];
+  showDelay();
 });
+showDelay();
 root.querySelector('.full')!.addEventListener('click', () => {
   setRect({ x: 0, y: 0, width: display.width, height: display.height });
 });

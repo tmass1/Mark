@@ -35,19 +35,39 @@ fn report(app: &AppHandle, error: String) {
 fn current_capture(app: AppHandle) -> Snapshot { app.state::<State>().lock().unwrap().snapshot() }
 
 #[tauri::command]
-fn capture_region(app: AppHandle) -> Result<(), String> {
+fn capture_region(app: AppHandle, delay: Option<u32>) -> Result<(), String> {
+    let delay = delay.unwrap_or(0).min(60);
     let handle = app.clone();
-    app.run_on_main_thread(move || begin_selection(&handle)).map_err(|e| e.to_string())
+    app.run_on_main_thread(move || begin_selection(&handle, delay)).map_err(|e| e.to_string())
 }
 
-/// Put Mark's own selection overlay on every display. macOS's picker is not used:
-/// it returns an image and nothing else, so it cannot keep a selection alive for
-/// resizing, exact sizing, or a delayed shutter.
-fn begin_selection(app: &AppHandle) {
+/// The whole display the pointer is on, with no overlay in between. The rest of
+/// the path is the same as a region: one rectangle handed to screencapture.
+#[tauri::command]
+fn capture_display(app: AppHandle, delay: Option<u32>) -> Result<(), String> {
+    let delay = delay.unwrap_or(0).min(60);
+    let monitor = app.cursor_position().ok()
+        .and_then(|point| app.monitor_from_point(point.x, point.y).ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten())
+        .ok_or("No display was found to capture.")?;
+    let scale = monitor.scale_factor();
+    let origin = monitor.position().to_logical::<f64>(scale);
+    let size = monitor.size().to_logical::<f64>(scale);
+    let rect = capture::Rect { x: origin.x, y: origin.y, width: size.width, height: size.height };
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        if !ready_to_capture(&handle) { return; }
+        take_selection(&handle, rect, delay);
+    }).map_err(|e| e.to_string())
+}
+
+/// Claim the capture guard and get the editor out of the shot. False means
+/// something already has it, or screen access is missing and has been reported.
+fn ready_to_capture(app: &AppHandle) -> bool {
     {
         let state = app.state::<State>();
         let mut session = state.lock().unwrap();
-        if !session.begin_capture() { return; }
+        if !session.begin_capture() { return false; }
         if let Some(pid) = macos::frontmost_pid().filter(|pid| *pid != std::process::id() as i32) {
             session.previous_pid = Some(pid);
         }
@@ -55,20 +75,28 @@ fn begin_selection(app: &AppHandle) {
     if !macos::screen_access() {
         app.state::<State>().lock().unwrap().busy = false;
         report(app, "Allow Mark's screen access in System Settings, then try Capture Region again. macOS may ask you to quit and reopen Mark.".into());
-        return;
+        return false;
     }
     let visible = app.get_webview_window(EDITOR).is_some_and(|w| w.is_visible().unwrap_or(false));
     app.state::<State>().lock().unwrap().editor_was_visible = visible;
     if let Some(window) = app.get_webview_window(EDITOR) { let _ = window.hide(); }
     changed(app);
-    if let Err(error) = open_selectors(app) {
+    true
+}
+
+/// Put Mark's own selection overlay on every display. macOS's picker is not used:
+/// it returns an image and nothing else, so it cannot keep a selection alive for
+/// resizing, exact sizing, or a delayed shutter.
+fn begin_selection(app: &AppHandle, delay: u32) {
+    if !ready_to_capture(app) { return; }
+    if let Err(error) = open_selectors(app, delay) {
         close_selectors(app);
         app.state::<State>().lock().unwrap().busy = false;
         report(app, format!("The selection overlay couldn't open ({error})."));
     }
 }
 
-fn open_selectors(app: &AppHandle) -> Result<(), String> {
+fn open_selectors(app: &AppHandle, delay: u32) -> Result<(), String> {
     let monitors = app.available_monitors().map_err(|e| e.to_string())?;
     if monitors.is_empty() { return Err("no display was found".into()); }
     for (index, monitor) in monitors.iter().enumerate() {
@@ -87,8 +115,8 @@ fn open_selectors(app: &AppHandle) -> Result<(), String> {
             // The overlay reports its selection in global points, so it needs to
             // know where on the desktop this display starts.
             .initialization_script(format!(
-                "window.__MARK_DISPLAY__={{x:{},y:{},width:{},height:{},scale:{}}};",
-                origin.x, origin.y, size.width, size.height, scale))
+                "window.__MARK_DISPLAY__={{x:{},y:{},width:{},height:{},scale:{}}};window.__MARK_DELAY__={};",
+                origin.x, origin.y, size.width, size.height, scale, delay))
             .build().map_err(|e| e.to_string())?;
         if let Ok(handle) = window.ns_window() { macos::raise_overlay(handle); }
         window.show().map_err(|e| e.to_string())?;
@@ -262,7 +290,7 @@ fn toggle_login_item(app: &AppHandle) {
 
 fn menu_action(app: &AppHandle, id: &str) {
     match id {
-        "capture" => { if let Err(e) = capture_region(app.clone()) { report(app, e); } }
+        "capture" => { if let Err(e) = capture_region(app.clone(), None) { report(app, e); } }
         "show" => present(app),
         "copy" => { if let Err(e) = copy_capture(app.clone(), true) { report(app, e); } }
         "close" => { let _ = dismiss_editor(app.clone()); }
@@ -280,10 +308,10 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
             if event.state() == ShortcutState::Pressed {
-                if let Err(e) = capture_region(app.clone()) { report(app, e); }
+                if let Err(e) = capture_region(app.clone(), None) { report(app, e); }
             }
         }).build())
-        .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_rect, cancel_selection,
+        .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, cancel_selection,
             copy_capture, copy_edited, dismiss_editor, open_screen_settings, quit_app])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
         .on_window_event(|window, event| {

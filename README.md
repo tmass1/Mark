@@ -72,7 +72,12 @@ notarization; an Apple Development certificate is only good for this Mac.
    may ask you to approve it under Login Items in System Settings. A login
    start is deliberately silent, while every other launch still opens the
    editor, because a start with no window at all reads as a failed launch.
-2. Press **⌃⌥⌘4**, or choose **Capture Region** from Mark's menu.
+2. Press **⌃⌥⌘4**, choose **Capture Region** from Mark's menu, or use the
+   **Capture** button in the editor's title bar. That button stays put while a
+   capture is open, so a second shot does not mean closing the first, and its
+   menu offers **Region**, **Whole Screen** — the display the pointer is on,
+   grabbed straight away with no overlay — and **Timed Region**, which opens
+   the overlay with a five second delay already armed.
 3. Grant Screen Recording access when macOS asks. This permission is also used
    for still screenshots; Mark does not capture audio or video.
 4. Drag to select a region. The selection stays put afterwards: drag inside it
@@ -122,7 +127,12 @@ notarization; an Apple Development certificate is only good for this Mac.
 
    A capture you did not draw on is copied as the original bytes macOS
    produced; only a drawing is flattened and re-encoded.
-7. A closed capture is not gone. **Recent** on the empty state holds the last
+7. **Fit** in the footer scales the capture to the window. Pick a percentage
+   instead and the canvas scrolls; ⌘+ and ⌘- step through the stops, ⌘0 goes
+   back to Fit and ⌘1 shows actual pixels. Drawing works the same at any zoom,
+   because annotations are stored in image pixels rather than screen ones. A
+   new capture starts at Fit.
+8. A closed capture is not gone. **Recent** on the empty state holds the last
    six, drawing and all, so closing one by accident costs a click rather than
    the shot. It lives in memory only and does not survive quitting Mark:
    it is an undo for closing, not a library.
@@ -204,7 +214,9 @@ cut from. Cropping is covered for the trim itself, for carrying the drawing
 along, for undo ordering against drawing, and for re-sampling a redaction into
 the cropped image's coordinates. Recent captures are covered for round-tripping a
 drawing through a close, for ordering, and for copying something restored after
-Rust has forgotten it. Rust tests cover PNG preservation and validation,
+Rust has forgotten it. Zoom is covered for scaling, for the keyboard, for
+resetting on a new capture, and for drawing landing on the same image pixels
+whatever the zoom. Rust tests cover PNG preservation and validation,
 cancellation/error classification, capture re-entry, child-process
 cancellation, and temporary cleanup.
 

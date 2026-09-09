@@ -35,6 +35,17 @@ app.innerHTML = `
   <header class="titlebar" data-tauri-drag-region>
     <span class="app-title" data-tauri-drag-region>Mark</span>
     <span class="preview-label" hidden>Browser preview</span>
+    <div class="capture-control">
+      <button class="capture-go" type="button">Capture</button>
+      <button class="capture-more" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Capture options">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.4 8.4 10 12l3.6-3.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="capture-menu" hidden>
+        <button type="button" data-mode="region">Region <kbd>⌃⌥⌘4</kbd></button>
+        <button type="button" data-mode="display">Whole Screen</button>
+        <button type="button" data-mode="timed">Timed Region <kbd>5s</kbd></button>
+      </div>
+    </div>
   </header>
   <div class="toolbar" role="toolbar" aria-label="Annotation tools" hidden>
     <div class="tools" role="radiogroup" aria-label="Tool">
@@ -76,6 +87,13 @@ app.innerHTML = `
   </aside>
   <footer>
     <span class="dimensions" aria-label="Image dimensions"></span>
+    <label class="zoom"><span class="sr">Zoom</span>
+      <select class="zoom-select">
+        <option value="fit">Fit</option>
+        <option value="0.25">25%</option><option value="0.5">50%</option>
+        <option value="1">100%</option><option value="2">200%</option><option value="4">400%</option>
+      </select>
+    </label>
     <button class="choose subtle" type="button" hidden>Choose image…</button>
     <button class="copy-only subtle" type="button" title="Copy the image and keep working">Copy <kbd>⌘⇧C</kbd></button>
     <button class="copy primary" type="button">Copy and Close <kbd>⌘C</kbd></button>
@@ -97,6 +115,11 @@ const choose = app.querySelector<HTMLButtonElement>('.choose')!;
 const input = app.querySelector<HTMLInputElement>('.file-input')!;
 const message = app.querySelector<HTMLElement>('.message')!;
 const settings = app.querySelector<HTMLButtonElement>('.settings')!;
+const canvasArea = app.querySelector<HTMLElement>('.canvas')!;
+const captureControl = app.querySelector<HTMLElement>('.capture-control')!;
+const captureMenu = app.querySelector<HTMLElement>('.capture-menu')!;
+const captureMore = app.querySelector<HTMLButtonElement>('.capture-more')!;
+const zoomSelect = app.querySelector<HTMLSelectElement>('.zoom-select')!;
 const cropBar = app.querySelector<HTMLElement>('.crop-bar')!;
 const recents = app.querySelector<HTMLElement>('.recents')!;
 const recentList = app.querySelector<HTMLElement>('.recent-list')!;
@@ -111,6 +134,10 @@ let shown: CapturePreview | null = null;
 let mustFlatten = false;
 const past: Past[] = [];
 let pastId = 1;
+/** 'fit' scales the capture to the window; a number is a fixed multiple of its
+ *  real pixels, with the canvas scrolling when that overflows. */
+let zoom: 'fit' | number = 'fit';
+const ZOOMS = [0.25, 0.5, 1, 2, 4];
 const crops: { capture: CapturePreview; dx: number; dy: number; depth: number }[] = [];
 
 const layer = new AnnotationLayer(overlay, stage, () => syncTools());
@@ -175,7 +202,7 @@ function render() {
       image.src = capture.dataUrl;
       stage.style.setProperty('--ratio', `${capture.width} / ${capture.height}`);
       layer.setImage(capture.width, capture.height);
-      shown = capture; mustFlatten = false; crops.length = 0;
+      shown = capture; mustFlatten = false; crops.length = 0; zoom = 'fit';
     }
     image.alt = `Captured screenshot, ${capture.width} by ${capture.height} pixels`;
   } else {
@@ -187,6 +214,8 @@ function render() {
   app.querySelector('.dimensions')!.textContent = capture ? `${capture.width} × ${capture.height} px` : '';
   copy.hidden = !capture;
   copyOnly.hidden = !capture;
+  zoomSelect.parentElement!.hidden = !capture;
+  applyZoom();
   copy.disabled = busy || copyPending;
   copyOnly.disabled = busy || copyPending;
   start.disabled = busy;
@@ -257,10 +286,22 @@ function on<K extends keyof HTMLElementEventMap>(element: HTMLElement, name: K, 
 }
 on(copy, 'click', () => { void copyCapture(true); });
 on(copyOnly, 'click', () => { void copyCapture(false); });
-on(start, 'click', () => {
-  if (!isTauri) { input.click(); return; }
-  void command('capture_region').catch(report);
+on(start, 'click', () => startCapture('region'));
+on(app.querySelector<HTMLButtonElement>('.capture-go')!, 'click', () => startCapture('region'));
+on(captureMore, 'click', event => {
+  event.stopPropagation();
+  const open = captureMenu.hidden;
+  captureMenu.hidden = !open;
+  captureMore.setAttribute('aria-expanded', String(open));
 });
+on(captureMenu, 'click', event => {
+  const mode = (event.target as Element).closest<HTMLButtonElement>('[data-mode]')?.dataset.mode;
+  if (mode) startCapture(mode as 'region' | 'display' | 'timed');
+});
+document.addEventListener('pointerdown', event => {
+  if (!captureMenu.hidden && !captureControl.contains(event.target as Node)) closeCaptureMenu();
+}, { signal: abort.signal });
+on(zoomSelect, 'change', () => setZoom(zoomSelect.value === 'fit' ? 'fit' : Number(zoomSelect.value)));
 on(choose, 'click', () => input.click());
 on(settings, 'click', () => { void command('open_screen_settings').catch(report); });
 on(input, 'change', () => { void loadFile().catch(report); });
@@ -283,6 +324,53 @@ on(removeButton, 'click', () => { layer.deleteSelected(); });
 const observer = new ResizeObserver(() => layer.measure());
 observer.observe(stage);
 cleanups.push(() => observer.disconnect());
+
+function applyZoom() {
+  const fitted = zoom === 'fit';
+  stage.classList.toggle('zoomed', !fitted);
+  canvasArea.classList.toggle('scrolls', !fitted);
+  if (!fitted && capture) {
+    stage.style.width = `${Math.round(capture.width * (zoom as number))}px`;
+    stage.style.height = `${Math.round(capture.height * (zoom as number))}px`;
+  } else {
+    stage.style.width = ''; stage.style.height = '';
+  }
+  zoomSelect.value = fitted ? 'fit' : String(zoom);
+  layer.measure();
+}
+
+function setZoom(next: 'fit' | number) { zoom = next; applyZoom(); }
+
+/** Step through the fixed stops. From Fit, start at whatever is nearest to how
+ *  the capture is actually being shown, so the first press is not a jump. */
+function stepZoom(direction: 1 | -1) {
+  if (!capture) return;
+  const showing = zoom === 'fit'
+    ? (stage.getBoundingClientRect().width || capture.width) / capture.width
+    : zoom;
+  const index = ZOOMS.findIndex(stop => direction > 0 ? stop > showing + 0.001 : stop < showing - 0.001);
+  if (direction > 0) setZoom(index === -1 ? ZOOMS[ZOOMS.length - 1] : ZOOMS[index]);
+  else {
+    const below = ZOOMS.filter(stop => stop < showing - 0.001);
+    setZoom(below.length ? below[below.length - 1] : ZOOMS[0]);
+  }
+}
+
+/** Start a capture. In the browser preview there is nothing native to call, so
+ *  every mode falls back to the file chooser, as the empty state does. */
+function startCapture(mode: 'region' | 'display' | 'timed') {
+  closeCaptureMenu();
+  if (!isTauri) { input.click(); return; }
+  const call = mode === 'display'
+    ? command('capture_display', {})
+    : command('capture_region', mode === 'timed' ? { delay: 5 } : {});
+  void call.catch(report);
+}
+
+function closeCaptureMenu() {
+  captureMenu.hidden = true;
+  captureMore.setAttribute('aria-expanded', 'false');
+}
 
 /** A small picture of the capture as it stood, drawing and all, so a recent
  *  entry is recognisable at a glance rather than a grey rectangle. */
@@ -417,6 +505,14 @@ document.addEventListener('keydown', event => {
     event.preventDefault(); void command('quit_app').catch(report);
   } else if ((event.metaKey || event.ctrlKey) && key === 'w') {
     event.preventDefault(); void dismiss().catch(report);
+  } else if (capture && (event.metaKey || event.ctrlKey) && (key === '=' || key === '+')) {
+    event.preventDefault(); stepZoom(1);
+  } else if (capture && (event.metaKey || event.ctrlKey) && key === '-') {
+    event.preventDefault(); stepZoom(-1);
+  } else if (capture && (event.metaKey || event.ctrlKey) && key === '0') {
+    event.preventDefault(); setZoom('fit');
+  } else if (capture && (event.metaKey || event.ctrlKey) && key === '1') {
+    event.preventDefault(); setZoom(1);
   } else if (capture && (event.metaKey || event.ctrlKey) && key === 'z') {
     event.preventDefault(); stepBack();
   } else if (capture && !typing && (key === 'backspace' || key === 'delete')) {

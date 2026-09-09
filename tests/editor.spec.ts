@@ -603,3 +603,73 @@ test('no Recent section until something has been closed', async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(page.locator('.recents')).toBeVisible();
 });
+
+test('the capture menu offers the three ways in, and closes again', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.capture-menu')).toBeHidden();
+  await page.locator('.capture-more').click();
+  await expect(page.locator('.capture-menu')).toBeVisible();
+  await expect(page.locator('.capture-menu button')).toHaveText([
+    /Region\s*⌃⌥⌘4/, /Whole Screen/, /Timed Region\s*5s/,
+  ]);
+  await expect(page.locator('.capture-more')).toHaveAttribute('aria-expanded', 'true');
+
+  await page.locator('.titlebar').click({ position: { x: 5, y: 5 } });
+  await expect(page.locator('.capture-menu')).toBeHidden();
+  await expect(page.locator('.capture-more')).toHaveAttribute('aria-expanded', 'false');
+  // Capture stays reachable while a capture is already open, which was the point.
+  await expect(page.locator('.capture-go')).toBeVisible();
+  await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
+});
+
+test('zoom scales the capture and the keyboard drives it', async ({ page }) => {
+  await page.goto('/');
+  const fitted = (await page.locator('.stage').boundingBox())!.width;
+
+  await page.locator('.zoom-select').selectOption('2');
+  const doubled = (await page.locator('.stage').boundingBox())!.width;
+  expect(Math.round(doubled)).toBe(2400);            // 1200 at 200%
+  expect(doubled).toBeGreaterThan(fitted);
+
+  await page.keyboard.press('Meta+0');               // back to Fit
+  await expect(page.locator('.zoom-select')).toHaveValue('fit');
+  expect(Math.round((await page.locator('.stage').boundingBox())!.width)).toBe(Math.round(fitted));
+
+  await page.keyboard.press('Meta+1');               // actual pixels
+  await expect(page.locator('.zoom-select')).toHaveValue('1');
+  await page.keyboard.press('Meta+-');               // one stop down
+  await expect(page.locator('.zoom-select')).toHaveValue('0.5');
+  await page.keyboard.press('Meta+=');               // and back up
+  await expect(page.locator('.zoom-select')).toHaveValue('1');
+});
+
+test('drawing lands on the same pixels whatever the zoom', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [60, 60], [300, 200]);
+  const atFit = await page.locator('.arrow').getAttribute('d');
+  await page.keyboard.press('Backspace');
+  await expect(page.locator('.arrow')).toHaveCount(0);
+
+  await page.locator('.zoom-select').selectOption('2');
+  await drawArrow(page, [60, 60], [300, 200]);       // same image coordinates
+  const atDouble = await page.locator('.arrow').getAttribute('d');
+
+  // The head of the arrow is its fourth point, and it should sit where the
+  // pointer was released -- in image pixels, not screen ones.
+  const head = (path: string) => path.split('L')[3].split(/[ Z]/).slice(0, 2).map(Number);
+  const [fx, fy] = head(atFit!);
+  const [dx, dy] = head(atDouble!);
+  expect(Math.abs(fx - 300)).toBeLessThan(3);
+  expect(Math.abs(fy - 200)).toBeLessThan(3);
+  expect(Math.abs(dx - fx)).toBeLessThan(3);
+  expect(Math.abs(dy - fy)).toBeLessThan(3);
+});
+
+test('a new capture comes back to Fit', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.zoom-select').selectOption('4');
+  await expect(page.locator('.zoom-select')).toHaveValue('4');
+  await page.locator('input[type=file]').setInputFiles('src-tauri/icons/128x128.png');
+  await expect(page.locator('.dimensions')).toHaveText('128 × 128 px');
+  await expect(page.locator('.zoom-select')).toHaveValue('fit');
+});
