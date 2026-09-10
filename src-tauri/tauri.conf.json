@@ -29,6 +29,6 @@
     "active": true, "targets": ["app"], "category": "Utility",
     "shortDescription": "Capture a region. Copy and close.",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"],
-    "macOS": { "minimumSystemVersion": "13.0", "signingIdentity": "9F8F618905B5FC96ACD55DFB4F8BC1B774A44F88", "infoPlist": "Info.plist" }
+    "macOS": { "minimumSystemVersion": "13.0", "signingIdentity": "4D33F3C596D8273A3BD4E6DC356F22FB87C779A5", "infoPlist": "Info.plist" }
   }
 }
