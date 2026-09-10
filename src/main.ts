@@ -74,11 +74,13 @@ const TOOLS: { id: Tool; name: string; art: string }[] = [
   { id: 'highlight', name: 'Highlighter', art:
     `<path d="M4.6 15.6h10.8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" opacity=".45"/>` +
     `<path d="M6.9 12.4 12.4 6.9l2 2-5.5 5.5z" ${STROKE}/>` },
-  { id: 'crop', name: 'Crop', art:
-    `<path d="M6.6 2.8v10.6h10.6M2.8 6.6h10.6v10.6" ${STROKE}/>` },
   { id: 'redact', name: 'Redact', art:
     `<path d="M4.8 5.2h4.1v4.1H4.8zM11.1 5.2h4.1v4.1h-4.1zM4.8 10.7h4.1v4.1H4.8zM11.1 10.7h4.1v4.1h-4.1z" fill="currentColor"/>` },
+  { id: 'crop', name: 'Crop', art:
+    `<path d="M6.6 2.8v10.6h10.6M2.8 6.6h10.6v10.6" ${STROKE}/>` },
 ];
+const toolButton = (tool: typeof TOOLS[number]) => `<button class="tool" type="button" role="radio" data-tool="${tool.id}"
+        aria-checked="${tool.id === 'arrow'}" title="${tool.name}"><svg viewBox="0 0 20 20" aria-hidden="true">${tool.art}</svg><span class="sr">${tool.name}</span></button>`;
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
@@ -99,10 +101,6 @@ app.innerHTML = `
     </div>
   </header>
   <div class="toolbar" role="toolbar" aria-label="Annotation tools" hidden>
-    <div class="tools" role="radiogroup" aria-label="Tool">
-      ${TOOLS.map(tool => `<button class="tool" type="button" role="radio" data-tool="${tool.id}"
-        aria-checked="${tool.id === 'arrow'}" title="${tool.name}"><svg viewBox="0 0 20 20" aria-hidden="true">${tool.art}</svg><span class="sr">${tool.name}</span></button>`).join('')}
-    </div>
     <div class="swatches" role="radiogroup" aria-label="Color">
       ${COLORS.map(color => `<button class="swatch" type="button" role="radio" aria-checked="false"
         data-color="${color.value}" style="--swatch:${color.value}" title="${color.name}"><span class="sr">${color.name}</span></button>`).join('')}
@@ -117,7 +115,7 @@ app.innerHTML = `
         aria-checked="${fill === 'outline'}" title="${FILL_NAMES[fill]} shape"><svg viewBox="0 0 20 20"
         aria-hidden="true">${fillPreview(fill)}</svg><span class="sr">${FILL_NAMES[fill]}</span></button>`).join('')}
     </div>
-    <label class="size">Size
+    <label class="size"><span class="size-word">Size</span>
       <input class="weight" type="range" min="0.1" max="2.5" step="0.05" value="1" aria-label="Size" />
     </label>
     <span class="spacer"></span>
@@ -135,6 +133,13 @@ app.innerHTML = `
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.8 6.2h12.4M8.2 6.2V4.6a1 1 0 0 1 1-1h1.6a1 1 0 0 1 1 1v1.6M5.4 6.2l.7 9.4a1.4 1.4 0 0 0 1.4 1.3h5a1.4 1.4 0 0 0 1.4-1.3l.7-9.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
   </div>
+  <div class="workspace">
+    <nav class="rail" aria-label="Tools" hidden>
+      <div class="tools" role="radiogroup" aria-label="Tool">
+        <div class="tool-group">${TOOLS.filter(tool => tool.id !== 'crop').map(toolButton).join('')}</div>
+        <div class="tool-group">${TOOLS.filter(tool => tool.id === 'crop').map(toolButton).join('')}</div>
+      </div>
+    </nav>
   <main class="canvas" aria-label="Screenshot editor">
     <div class="stage" hidden>
       <img class="capture" alt="Captured screenshot" draggable="false" />
@@ -154,6 +159,7 @@ app.innerHTML = `
       <p class="quit-hint" hidden>Mark lives in the menu bar · ⌘W hides it · ⌘Q quits</p>
     </section>
   </main>
+  </div>
   <aside class="message" role="status" aria-live="polite" hidden><span></span><button class="settings" hidden>Open System Settings</button></aside>
   <aside class="crop-bar" hidden>
     <span class="crop-size"></span>
@@ -189,6 +195,7 @@ const image = app.querySelector<HTMLImageElement>('.capture')!;
 const stage = app.querySelector<HTMLElement>('.stage')!;
 const overlay = app.querySelector<SVGSVGElement>('.overlay')!;
 const toolbar = app.querySelector<HTMLElement>('.toolbar')!;
+const rail = app.querySelector<HTMLElement>('.rail')!;
 const weight = app.querySelector<HTMLInputElement>('.weight')!;
 const undoButton = app.querySelector<HTMLButtonElement>('.undo')!;
 const backButton = app.querySelector<HTMLButtonElement>('.back')!;
@@ -319,6 +326,7 @@ function syncTools() {
 function render() {
   stage.hidden = !capture;
   toolbar.hidden = !capture;
+  rail.hidden = !capture;
   empty.hidden = !!capture;
   if (capture) {
     // A different capture means a different drawing surface. A crop swaps the
@@ -461,10 +469,12 @@ on(zoomSelect, 'change', () => setZoom(zoomSelect.value === 'fit' ? 'fit' : Numb
 on(choose, 'click', () => input.click());
 on(settings, 'click', () => { void command('open_screen_settings').catch(report); });
 on(input, 'change', () => { void loadFile().catch(report); });
+on(rail, 'click', event => {
+  const tool = (event.target as Element).closest<HTMLButtonElement>('.tool');
+  if (tool?.dataset.tool) { layer.tool = tool.dataset.tool as Tool; layer.deselect(); syncTools(); }
+});
 on(toolbar, 'click', event => {
   const element = event.target as Element;
-  const tool = element.closest<HTMLButtonElement>('.tool');
-  if (tool?.dataset.tool) { layer.tool = tool.dataset.tool as Tool; layer.deselect(); syncTools(); return; }
   const style = element.closest<HTMLButtonElement>('.style');
   if (style?.dataset.style) {
     layer.style.arrow = style.dataset.style as ArrowStyle;

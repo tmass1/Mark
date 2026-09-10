@@ -274,6 +274,46 @@ test('the size slider goes down to a hairline', async ({ page }) => {
   await expect(page.locator('.weight')).toHaveValue('0.1');
 });
 
+test('no tool, colour or control is ever clipped out of reach, at any width', async ({ page }) => {
+  await page.goto('/');
+  // The widest the bar gets: something selected so the label shows, with each
+  // picker in turn -- the arrow's has three buttons, the shape's two.
+  await pick(page, 'Box');
+  await drawArrow(page, [200, 200], [600, 420]);
+  await pick(page, 'Arrow');
+  await drawArrow(page, [200, 500], [600, 650]);
+  for (const [width, tool] of [[1200, 'Box'], [875, 'Arrow'], [700, 'Box'], [560, 'Arrow'], [520, 'Box'], [480, 'Arrow'],
+                               [440, 'Box'], [400, 'Arrow'], [380, 'Arrow'], [380, 'Box']] as const) {
+    await page.setViewportSize({ width, height: 600 });
+    await pick(page, tool);
+    // Reselect the drawn item of that kind, so the picker and label are both up.
+    const at = await stage(page);
+    const spot = tool === 'Box' ? at(200, 310) : at(400, 575);
+    await page.mouse.click(spot.x, spot.y);
+    const report = await page.evaluate(() => {
+      const inside = (el: Element, box: DOMRect) => {
+        const r = el.getBoundingClientRect();
+        return r.left >= box.left - 1 && r.right <= box.right + 1 && r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
+      };
+      const shown = (el: Element) => (el as HTMLElement).offsetParent !== null;
+      const bar = document.querySelector('.toolbar')!, rail = document.querySelector('.rail')!;
+      const barBox = bar.getBoundingClientRect(), railBox = rail.getBoundingClientRect();
+      return {
+        barOverflow: bar.scrollWidth - bar.clientWidth,
+        pageOverflow: document.documentElement.scrollWidth - innerWidth,
+        // Anything displayed must be wholly inside its container: hidden by a
+        // breakpoint is fine, cut off by an edge is not.
+        clippedInBar: [...bar.querySelectorAll('button, .size')].filter(el => shown(el) && !inside(el, barBox)).map(el => el.getAttribute('aria-label') || el.getAttribute('title') || el.className),
+        tools: [...rail.querySelectorAll('.tool')].filter(el => inside(el, railBox)).length,
+        swatches: [...bar.querySelectorAll('.swatch')].filter(el => shown(el) && inside(el, barBox)).length,
+        size: shown(bar.querySelector('.weight')!),
+        picker: shown(bar.querySelector('.fills')!) || shown(bar.querySelector('.styles')!),
+      };
+    });
+    expect(report, `${width}px, ${tool}`).toMatchObject({ barOverflow: 0, pageOverflow: 0, clippedInBar: [], tools: 9, swatches: 8, size: true, picker: true });
+  }
+});
+
 test('a shape can be drawn solid, or filled in afterwards', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.fills')).toBeHidden();             // arrow tool: nothing to fill

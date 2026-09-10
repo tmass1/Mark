@@ -96,6 +96,18 @@ kbd { font: inherit; font-size: 11px; opacity: .5; margin-left: 9px; letter-spac
 }
 .spacer { flex: 1; }
 
+/* Tools down the left, where the window has height to spare and nothing gets
+   pushed out of reach; what a tool does with colour and size stays in the bar
+   above. Two groups: what marks the image, and what cuts it. */
+.workspace { flex: 1; min-height: 0; display: flex; }
+.rail {
+  flex: 0 0 48px; display: flex; flex-direction: column; align-items: center; padding: 10px 0;
+  background: var(--chrome); border-right: 1px solid var(--hairline);
+  overflow-y: auto; scrollbar-width: none;
+}
+.rail::-webkit-scrollbar { display: none; }
+.tools { display: flex; flex-direction: column; gap: 8px; }
+
 /* What the capture is, on the left; what to do with it, on the right. Every
    control shares one height and one radius so the row reads as a single band
    rather than a queue of differently shaped things. */
@@ -137,8 +149,9 @@ footer > * { flex: none; }
 .subtle:hover, .settings:hover { background: var(--sunken); color: var(--ink); }
 
 /* A segmented group: one sunken track, the active segment lifted out of it. */
-.tools, .capture-control { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); }
-.tool { border: none; border-radius: 999px; padding: 5px 8px; background: transparent; color: var(--muted); }
+.tool-group, .capture-control { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); }
+.tool-group { flex-direction: column; }
+.tool { border: none; border-radius: 999px; padding: 7px; background: transparent; color: var(--muted); }
 .tool svg { display: block; width: 18px; height: 18px; }
 .tool:hover { color: var(--ink); }
 .tool.active { background: var(--control); color: var(--ink); box-shadow: 0 1px 2px #00000017, inset 0 1px 0 #ffffff59; }
@@ -157,8 +170,8 @@ footer > * { flex: none; }
    they scroll rather than pushing the buttons at the end off the edge, which is
    what a toolbar that only reflowed below 560px did at every width between.
    Their contents must not shrink, or the icons distort instead. */
-.tools, .swatches { min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.tools::-webkit-scrollbar, .swatches::-webkit-scrollbar { display: none; }
+/* Nothing in the bar scrolls or shrinks: a control that does not fit must be
+   hidden by a breakpoint below, so it is never silently clipped out of reach. */
 .tool, .swatch, .styles, .fills, .exports { flex: none; }
 .swatch { width: 20px; height: 20px; padding: 0; border: 1px solid #0000002e; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 1px 1px #ffffff40; }
 .swatch.active { box-shadow: 0 0 0 2px var(--glass), 0 0 0 3.5px var(--blue); }
@@ -219,7 +232,7 @@ footer > * { flex: none; }
 
 /* ---- the capture -------------------------------------------------------- */
 
-.canvas { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 26px; overflow: hidden; background: var(--canvas); }
+.canvas { flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 26px; overflow: hidden; background: var(--canvas); }
 .canvas.scrolls { overflow: auto; justify-content: safe center; align-items: safe center; }
 /* The stage holds the capture's aspect ratio, so image and overlay share one box. */
 .stage { position: relative; aspect-ratio: var(--ratio, 4 / 3); max-width: 100%; max-height: 100%; border-radius: 4px; box-shadow: 0 4px 22px var(--shadow), 0 0 0 .5px #00000026; }
@@ -269,8 +282,12 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 /* ---- narrow ------------------------------------------------------------- */
 
 /* Before anything is dropped, take back the space that costs least. */
-@media (max-width: 980px) {
-  .chosen { display: none; }
+/* With the tools on the rail the whole bar fits to 560px. Below that it sheds
+   controls in order of what has a keyboard shortcut to fall back on: the
+   selection label first, then the reorder pair (⌘[ ⌘]), and only at the
+   minimum width Undo and Delete (⌘Z ⌫). Colour, style, fill and Size stay
+   to the end. Measured, not guessed: see the clipping test. */
+@media (max-width: 760px) {
   .weight { width: 62px; }
   .toolbar { gap: 10px; }
 }
@@ -281,18 +298,16 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
   .browser .titlebar { padding-left: 12px; }
   .canvas { padding: 16px; }
   .toolbar { gap: 8px; }
-  /* ⌘Z, ⌫ and ⌘0 still work; .choose only exists in the browser preview. */
-  .size, .undo, .remove, .zoom, .choose { display: none; }
-  .tool { padding: 5px 6px; }
+  /* ⌘0 still zooms; .choose only exists in the browser preview. */
+  .chosen, .zoom, .choose { display: none; }
   .swatch { width: 16px; height: 16px; }
-  .swatches, .tools { gap: 4px; }
+  .swatches { gap: 4px; }
   .copy kbd, .copy-only kbd, .capture-go kbd { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .primary:active { transform: none; } }
 .chosen { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .subtle.icon { display: flex; padding: 5px 6px; }
 .subtle.icon svg { display: block; width: 18px; height: 18px; }
-@media (max-width: 560px) { .chosen, .back, .front { display: none; } }
 .glassy.icon { padding: 0 11px; }
 .glassy.icon svg { display: block; width: 17px; height: 17px; }
 .styles, .fills { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); }
@@ -301,4 +316,8 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 .style:hover { color: var(--ink); }
 .style.active { background: var(--control); color: var(--ink); box-shadow: 0 1px 2px #00000017, inset 0 1px 0 #ffffff59; }
 .fills[data-shape="ellipse"] .as-box, .fills:not([data-shape="ellipse"]) .as-ellipse { display: none; }
-@media (max-width: 560px) { .styles, .fills { display: none; } }
+
+/* After .subtle.icon, and as specific: that rule sets display and would
+   otherwise win, leaving these buttons visible where the bar cannot hold them. */
+@media (max-width: 480px) { .toolbar .back, .toolbar .front { display: none; } }
+@media (max-width: 400px) { .toolbar .undo, .toolbar .remove, .size-word { display: none; } } /* the slider keeps its aria-label */

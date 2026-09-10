@@ -21,10 +21,15 @@ const SELECTOR: &str = "selector-";
 const CHROME: f64 = 46.0 + 48.0 + 62.0;
 /// The canvas breathes 26pt on each side.
 const CANVAS_PADDING: f64 = 52.0;
-/// Enough for the empty state and a row of recents, and no more. Shorter than
-/// the chrome above suggests, because the footer is not there with nothing to
-/// act on.
-const COMPACT: (f64, f64) = (560.0, 472.0);
+/// The tool rail beside the canvas, and the least canvas height at which all
+/// nine of its tools are on screen. The window never goes shorter: a tool that
+/// has slipped below the edge with no scrollbar is a tool that does not exist.
+const RAIL: f64 = 48.0;
+const RAIL_HEIGHT: f64 = 344.0;
+/// Enough for the empty state and a row of recents. Its height is the window's
+/// minimum, which the rail sets rather than the empty state; the empty state
+/// has room to spare at this size and the footer is not there anyway.
+const COMPACT: (f64, f64) = (560.0, CHROME + RAIL_HEIGHT);
 
 /// Size the window to its contents: the capture at actual size where the screen
 /// allows, and small when there is nothing to show. A screenshot editor whose
@@ -33,7 +38,7 @@ const COMPACT: (f64, f64) = (560.0, 472.0);
 fn fit_window(app: &AppHandle, to: Option<(f64, f64)>) {
     let Some(window) = app.get_webview_window(EDITOR) else { return };
     let (mut width, mut height) = match to {
-        Some((w, h)) => (w + CANVAS_PADDING, h + CANVAS_PADDING + CHROME),
+        Some((w, h)) => (w + CANVAS_PADDING + RAIL, h + CANVAS_PADDING + CHROME),
         None => COMPACT,
     };
     // Never larger than the screen it will appear on, less a margin so the
@@ -43,7 +48,7 @@ fn fit_window(app: &AppHandle, to: Option<(f64, f64)>) {
         width = width.min(visible.width - 80.0);
         height = height.min(visible.height - 120.0);
     }
-    let size = tauri::LogicalSize::new(width.max(COMPACT.0.min(380.0)).max(380.0), height.max(280.0));
+    let size = tauri::LogicalSize::new(width.max(380.0), height.max(CHROME + RAIL_HEIGHT));
     if window.set_size(size).is_ok() { let _ = window.center(); }
 }
 
