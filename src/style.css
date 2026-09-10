@@ -25,16 +25,16 @@
   --ink: #1c1c1e;
   --muted: #5e5e66;
   --hairline: #00000012;
-  --scrim: #ffffff59;         /* ~35%: the ground is mostly the material now */
-  --panel: #ffffffa8;         /* a pane of frosted glass, laid on the ground */
+  --scrim: #ffffff2e;         /* ~18%: the ground is the material, barely tinted */
+  --panel: #ffffff59;         /* ~35%: a pane is glass too, frosted just enough to read on */
   --frame-rim: #ffffffc4;     /* the lit top edge of the window itself */
   --frame-line: #ffffff73;    /* and its glass edge all the way round */
   --sheen: linear-gradient(180deg, #ffffff47, #ffffff00 58%);   /* light caught along the top */
   --rim: #ffffffe0;           /* the lit top edge of a pane */
   --edge: #00000016;          /* its shadowed underside and outline */
-  --lens: #fffffff0;          /* the raised pill under the active segment */
-  --control: #ffffffa6;
-  --control-hover: #ffffffdd;
+  --lens: #fffffff5;          /* the raised pill under the active segment */
+  --control: #ffffffb8;
+  --control-hover: #ffffffe6;
   --control-line: #00000018;
   --sunken: #0000000d;
   --glass: #fbfbfdf2;         /* menus and popovers */
@@ -50,8 +50,8 @@
     --ink: #f5f5f7;
     --muted: #a1a1aa;
     --hairline: #ffffff1c;
-    --scrim: #1b1b1e80;       /* ~50%; dark vibrancy shows through more readily */
-    --panel: #ffffff1a;
+    --scrim: #1b1b1e4d;       /* ~30%; dark vibrancy shows through more readily */
+    --panel: #ffffff1f;
     --frame-rim: #ffffff33;
     --frame-line: #ffffff1c;
     --sheen: linear-gradient(180deg, #ffffff14, #ffffff00 58%);
