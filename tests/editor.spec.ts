@@ -314,6 +314,26 @@ test('no tool, colour or control is ever clipped out of reach, at any width', as
   }
 });
 
+test('the active-tool pill is under the tool from the first frame, and after reopening', async ({ page }) => {
+  const misplaced = () => page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.lens')].filter(l => !l.hidden).flatMap(l => {
+    const a = l.parentElement!.querySelector('[aria-checked="true"]')!;
+    const lr = l.getBoundingClientRect(), ar = a.getBoundingClientRect();
+    const off = Math.abs(lr.left - ar.left) > 1 || Math.abs(lr.top - ar.top) > 1 || Math.abs(lr.width - ar.width) > 1;
+    return off ? [`${l.parentElement!.className}: pill at ${Math.round(lr.left)},${Math.round(lr.top)} ${Math.round(lr.width)}x${Math.round(lr.height)}, tool at ${Math.round(ar.left)},${Math.round(ar.top)}`] : [];
+  }));
+  await page.goto('/');
+  // No waiting: a pill that is still sliding in from the corner is the bug.
+  expect(await misplaced()).toEqual([]);
+  expect(await page.locator('.lens:not([hidden])').count()).toBe(2);   // the rail and the arrow picker
+  // Out to the empty state and back: the rail was display: none in between,
+  // and the pill must not slide from wherever it was before.
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await page.locator('input[type=file]').setInputFiles('src-tauri/icons/128x128.png');
+  await expect(page.getByText('128 × 128 px')).toBeVisible();
+  expect(await misplaced()).toEqual([]);
+});
+
 test('a shape can be drawn solid, or filled in afterwards', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.fills')).toBeHidden();             // arrow tool: nothing to fill
