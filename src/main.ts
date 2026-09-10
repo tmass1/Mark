@@ -101,7 +101,7 @@ app.innerHTML = `
         aria-hidden="true">${stylePreview(style)}</svg><span class="sr">${STYLE_NAMES[style]}</span></button>`).join('')}
     </div>
     <label class="size">Size
-      <input class="weight" type="range" min="0.5" max="2.5" step="0.1" value="1" aria-label="Size" />
+      <input class="weight" type="range" min="0.1" max="2.5" step="0.05" value="1" aria-label="Size" />
     </label>
     <span class="spacer"></span>
     <span class="chosen" hidden aria-live="polite"></span>
@@ -264,7 +264,7 @@ function syncTools() {
       ? selected.size / textSize(layer.base)
       : selected.weight / layer.base;
   }
-  weight.value = layer.style.scale.toFixed(1);
+  weight.value = layer.style.scale.toFixed(2);
   for (const swatch of app.querySelectorAll<HTMLButtonElement>('.swatch')) {
     const active = swatch.dataset.color === layer.style.color;
     swatch.setAttribute('aria-checked', String(active));

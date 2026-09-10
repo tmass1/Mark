@@ -252,6 +252,28 @@ test('draws a box and an ellipse, and resizes one by its corner', async ({ page 
   await expect(page.locator('.shape ellipse[stroke="#ff3b30"]')).toHaveCount(1);
 });
 
+test('the size slider goes down to a hairline', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Box');
+  await drawArrow(page, [200, 200], [600, 420]);
+  const box = page.locator('.shape rect[stroke="#ff3b30"]');
+  const full = Number(await box.getAttribute('stroke-width'));
+  await page.locator('.weight').fill('0.1');
+  const thin = Number(await box.getAttribute('stroke-width'));
+  // A tenth of the capture's base stroke, not the old floor of half. On the
+  // 1200x740 sample that is about a pixel and a half.
+  expect(thin).toBeCloseTo(full / 10, 1);
+  expect(thin).toBeLessThan(2);
+  // Fatten a second box, then pick the thin one again: the slider follows it back.
+  await drawArrow(page, [700, 100], [900, 300]);
+  await page.locator('.weight').fill('2.5');
+  await expect(page.locator('.shape rect[stroke="#ff3b30"]')).toHaveCount(2);
+  const at = await stage(page);
+  const edge = at(200, 310);
+  await page.mouse.click(edge.x, edge.y);
+  await expect(page.locator('.weight')).toHaveValue('0.1');
+});
+
 test('highlighter ink is translucent so the screenshot reads through it', async ({ page }) => {
   await page.goto('/');
   await pick(page, 'Highlighter');

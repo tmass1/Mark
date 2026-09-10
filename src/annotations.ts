@@ -384,7 +384,8 @@ export class AnnotationLayer {
    *  crop or a drawing was the more recent thing to undo. */
   get undoDepth(): number { return this.past.length; }
   get isEditing(): boolean { return this.editing !== null; }
-  private get weight(): number { return this.base * this.style.scale; }
+  /** Never under a pixel: a half-pixel stroke renders as a faint smear, not a thin line. */
+  private get weight(): number { return Math.max(1, this.base * this.style.scale); }
 
   clearCrop(): void {
     if (!this.pendingCrop) return;
