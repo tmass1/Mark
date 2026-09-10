@@ -275,16 +275,23 @@ function showMessage(text: string | null) {
 /** One pill per segmented group, slid under whichever segment is checked. The
  *  group is the pill's offset parent, so a segment's offsets are the pill's
  *  place; the pill takes the segment's size, since a tool is square and a
- *  picker button is not. Nothing checked, nothing shown. */
+ *  picker button is not. A pill slides only between two places it has really
+ *  been: the first placement after the group appears is a snap, because a
+ *  group that is not rendered reports every offset as zero, and a transition
+ *  from there would be a slide in from the corner. */
 function placeLens(group: HTMLElement) {
   let lens = group.querySelector<HTMLElement>(':scope > .lens');
   if (!lens) { lens = document.createElement('span'); lens.className = 'lens'; group.prepend(lens); }
   const active = group.querySelector<HTMLElement>('[aria-checked="true"]');
-  lens.hidden = !active || group.hidden;
-  if (!active || group.hidden) return;
+  const rendered = !!active && active.offsetParent !== null;   // null while anything above is display: none
+  lens.hidden = !rendered;
+  if (!active || !rendered) { delete lens.dataset.placed; return; }
+  const snap = lens.dataset.placed === undefined;
+  if (snap) lens.style.transition = 'none';
   lens.style.width = `${active.offsetWidth}px`;
   lens.style.height = `${active.offsetHeight}px`;
   lens.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
+  if (snap) { void lens.offsetWidth; lens.style.transition = ''; lens.dataset.placed = ''; }
 }
 
 function syncTools() {
@@ -347,6 +354,7 @@ function syncTools() {
 }
 
 function render() {
+  if (isTauri) void command('set_glass', { visible: !!capture }).catch(() => {});
   stage.hidden = !capture;
   toolbar.hidden = !capture;
   rail.hidden = !capture;
@@ -777,6 +785,9 @@ document.addEventListener('keydown', event => {
 async function init() {
   if (isTauri) {
     app.querySelector<HTMLElement>('.quit-hint')!.hidden = false;
+    // On macOS 26 the panes sit on the system's own glass, laid under the web
+    // view by lib.rs, so the stylesheet draws them bare there.
+    document.documentElement.classList.toggle('native-glass', await command<boolean>('glass_available').catch(() => false));
     const unlisten = await watchCapture(() => { void refresh(); });
     if (disposed) { unlisten(); return; }
     cleanups.push(unlisten); await refresh();

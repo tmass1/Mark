@@ -24,7 +24,7 @@ base64 = "0.22"
 png = "0.18"
 tempfile = "3"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSImage", "NSRunningApplication", "NSWorkspace", "NSApplication", "NSWindow", "NSResponder", "NSView", "NSSharingService"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSImage", "NSRunningApplication", "NSWorkspace", "NSApplication", "NSWindow", "NSResponder", "NSView", "NSSharingService", "NSGlassEffectView", "NSGraphics"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSString", "NSURL", "NSArray", "NSGeometry"] }
 
 [profile.release]

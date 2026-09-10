@@ -1,4 +1,5 @@
 mod capture;
+mod glass;
 mod macos;
 mod session;
 
@@ -18,12 +19,16 @@ const SELECTOR: &str = "selector-";
 
 /// What the editor needs around a capture, in points, mirroring the glass
 /// layout in style.css: the title row, the toolbar pane and its gap above the
-/// canvas, the gap below, the footer pane and its margin. Change both.
-const CHROME: f64 = 46.0 + 48.0 + 10.0 + 10.0 + 52.0 + 12.0;
+/// canvas, the gap below, and the footer flush with the bottom. Change both.
+const CHROME: f64 = 46.0 + 48.0 + 10.0 + 10.0 + 60.0;
 /// Beside it: the margin, the tool rail's pane, the gap to the canvas, and the
 /// margin on the far side.
 const RAIL: f64 = 44.0;
 const SIDES: f64 = 12.0 + 10.0 + 12.0;
+/// The rail's two panes, in points: nine tools less crop, then crop alone.
+const RAIL_TOP: f64 = 46.0 + 48.0 + 10.0;
+const TOOLS_HEIGHT: f64 = 6.0 + 8.0 * 32.0 + 7.0 * 2.0 + 6.0;
+const CROP_TOP: f64 = RAIL_TOP + TOOLS_HEIGHT + 8.0;
 /// The least canvas height at which all nine tools on the rail are on screen,
 /// with a little air under the crop pane. The window never goes shorter: a tool
 /// that has slipped below the edge with no scrollbar is a tool that does not exist.
@@ -394,6 +399,36 @@ fn material(name: &str) -> Option<tauri::window::Effect> {
     })
 }
 
+thread_local! {
+    /// Window views belong to the main thread, and so does this. Commands run
+    /// there too, so they see the same value; anything else sees nothing and
+    /// does nothing.
+    static GLASS: std::cell::RefCell<Option<glass::Glass>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Lay Liquid Glass under the editor's panes, where the stylesheet puts them.
+/// The numbers are the stylesheet's; change both.
+fn install_glass(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(EDITOR) else { return };
+    let Ok(handle) = window.ns_window() else { return };
+    let panes = [
+        glass::Pane { x: 12.0, offset: 46.0, width: 0.0, height: 48.0, radius: 24.0, stretch: true, bottom: false },
+        glass::Pane { x: 12.0, offset: RAIL_TOP, width: RAIL, height: TOOLS_HEIGHT, radius: 22.0, stretch: false, bottom: false },
+        glass::Pane { x: 12.0, offset: CROP_TOP, width: RAIL, height: RAIL, radius: 22.0, stretch: false, bottom: false },
+    ];
+    let installed = glass::Glass::install(handle, &panes);
+    eprintln!("[Mark] glass panes: {}", if installed.is_some() { "installed" } else { "unavailable" });
+    GLASS.with(|slot| *slot.borrow_mut() = installed);
+}
+
+/// Whether the panes are on real glass, so the stylesheet can draw them bare.
+#[tauri::command]
+fn glass_available() -> bool { GLASS.with(|slot| slot.borrow().is_some()) }
+
+/// The panes exist only while a capture is open.
+#[tauri::command]
+fn set_glass(visible: bool) { GLASS.with(|slot| { if let Some(glass) = slot.borrow().as_ref() { glass.set_visible(visible); } }); }
+
 /// Put the editor window on a different material. Returns the name applied.
 #[tauri::command]
 fn set_material(app: AppHandle, name: String) -> Result<String, String> {
@@ -450,7 +485,7 @@ pub fn run() {
             }
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, cancel_selection,
-            copy_capture, copy_edited, save_image, share_image, dismiss_editor, open_screen_settings, set_material, quit_app])
+            copy_capture, copy_edited, save_image, share_image, dismiss_editor, open_screen_settings, set_material, glass_available, set_glass, quit_app])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -478,6 +513,7 @@ pub fn run() {
             let main = Submenu::with_items(app, "Mark", true, &[&capture, &show, &separator, &login, &separator, &quit])?;
             let edit = Submenu::with_items(app, "Edit", true, &[&copy, &close])?;
             app.set_menu(Menu::with_items(app, &[&main, &edit])?)?;
+            install_glass(app.handle());
             let shortcut = Shortcut::new(Some(Modifiers::SUPER), Code::Digit4);
             if let Err(error) = app.global_shortcut().register(shortcut) {
                 report(app.handle(), format!("The capture shortcut is unavailable ({error}). Use Capture Region in Mark's menu."));

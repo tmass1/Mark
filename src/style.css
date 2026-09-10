@@ -27,6 +27,7 @@
   --hairline: #00000012;
   --scrim: #ffffff2e;         /* ~18%: the ground is the material, barely tinted */
   --panel: #ffffff59;         /* ~35%: a pane is glass too, frosted just enough to read on */
+  --base: #ffffff7a;          /* the footer: the window's floor, a shade more solid than a pane */
   --frame-rim: #ffffffc4;     /* the lit top edge of the window itself */
   --frame-line: #ffffff73;    /* and its glass edge all the way round */
   --sheen: linear-gradient(180deg, #ffffff47, #ffffff00 58%);   /* light caught along the top */
@@ -52,6 +53,7 @@
     --hairline: #ffffff1c;
     --scrim: #1b1b1e4d;       /* ~30%; dark vibrancy shows through more readily */
     --panel: #ffffff1f;
+    --base: #ffffff17;
     --frame-rim: #ffffff33;
     --frame-line: #ffffff1c;
     --sheen: linear-gradient(180deg, #ffffff14, #ffffff00 58%);
@@ -130,11 +132,15 @@ kbd { font: inherit; font-size: 11px; opacity: .5; margin-left: 9px; letter-spac
    pills, concentric by construction (the rail's 22 less 6 of padding is the
    16 of a 32pt tool). The geometry here (12 margins, 10 gaps, 48 and 52
    heights, 44-wide rail) is mirrored in fit_window in lib.rs; change both. */
-.toolbar, footer, .tool-group, .message {
+.toolbar, .tool-group, .message {
   background: var(--sheen), var(--panel);
   box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 14px 34px -16px var(--shadow);
 }
 .message { border-radius: 16px; }   /* wraps to several lines, so a rounded rectangle */
+/* On macOS 26 the bars and the rail sit on NSGlassEffectView panes that lib.rs
+   lays under the web view at this same geometry, so here they draw nothing:
+   the glass is the pane. */
+.native-glass .toolbar, .native-glass .tool-group { background: none; box-shadow: none; }
 
 .toolbar { flex: 0 0 48px; margin: 0 12px 10px; padding: 0 14px; border-radius: 24px; display: flex; align-items: center; gap: 14px; }
 .spacer { flex: 1; }
@@ -162,7 +168,14 @@ kbd { font: inherit; font-size: 11px; opacity: .5; margin-left: 9px; letter-spac
 /* What the capture is, on the left; what to do with it, on the right. Every
    control shares one height and one radius so the row reads as a single band
    rather than a queue of differently shaped things. */
-footer { flex: 0 0 52px; margin: 10px 12px 12px; padding: 0 13px; border-radius: 26px; display: flex; gap: 10px; align-items: center; }
+/* The footer is not a pane. The tools float over the work; this is the
+   window's floor, so it runs edge to edge and flush with the bottom, with a
+   hairline and a lit edge along its top and the window's own corners below. */
+footer {
+  flex: 0 0 60px; margin-top: 10px; padding: 0 14px; display: flex; gap: 10px; align-items: center;
+  background: var(--base); border-top: 1px solid var(--hairline); border-radius: 0 0 12px 12px;
+  box-shadow: inset 0 1px 0 var(--rim);
+}
 footer > * { flex: none; }
 .push { flex: 1 1 auto; min-width: 8px; }
 /* The one thing in the row that may give: the size readout shrinks to an
@@ -258,7 +271,7 @@ footer > * { flex: none; }
 .capture-menu kbd { margin: 0; }
 .capture-menu button:hover kbd { opacity: .8; }
 
-.message { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 12px 12px; padding: 11px 16px; font-size: 12px; line-height: 1.5; }
+.message { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 12px 10px; padding: 11px 16px; font-size: 12px; line-height: 1.5; }
 .message:not([hidden]) ~ footer { margin-top: 0; }   /* the message's margin is the gap */
 .message span { flex: 1 1 240px; }
 /* An action, not an aside: the settings button gets the same weight as the
@@ -270,7 +283,7 @@ footer > * { flex: none; }
    it reflowed the image mid-drag, moving the picture under the cursor that was
    still drawing the crop. */
 .crop-bar {
-  position: absolute; left: 50%; bottom: 86px; transform: translateX(-50%); z-index: 5;
+  position: absolute; left: 50%; bottom: 82px; transform: translateX(-50%); z-index: 5;
   display: flex; align-items: center; gap: 12px; padding: 9px 10px 9px 14px;
   border-radius: 999px; background: var(--glass); font-size: 12px;
   -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
@@ -360,7 +373,7 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
   .swatches { gap: 4px; }
   .copy kbd, .copy-only kbd, .capture-go kbd { display: none; }
 }
-@media (max-width: 400px) { .toolbar, footer { margin-left: 8px; margin-right: 8px; } }
+@media (max-width: 400px) { .toolbar { margin-left: 8px; margin-right: 8px; } }
 @media (prefers-reduced-motion: reduce) { .primary:active { transform: none; } }
 .chosen { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .subtle.icon { display: flex; padding: 5px 6px; }
