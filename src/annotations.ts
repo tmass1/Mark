@@ -24,12 +24,20 @@ export interface Stroke { kind: 'pen'; id: number; points: Point[]; color: strin
 export interface Note { kind: 'text'; id: number; x: number; y: number; text: string; color: string; size: number }
 /** Everything drawn as a rectangle: outlines, marker ink, and redaction. */
 export type ShapeKind = 'box' | 'ellipse' | 'highlight' | 'redact';
+/** An outline shows what is inside it; a solid shape covers it. */
+export type ShapeFill = 'outline' | 'solid';
+export const SHAPE_FILLS: readonly ShapeFill[] = ['outline', 'solid'];
 export interface Shape {
   kind: ShapeKind; id: number; x: number; y: number; width: number; height: number;
   color: string; weight: number;
+  /** Boxes and ellipses only. Shapes drawn before fills existed are outlines. */
+  fill?: ShapeFill;
   /** Redaction only: the pixelated patch, rebuilt when the region settles. */
   pixels?: string;
 }
+export function fillOf(shape: Shape): ShapeFill { return shape.fill ?? 'outline'; }
+/** The shapes a fill applies to: ink and redaction are already solid by nature. */
+export function fillable(item: Annotation): item is Shape { return item.kind === 'box' || item.kind === 'ellipse'; }
 export type Annotation = Segment | Stroke | Note | Shape;
 export type Tool = 'arrow' | 'line' | 'pen' | 'text' | ShapeKind | 'crop';
 export function isSegment(item: Annotation): item is Segment { return item.kind === 'arrow' || item.kind === 'line'; }
@@ -227,9 +235,20 @@ export function drawAnnotations(
         ctx.restore();
         continue;
       }
+      ctx.beginPath();
+      if (fillOf(item) === 'solid') {
+        // The fill reaches the drawn bounds; the outline's inset exists only so
+        // a stroke's outer edge lands there too.
+        if (item.kind === 'ellipse') {
+          ctx.ellipse(x + width / 2, y + height / 2, Math.max(width / 2, 0.5), Math.max(height / 2, 0.5), 0, 0, Math.PI * 2);
+        } else {
+          ctx.rect(x, y, Math.max(width, 1), Math.max(height, 1));
+        }
+        ctx.fill();
+        continue;
+      }
       ctx.strokeStyle = item.color;
       ctx.lineWidth = item.weight;
-      ctx.beginPath();
       if (item.kind === 'ellipse') {
         ctx.ellipse(x + width / 2, y + height / 2, Math.max(width / 2 - item.weight / 2, 0.5),
                     Math.max(height / 2 - item.weight / 2, 0.5), 0, 0, Math.PI * 2);
@@ -315,7 +334,7 @@ function span(ax: number, ay: number, bx: number, by: number) {
   return { x: Math.min(ax, bx), y: Math.min(ay, by), width: Math.abs(bx - ax), height: Math.abs(by - ay) };
 }
 
-export interface LayerStyle { color: string; scale: number; arrow: ArrowStyle }
+export interface LayerStyle { color: string; scale: number; arrow: ArrowStyle; fill: ShapeFill }
 
 export class AnnotationLayer {
   private items: Annotation[] = [];
@@ -344,7 +363,7 @@ export class AnnotationLayer {
   private chosen = new Set<number>();
   tool: Tool = 'arrow';
   base = 12;
-  style: LayerStyle = { color: COLORS[0].value, scale: 1, arrow: 'taper' };
+  style: LayerStyle = { color: COLORS[0].value, scale: 1, arrow: 'taper', fill: 'outline' };
 
   constructor(private svg: SVGSVGElement, private stage: HTMLElement, private onChange: () => void) {
     svg.addEventListener('pointerdown', this.down);
@@ -585,6 +604,7 @@ export class AnnotationLayer {
         if (item.kind === 'text') item.size = textSize(this.weight);
         else item.weight = this.weight;
         if (item.kind === 'arrow') item.style = this.style.arrow;
+        if (fillable(item)) item.fill = this.style.fill;
         // Coarseness follows the size control, so the patch must be rebuilt.
         this.settle(item);
       }
@@ -765,6 +785,7 @@ export class AnnotationLayer {
         kind: this.tool as ShapeKind, id: this.nextId++, x, y, width: 0, height: 0,
         color: this.style.color, weight: this.weight,
       };
+      if (fillable(shape)) shape.fill = this.style.fill;
       this.items.push(shape);
       this.chosen = new Set([shape.id]);
       this.drag = { kind: 'create', id: shape.id, ox: x, oy: y };
@@ -1046,6 +1067,18 @@ export class AnnotationLayer {
     }
 
     const tag = item.kind === 'ellipse' ? 'ellipse' : 'rect';
+    if (fillOf(item) === 'solid') {
+      const solid = document.createElementNS(SVG, tag);
+      if (item.kind === 'ellipse') {
+        solid.setAttribute('cx', String(x + width / 2)); solid.setAttribute('cy', String(y + height / 2));
+        solid.setAttribute('rx', String(Math.max(width / 2, 0.5))); solid.setAttribute('ry', String(Math.max(height / 2, 0.5)));
+      } else {
+        cover(solid);
+      }
+      solid.setAttribute('fill', item.color);
+      group.append(solid);
+      return group;
+    }
     // An outline is a thin target, so an invisible fat stroke takes the pointer.
     const grab = size(document.createElementNS(SVG, tag));
     grab.setAttribute('fill', 'none');

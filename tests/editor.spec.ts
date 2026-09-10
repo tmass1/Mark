@@ -274,6 +274,57 @@ test('the size slider goes down to a hairline', async ({ page }) => {
   await expect(page.locator('.weight')).toHaveValue('0.1');
 });
 
+test('a shape can be drawn solid, or filled in afterwards', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.fills')).toBeHidden();             // arrow tool: nothing to fill
+  await pick(page, 'Box');
+  await expect(page.locator('.fills')).toBeVisible();
+  await expect(page.locator('.fills')).toHaveAttribute('data-shape', 'box');
+
+  // Drawn as an outline, then filled in.
+  await drawArrow(page, [200, 200], [600, 420]);
+  const box = page.locator('.shape rect[stroke="#ff3b30"]');
+  await expect(box).toHaveCount(1);
+  await page.locator('.style[data-fill="solid"]').click();
+  await expect(page.locator('.shape rect[stroke="#ff3b30"]')).toHaveCount(0);
+  const solid = page.locator('.shape rect[fill="#ff3b30"]');
+  await expect(solid).toHaveCount(1);
+  await expect(page.locator('.style[data-fill="solid"]')).toHaveAttribute('aria-checked', 'true');
+
+  // The next ellipse is drawn solid from the start, and the picker shows an ellipse.
+  await pick(page, 'Ellipse');
+  await expect(page.locator('.fills')).toHaveAttribute('data-shape', 'ellipse');
+  await drawArrow(page, [700, 200], [1000, 420]);
+  await expect(page.locator('.shape ellipse[fill="#ff3b30"]')).toHaveCount(1);
+
+  // Back to an outline, and undo restores the fill.
+  await page.locator('.style[data-fill="outline"]').click();
+  await expect(page.locator('.shape ellipse[fill="#ff3b30"]')).toHaveCount(0);
+  await expect(page.locator('.shape ellipse[stroke="#ff3b30"]')).toHaveCount(1);
+  await page.keyboard.press('Meta+z');
+  await expect(page.locator('.shape ellipse[fill="#ff3b30"]')).toHaveCount(1);
+});
+
+test('the copied image is solid inside a filled box', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async (items: any[]) => {
+      const bitmap = await createImageBitmap(await items[0].getType('image/png'));
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext('2d')!;
+      context.drawImage(bitmap, 0, 0);
+      // Sample the centre of the box, where an outline would leave the capture showing.
+      const [r, g, b] = context.getImageData(400, 310, 1, 1).data;
+      document.body.dataset.centre = `${r},${g},${b}`;
+    } } });
+  });
+  await page.goto('/');
+  await pick(page, 'Box');
+  await page.locator('.style[data-fill="solid"]').click();
+  await drawArrow(page, [200, 200], [600, 420]);
+  await page.getByRole('button', { name: /Copy and Close/ }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-centre', '255,59,48');
+});
+
 test('highlighter ink is translucent so the screenshot reads through it', async ({ page }) => {
   await page.goto('/');
   await pick(page, 'Highlighter');

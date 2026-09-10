@@ -2,9 +2,9 @@ import './style.css';
 import { command, isTauri, watchCapture, type CapturePreview, type Snapshot } from './platform';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
-import { ARROW_STYLES, AnnotationLayer, COLORS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
-         describe, drawAnnotations, polygonPath, strokePath, styleOf, textSize,
-         type Annotation, type ArrowStyle, type Tool } from './annotations';
+import { ARROW_STYLES, AnnotationLayer, COLORS, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
+         describe, drawAnnotations, fillOf, fillable, polygonPath, strokePath, styleOf, textSize,
+         type Annotation, type ArrowStyle, type ShapeFill, type Tool } from './annotations';
 
 /** Each style's button previews itself, drawn from the geometry it will draw
  *  with, so a picker cannot come to misrepresent what it picks. */
@@ -15,6 +15,18 @@ function stylePreview(style: ArrowStyle): string {
     ? `<path d="${strokePath(arrowStrokes(sample))}" fill="none" stroke="currentColor"
          stroke-width="${arrowStrokeWidth(sample.weight)}" stroke-linecap="round" stroke-linejoin="round"/>`
     : `<path d="${polygonPath(arrowPolygon(sample))}" fill="currentColor"/>`;
+}
+
+/** Each fill button carries both a box and an ellipse; CSS shows whichever
+ *  shape is in hand, so the picker reads as "this box, solid" and not an
+ *  abstract toggle. Solid matches the outline's outer edge, as in the editor. */
+const FILL_NAMES: Record<ShapeFill, string> = { outline: 'Outline', solid: 'Solid' };
+function fillPreview(fill: ShapeFill): string {
+  return fill === 'solid'
+    ? `<rect class="as-box" x="2.5" y="4.5" width="15" height="11" rx="2" fill="currentColor"/>
+       <ellipse class="as-ellipse" cx="10" cy="10" rx="7.5" ry="5.5" fill="currentColor"/>`
+    : `<rect class="as-box" x="3.5" y="5.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/>
+       <ellipse class="as-ellipse" cx="10" cy="10" rx="6.5" ry="4.5" fill="none" stroke="currentColor" stroke-width="2"/>`;
 }
 
 /** The app's mark: the same arrow the icon is built from, and the same function
@@ -100,6 +112,11 @@ app.innerHTML = `
         aria-checked="${style === 'taper'}" title="${STYLE_NAMES[style]} arrow"><svg viewBox="0 0 20 20"
         aria-hidden="true">${stylePreview(style)}</svg><span class="sr">${STYLE_NAMES[style]}</span></button>`).join('')}
     </div>
+    <div class="fills" role="radiogroup" aria-label="Shape fill" hidden>
+      ${SHAPE_FILLS.map(fill => `<button class="style" type="button" role="radio" data-fill="${fill}"
+        aria-checked="${fill === 'outline'}" title="${FILL_NAMES[fill]} shape"><svg viewBox="0 0 20 20"
+        aria-hidden="true">${fillPreview(fill)}</svg><span class="sr">${FILL_NAMES[fill]}</span></button>`).join('')}
+    </div>
     <label class="size">Size
       <input class="weight" type="range" min="0.1" max="2.5" step="0.05" value="1" aria-label="Size" />
     </label>
@@ -178,6 +195,7 @@ const backButton = app.querySelector<HTMLButtonElement>('.back')!;
 const frontButton = app.querySelector<HTMLButtonElement>('.front')!;
 const chosenCount = app.querySelector<HTMLElement>('.chosen')!;
 const styles = app.querySelector<HTMLElement>('.styles')!;
+const fills = app.querySelector<HTMLElement>('.fills')!;
 const removeButton = app.querySelector<HTMLButtonElement>('.remove')!;
 const empty = app.querySelector<HTMLElement>('.empty')!;
 const copy = app.querySelector<HTMLButtonElement>('.copy')!;
@@ -252,8 +270,19 @@ function syncTools() {
   const arrows = picked.filter(item => item.kind === 'arrow');
   styles.hidden = layer.tool !== 'arrow' && arrows.length === 0;
   if (arrows.length) layer.style.arrow = styleOf(arrows[arrows.length - 1]);
-  for (const button of app.querySelectorAll<HTMLButtonElement>('.style')) {
+  for (const button of app.querySelectorAll<HTMLButtonElement>('.style[data-style]')) {
     const active = button.dataset.style === layer.style.arrow;
+    button.setAttribute('aria-checked', String(active));
+    button.classList.toggle('active', active);
+  }
+  const shapes = picked.filter(fillable);
+  const shaping = layer.tool === 'box' || layer.tool === 'ellipse';
+  fills.hidden = !shaping && shapes.length === 0;
+  if (shapes.length) layer.style.fill = fillOf(shapes[shapes.length - 1]);
+  // Preview the shape in hand: the selection's if there is one, else the tool's.
+  fills.dataset.shape = shapes.length ? shapes[shapes.length - 1].kind : layer.tool === 'ellipse' ? 'ellipse' : 'box';
+  for (const button of app.querySelectorAll<HTMLButtonElement>('.style[data-fill]')) {
+    const active = button.dataset.fill === layer.style.fill;
     button.setAttribute('aria-checked', String(active));
     button.classList.toggle('active', active);
   }
@@ -439,6 +468,11 @@ on(toolbar, 'click', event => {
   const style = element.closest<HTMLButtonElement>('.style');
   if (style?.dataset.style) {
     layer.style.arrow = style.dataset.style as ArrowStyle;
+    layer.applyStyle();
+    return;
+  }
+  if (style?.dataset.fill) {
+    layer.style.fill = style.dataset.fill as ShapeFill;
     layer.applyStyle();
     return;
   }
