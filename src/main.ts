@@ -39,7 +39,7 @@ const STROKE = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-line
  *  later: a frame, a filled display, and a stopwatch, so the set reads as three
  *  answers to the same question rather than three unrelated pictures. */
 const CAPTURE_MODES: { mode: string; name: string; hint: string; art: string }[] = [
-  { mode: 'region', name: 'Region', hint: '⌃⌥⌘4', art:
+  { mode: 'region', name: 'Region', hint: '⌘4', art:
     `<path d="M4.4 7.7V5.9a1.5 1.5 0 0 1 1.5-1.5h1.8M12.3 4.4h1.8a1.5 1.5 0 0 1 1.5 1.5v1.8`
     + `M15.6 12.3v1.8a1.5 1.5 0 0 1-1.5 1.5h-1.8M7.7 15.6H5.9a1.5 1.5 0 0 1-1.5-1.5v-1.8" ${STROKE}/>` },
   { mode: 'display', name: 'Whole Screen', hint: '', art:
@@ -129,7 +129,7 @@ app.innerHTML = `
         <path d="${MARK_ARROW}" fill="var(--brand)"/>
       </svg>
       <h1>Capture a region</h1><p class="empty-hint">A little less between seeing and sharing.</p>
-      <button class="start primary" type="button">Capture Region <kbd>⌃⌥⌘4</kbd></button>
+      <button class="start primary" type="button">Capture Region <kbd>⌘4</kbd></button>
       <section class="recents" hidden aria-label="Recent captures">
         <p class="recents-label">Recent</p>
         <div class="recent-list"></div>

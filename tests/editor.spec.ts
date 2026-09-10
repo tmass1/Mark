@@ -593,7 +593,7 @@ test('the capture menu offers the three ways in, and closes again', async ({ pag
   await page.locator('.capture-more').click();
   await expect(page.locator('.capture-menu')).toBeVisible();
   await expect(page.locator('.capture-menu button')).toHaveText([
-    /Region\s*⌃⌥⌘4/, /Whole Screen/, /Timed Region\s*5s/,
+    /Region\s*⌘4/, /Whole Screen/, /Timed Region\s*5s/,
   ]);
   await expect(page.locator('.capture-more')).toHaveAttribute('aria-expanded', 'true');
 

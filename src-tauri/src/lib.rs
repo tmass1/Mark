@@ -429,14 +429,14 @@ pub fn run() {
             let tray_menu = Menu::with_items(app, &[&capture, &show, &separator, &login, &separator, &quit])?;
             TrayIconBuilder::with_id("mark")
                 .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
-                .icon_as_template(true).tooltip("Mark — Capture Region (⌃⌥⌘4)")
+                .icon_as_template(true).tooltip("Mark — Capture Region (⌘4)")
                 .menu(&tray_menu).build(app)?;
             let copy = MenuItem::with_id(app, "copy", "Copy and Close", true, Some("Super+C"))?;
             let close = MenuItem::with_id(app, "close", "Close", true, Some("Super+W"))?;
             let main = Submenu::with_items(app, "Mark", true, &[&capture, &show, &separator, &login, &separator, &quit])?;
             let edit = Submenu::with_items(app, "Edit", true, &[&copy, &close])?;
             app.set_menu(Menu::with_items(app, &[&main, &edit])?)?;
-            let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER), Code::Digit4);
+            let shortcut = Shortcut::new(Some(Modifiers::SUPER), Code::Digit4);
             if let Err(error) = app.global_shortcut().register(shortcut) {
                 report(app.handle(), format!("The capture shortcut is unavailable ({error}). Use Capture Region in Mark's menu."));
             }
