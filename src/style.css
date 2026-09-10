@@ -47,27 +47,32 @@
   --brand: #ff3b30;
 }
 @media (prefers-color-scheme: dark) {
+  /* Dark is Fritter's slate, not a neutral grey: the same ladder of
+     lightness, on the hue of rgb(27, 33, 42). Text and muted text are
+     Fritter's own; the pane, control and floor tints are that slate's
+     surfaces (#222832, #293039) expressed as translucencies, so the desktop
+     still comes through them. */
   :root {
-    --ink: #f5f5f7;
-    --muted: #a1a1aa;
-    --hairline: #ffffff1c;
-    --scrim: #1b1b1e4d;       /* ~30%; dark vibrancy shows through more readily */
-    --panel: #ffffff1f;
-    --base: #ffffff17;
-    --frame-rim: #ffffff33;
-    --frame-line: #ffffff1c;
-    --sheen: linear-gradient(180deg, #ffffff14, #ffffff00 58%);
-    --rim: #ffffff38;
+    --ink: #f3f3f3;
+    --muted: #9ca3af;
+    --hairline: #f3f3f31f;
+    --scrim: #1b212a5c;       /* ~36% of the slate over the material */
+    --panel: #dbe3f01f;       /* a pane: a cool white, 12% */
+    --base: #1b212ab8;        /* the floor: the slate, ~72% */
+    --sheen: linear-gradient(180deg, #ffffff12, #ffffff00 58%);
+    --rim: #ffffff30;
     --edge: #0000006b;
-    --lens: #ffffff2e;
-    --control: #ffffff1c;
-    --control-hover: #ffffff30;
-    --control-line: #ffffff2b;
-    --sunken: #00000042;
-    --glass: #262629f2;
+    --lens: #dbe3f033;        /* #293039 on #1b212a, as a lift */
+    --control: #dbe3f01c;
+    --control-hover: #dbe3f030;
+    --control-line: #f3f3f340; /* Fritter's control border, 25% */
+    --sunken: #0000004a;
+    --glass: #222832f2;       /* menus and popovers: Fritter's surface */
     --blue: #0a84ff;
     --hover: #359aff;
     --shadow: #00000080;
+    --frame-rim: #ffffff30;
+    --frame-line: #ffffff1a;
     --brand: #ff453a;
   }
 }
@@ -86,9 +91,9 @@ body { margin: 0; overflow: hidden; background: transparent; }
 .browser #app { -webkit-backdrop-filter: blur(36px) saturate(1.5); backdrop-filter: blur(36px) saturate(1.5); }
 @media (prefers-color-scheme: dark) {
   .browser, .browser body {
-    background: radial-gradient(640px 420px at 18% 28%, #6b3a2e 0%, #6b3a2e00 70%),
-                radial-gradient(760px 520px at 82% 72%, #24406e 0%, #24406e00 70%),
-                radial-gradient(520px 420px at 62% 12%, #2d4a3a 0%, #2d4a3a00 70%), #15161a;
+    background: radial-gradient(640px 420px at 18% 28%, #5c3a3a 0%, #5c3a3a00 70%),
+                radial-gradient(760px 520px at 82% 72%, #223d6b 0%, #223d6b00 70%),
+                radial-gradient(520px 420px at 62% 12%, #2a4a40 0%, #2a4a4000 70%), #12161d;
   }
 }
 [hidden] { display: none !important; }
