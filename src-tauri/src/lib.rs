@@ -16,16 +16,18 @@ const EDITOR: &str = "editor";
 /// One overlay window per display, labelled selector-0, selector-1, and so on.
 const SELECTOR: &str = "selector-";
 
-/// Title bar, toolbar and footer, in points: the height the editor needs before
-/// any of the capture is visible.
-const CHROME: f64 = 46.0 + 48.0 + 62.0;
-/// The canvas breathes 26pt on each side.
-const CANVAS_PADDING: f64 = 52.0;
-/// The tool rail beside the canvas, and the least canvas height at which all
-/// nine of its tools are on screen. The window never goes shorter: a tool that
-/// has slipped below the edge with no scrollbar is a tool that does not exist.
-const RAIL: f64 = 48.0;
-const RAIL_HEIGHT: f64 = 344.0;
+/// What the editor needs around a capture, in points, mirroring the glass
+/// layout in style.css: the title row, the toolbar pane and its gap above the
+/// canvas, the gap below, the footer pane and its margin. Change both.
+const CHROME: f64 = 46.0 + 48.0 + 10.0 + 10.0 + 52.0 + 12.0;
+/// Beside it: the margin, the tool rail's pane, the gap to the canvas, and the
+/// margin on the far side.
+const RAIL: f64 = 44.0;
+const SIDES: f64 = 12.0 + 10.0 + 12.0;
+/// The least canvas height at which all nine tools on the rail are on screen,
+/// with a little air under the crop pane. The window never goes shorter: a tool
+/// that has slipped below the edge with no scrollbar is a tool that does not exist.
+const RAIL_HEIGHT: f64 = 334.0 + 6.0;
 /// Enough for the empty state and a row of recents. Its height is the window's
 /// minimum, which the rail sets rather than the empty state; the empty state
 /// has room to spare at this size and the footer is not there anyway.
@@ -38,7 +40,7 @@ const COMPACT: (f64, f64) = (560.0, CHROME + RAIL_HEIGHT);
 fn fit_window(app: &AppHandle, to: Option<(f64, f64)>) {
     let Some(window) = app.get_webview_window(EDITOR) else { return };
     let (mut width, mut height) = match to {
-        Some((w, h)) => (w + CANVAS_PADDING + RAIL, h + CANVAS_PADDING + CHROME),
+        Some((w, h)) => (w + SIDES + RAIL, h + CHROME),
         None => COMPACT,
     };
     // Never larger than the screen it will appear on, less a margin so the

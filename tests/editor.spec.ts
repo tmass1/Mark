@@ -282,8 +282,8 @@ test('no tool, colour or control is ever clipped out of reach, at any width', as
   await drawArrow(page, [200, 200], [600, 420]);
   await pick(page, 'Arrow');
   await drawArrow(page, [200, 500], [600, 650]);
-  for (const [width, tool] of [[1200, 'Box'], [875, 'Arrow'], [700, 'Box'], [560, 'Arrow'], [520, 'Box'], [480, 'Arrow'],
-                               [440, 'Box'], [400, 'Arrow'], [380, 'Arrow'], [380, 'Box']] as const) {
+  const widths = [1200, 875, 760, 740, 720, 700, 660, 640, 620, 600, 580, 560, 540, 520, 500, 480, 460, 440, 420, 400, 380];
+  for (const [width, tool] of widths.flatMap(w => [[w, 'Arrow'], [w, 'Box']] as const)) {
     await page.setViewportSize({ width, height: 600 });
     await pick(page, tool);
     // Reselect the drawn item of that kind, so the picker and label are both up.

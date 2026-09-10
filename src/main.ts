@@ -196,6 +196,7 @@ const stage = app.querySelector<HTMLElement>('.stage')!;
 const overlay = app.querySelector<SVGSVGElement>('.overlay')!;
 const toolbar = app.querySelector<HTMLElement>('.toolbar')!;
 const rail = app.querySelector<HTMLElement>('.rail')!;
+const tools = app.querySelector<HTMLElement>('.tools')!;
 const weight = app.querySelector<HTMLInputElement>('.weight')!;
 const undoButton = app.querySelector<HTMLButtonElement>('.undo')!;
 const backButton = app.querySelector<HTMLButtonElement>('.back')!;
@@ -265,6 +266,21 @@ function showMessage(text: string | null) {
 
 /** Selecting an arrow adopts its look, so the swatches and slider always describe
  *  whatever the next edit will affect. */
+/** One pill per segmented group, slid under whichever segment is checked. The
+ *  group is the pill's offset parent, so a segment's offsets are the pill's
+ *  place; the pill takes the segment's size, since a tool is square and a
+ *  picker button is not. Nothing checked, nothing shown. */
+function placeLens(group: HTMLElement) {
+  let lens = group.querySelector<HTMLElement>(':scope > .lens');
+  if (!lens) { lens = document.createElement('span'); lens.className = 'lens'; group.prepend(lens); }
+  const active = group.querySelector<HTMLElement>('[aria-checked="true"]');
+  lens.hidden = !active || group.hidden;
+  if (!active || group.hidden) return;
+  lens.style.width = `${active.offsetWidth}px`;
+  lens.style.height = `${active.offsetHeight}px`;
+  lens.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
+}
+
 function syncTools() {
   const picked = layer.selection;
   // Say what a colour or size change is about to land on. Restyling the thing
@@ -321,6 +337,7 @@ function syncTools() {
   undoButton.disabled = !layer.canUndo && !crops.length;
   removeButton.disabled = picked.length === 0 || layer.isEditing;
   backButton.disabled = frontButton.disabled = picked.length === 0 || layer.isEditing;
+  for (const group of [tools, styles, fills]) placeLens(group);
 }
 
 function render() {

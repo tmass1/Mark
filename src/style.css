@@ -1,16 +1,17 @@
 /* Mark's editor.
  *
- * The window itself is transparent and sits on a native macOS vibrancy
- * material, which on macOS 26 is drawn with the system's Liquid Glass
- * treatment. Everything here therefore tints that surface rather than
- * painting over it: fills are translucent, separators are hairlines, and
- * nothing is allowed to become an opaque slab except the capture, which
- * has to be exact.
+ * The window is transparent and sits on a native macOS vibrancy material,
+ * which on macOS 26 is drawn with the system's Liquid Glass treatment. The
+ * editor is built as layers on that ground: the controls stand on panes of
+ * frosted glass -- the toolbar, the tool rail, the footer -- each a separate
+ * island with a lit top edge and a soft shadow; the capture is an opaque card,
+ * because it has to be exact; and the desktop shows through only in the space
+ * between them, where there is nothing to read.
  *
- * --scrim is the one knob for how much of that material comes through.
- * Frosted rather than see-through is the point: a screenshot editor you can
- * read the desktop through is harder to look at, not nicer. Lower the alpha
- * for more glass, raise it for more solidity.
+ * Two knobs. --scrim is how much of the material the ground lets through;
+ * --panel is how frosted a pane is on top of it. Legibility comes from the
+ * layering, not from opacity, so the ground can be clearer than it could be
+ * when the controls sat directly on it.
  */
 
 :root {
@@ -22,19 +23,22 @@
   -webkit-font-smoothing: antialiased;
 
   --ink: #1c1c1e;
-  --muted: #61616b;
+  --muted: #5e5e66;
   --hairline: #00000012;
-  --chrome: #ffffff8c;        /* bars, laid over the scrim */
-  --canvas: #00000012;        /* the well the capture sits in */
-  --control: #ffffff8f;
-  --control-hover: #ffffffc9;
-  --control-line: #0000001f;
-  --sunken: #0000000f;
+  --scrim: #ffffffa3;         /* ~64%: the ground between the panes */
+  --panel: #ffffff8a;         /* a pane of frosted glass, laid on the ground */
+  --sheen: linear-gradient(180deg, #ffffff47, #ffffff00 58%);   /* light caught along the top */
+  --rim: #ffffffe0;           /* the lit top edge of a pane */
+  --edge: #00000016;          /* its shadowed underside and outline */
+  --lens: #fffffff0;          /* the raised pill under the active segment */
+  --control: #ffffffa6;
+  --control-hover: #ffffffdd;
+  --control-line: #00000018;
+  --sunken: #0000000d;
   --glass: #fbfbfdf2;         /* menus and popovers */
-  --scrim: #ffffffd1;         /* ~82% over the material */
   --blue: #007aff;
   --hover: #0069dc;
-  --shadow: #00000024;
+  --shadow: #0000002e;
   /* Identity, not interface: red is what Mark draws with, blue is what macOS
      uses for controls, and the two should not compete. */
   --brand: #ff3b30;
@@ -42,29 +46,45 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --ink: #f5f5f7;
-    --muted: #9d9da6;
+    --muted: #a1a1aa;
     --hairline: #ffffff1c;
-    --chrome: #ffffff14;
-    --canvas: #00000042;
-    --control: #ffffff1a;
-    --control-hover: #ffffff2e;
+    --scrim: #1b1b1ec4;       /* ~77%; dark vibrancy shows through more readily */
+    --panel: #ffffff14;
+    --sheen: linear-gradient(180deg, #ffffff14, #ffffff00 58%);
+    --rim: #ffffff38;
+    --edge: #0000006b;
+    --lens: #ffffff2e;
+    --control: #ffffff1c;
+    --control-hover: #ffffff30;
     --control-line: #ffffff2b;
     --sunken: #00000042;
     --glass: #262629f2;
-    --scrim: #1d1d1fdb;       /* ~86%; dark vibrancy shows through more readily */
     --blue: #0a84ff;
     --hover: #359aff;
-    --shadow: #00000059;
+    --shadow: #00000080;
     --brand: #ff453a;
   }
 }
 
 * { box-sizing: border-box; }
 /* Transparent so the window's material shows. The browser preview has no
-   material behind it, so it gets a plain ground instead. */
+   material behind it, so it stands one in: something wallpaper-like, blurred
+   the way the system blurs what is under a window, so the glass has something
+   to be glass over. It exaggerates; the real material is quieter. */
 body { margin: 0; overflow: hidden; background: transparent; }
-.browser, .browser body { background: #eef0f3; }
-@media (prefers-color-scheme: dark) { .browser, .browser body { background: #1b1b1d; } }
+.browser, .browser body {
+  background: radial-gradient(640px 420px at 18% 28%, #ffb8a0 0%, #ffb8a000 70%),
+              radial-gradient(760px 520px at 82% 72%, #9cc4ff 0%, #9cc4ff00 70%),
+              radial-gradient(520px 420px at 62% 12%, #bfead0 0%, #bfead000 70%), #dde4ee;
+}
+.browser #app { -webkit-backdrop-filter: blur(56px) saturate(1.3); backdrop-filter: blur(56px) saturate(1.3); }
+@media (prefers-color-scheme: dark) {
+  .browser, .browser body {
+    background: radial-gradient(640px 420px at 18% 28%, #6b3a2e 0%, #6b3a2e00 70%),
+                radial-gradient(760px 520px at 82% 72%, #24406e 0%, #24406e00 70%),
+                radial-gradient(520px 420px at 62% 12%, #2d4a3a 0%, #2d4a3a00 70%), #15161a;
+  }
+}
 [hidden] { display: none !important; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
@@ -80,61 +100,80 @@ kbd { font: inherit; font-size: 11px; opacity: .5; margin-left: 9px; letter-spac
 
 /* ---- chrome ------------------------------------------------------------- */
 
+/* The title row is the ground itself: the traffic lights, the name and the
+   capture control sit directly on the material, and the first pane begins
+   below them. */
 .titlebar {
-  height: 46px; flex: 0 0 46px; padding: 0 14px 0 78px;
+  height: 46px; flex: 0 0 46px; padding: 0 12px 0 78px;
   display: flex; align-items: center; gap: 14px;
-  background: var(--chrome); border-bottom: 1px solid var(--hairline);
   user-select: none; -webkit-user-select: none;
 }
 .app-title { flex: 1; font-weight: 600; letter-spacing: -.1px; }
 .preview-label { color: var(--muted); font-size: 11px; }
 .browser .titlebar { padding-left: 20px; }
 
-.toolbar {
-  flex: 0 0 48px; display: flex; align-items: center; gap: 14px; padding: 0 14px;
-  background: var(--chrome); border-bottom: 1px solid var(--hairline);
+/* ---- glass ---------------------------------------------------------------- */
+
+/* A pane: frosted glass on the ground, with a lit top edge, a shadowed
+   underside, and a soft shadow that lifts it off. Radii nest -- 18 on the
+   pane, 6 of padding, pills inside -- so every corner is concentric with the
+   one around it. The geometry here (12 margins, 10 gaps, 48 and 52 heights,
+   44-wide rail) is mirrored in fit_window in lib.rs; change both. */
+.toolbar, footer, .tool-group, .message {
+  background: var(--sheen), var(--panel);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 14px 34px -16px var(--shadow);
 }
+
+.toolbar { flex: 0 0 48px; margin: 0 12px 10px; padding: 0 12px; display: flex; align-items: center; gap: 14px; }
 .spacer { flex: 1; }
 
 /* Tools down the left, where the window has height to spare and nothing gets
    pushed out of reach; what a tool does with colour and size stays in the bar
-   above. Two groups: what marks the image, and what cuts it. */
-.workspace { flex: 1; min-height: 0; display: flex; }
-.rail {
-  flex: 0 0 48px; display: flex; flex-direction: column; align-items: center; padding: 10px 0;
-  background: var(--chrome); border-right: 1px solid var(--hairline);
-  overflow-y: auto; scrollbar-width: none;
-}
+   above. Two panes: what marks the image, and what cuts it. */
+.workspace { flex: 1; min-height: 0; display: flex; gap: 10px; padding: 0 12px; }
+.rail { flex: none; display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: none; }
 .rail::-webkit-scrollbar { display: none; }
-.tools { display: flex; flex-direction: column; gap: 8px; }
+.tools { position: relative; display: flex; flex-direction: column; gap: 8px; }
+
+/* The highlight under the active segment is one pill that slides to wherever
+   the choice went, rather than a background that appears on the new button.
+   Positioned from script, since it has to know where the choice is. */
+.lens {
+  position: absolute; top: 0; left: 0; z-index: 0; width: 32px; height: 32px; border-radius: 999px;
+  background: var(--lens);
+  box-shadow: inset 0 1px 0 #ffffffb8, 0 1px 3px #00000021, 0 0 0 .5px var(--edge);
+  transition: transform .34s cubic-bezier(.22, 1, .36, 1), width .2s, height .2s;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) { .lens { transition: none; } }
 
 /* What the capture is, on the left; what to do with it, on the right. Every
    control shares one height and one radius so the row reads as a single band
    rather than a queue of differently shaped things. */
-footer {
-  flex: 0 0 62px; padding: 0 14px; display: flex; gap: 10px; align-items: center;
-  background: var(--chrome); border-top: 1px solid var(--hairline);
-}
+footer { flex: 0 0 52px; margin: 10px 12px 12px; padding: 0 12px; display: flex; gap: 10px; align-items: center; }
 footer > * { flex: none; }
 .push { flex: 1 1 auto; min-width: 8px; }
-.dimensions { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The one thing in the row that may give: the size readout shrinks to an
+   ellipsis before any button is pushed off the edge. */
+.dimensions { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* ---- controls ----------------------------------------------------------- */
 
 .primary {
   display: inline-flex; align-items: center; justify-content: center; height: 30px;
   border: none; border-radius: 999px; padding: 0 16px; color: #fff;
-  background: var(--blue); font-weight: 500; white-space: nowrap;
-  box-shadow: 0 1px 2px #0000001f, inset 0 1px 0 #ffffff2b;
+  background: linear-gradient(180deg, #ffffff33, #ffffff00 60%), var(--blue); font-weight: 500; white-space: nowrap;
+  box-shadow: 0 8px 18px -10px #007affb3, 0 1px 2px #0000001f, inset 0 1px 0 #ffffff40;
 }
-.primary:hover { background: var(--hover); }
+.primary:hover { background: linear-gradient(180deg, #ffffff33, #ffffff00 60%), var(--hover); }
 .primary:active { transform: translateY(.5px); }
 
 .glassy {
   display: inline-flex; align-items: center; justify-content: center; height: 30px;
   border: 1px solid var(--control-line); border-radius: 999px; padding: 0 14px;
   background: var(--control); white-space: nowrap;
-  box-shadow: inset 0 1px 0 #ffffff40;
+  box-shadow: inset 0 1px 0 var(--rim), 0 1px 2px #00000012;
 }
 .glassy:hover { background: var(--control-hover); }
 
@@ -148,33 +187,30 @@ footer > * { flex: none; }
 .subtle, .settings { border: none; padding: 6px 8px; border-radius: 999px; background: transparent; color: var(--muted); font-size: 12px; }
 .subtle:hover, .settings:hover { background: var(--sunken); color: var(--ink); }
 
-/* A segmented group: one sunken track, the active segment lifted out of it. */
-.tool-group, .capture-control { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); }
-.tool-group { flex-direction: column; }
-.tool { border: none; border-radius: 999px; padding: 7px; background: transparent; color: var(--muted); }
+/* A tool pane is a column of plain buttons; the lens beneath does the lifting. */
+.tool-group { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px; }
+.tool { position: relative; z-index: 1; border: none; border-radius: 999px; padding: 7px; background: transparent; color: var(--muted); transition: color .15s; }
 .tool svg { display: block; width: 18px; height: 18px; }
-.tool:hover { color: var(--ink); }
-.tool.active { background: var(--control); color: var(--ink); box-shadow: 0 1px 2px #00000017, inset 0 1px 0 #ffffff59; }
+.tool:hover, .tool.active { color: var(--ink); }
 
-.capture-control { position: relative; gap: 0; }
+/* The capture control stands alone on the ground, so it is a small pane of its own. */
+.capture-control {
+  position: relative; display: flex; align-items: center; padding: 2px; border-radius: 999px;
+  background: var(--sheen), var(--panel);
+  box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge), 0 6px 16px -10px var(--shadow);
+}
 .capture-go { border: none; border-radius: 999px 0 0 999px; padding: 5px 12px; background: transparent; font-size: 12px; }
 .capture-more { display: flex; border: none; border-radius: 0 999px 999px 0; padding: 5px 6px 5px 2px; background: transparent; color: var(--muted); }
 .capture-more svg { width: 15px; height: 15px; }
 .capture-go:hover, .capture-more:hover { background: var(--control); }
 
-/* The swatch strip is what gives when the toolbar runs out of room: it scrolls
-   rather than pushing the buttons at the end off the edge, which is what a
-   toolbar that only reflowed below 560px did at every width in between. */
-.swatches { display: flex; gap: 7px; }
-/* The tool and colour strips are what give when the toolbar runs out of room:
-   they scroll rather than pushing the buttons at the end off the edge, which is
-   what a toolbar that only reflowed below 560px did at every width between.
-   Their contents must not shrink, or the icons distort instead. */
 /* Nothing in the bar scrolls or shrinks: a control that does not fit must be
    hidden by a breakpoint below, so it is never silently clipped out of reach. */
+.swatches { display: flex; gap: 7px; }
 .tool, .swatch, .styles, .fills, .exports { flex: none; }
-.swatch { width: 20px; height: 20px; padding: 0; border: 1px solid #0000002e; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 1px 1px #ffffff40; }
-.swatch.active { box-shadow: 0 0 0 2px var(--glass), 0 0 0 3.5px var(--blue); }
+/* Each swatch is a bead of colour: lit from above, resting on a shadow. */
+.swatch { width: 20px; height: 20px; padding: 0; border: 1px solid #00000029; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 1.5px 1px #ffffff66, inset 0 -1px 1px #0000001a, 0 1px 2px #0000001f; }
+.swatch.active { box-shadow: inset 0 1.5px 1px #ffffff66, 0 0 0 2px var(--glass), 0 0 0 3.5px var(--blue); }
 
 .size { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .weight { width: 88px; accent-color: var(--blue); }
@@ -211,7 +247,8 @@ footer > * { flex: none; }
 .capture-menu kbd { margin: 0; }
 .capture-menu button:hover kbd { opacity: .8; }
 
-.message { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 11px 16px; background: var(--chrome); border-top: 1px solid var(--hairline); font-size: 12px; line-height: 1.5; }
+.message { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 12px 12px; padding: 11px 16px; font-size: 12px; line-height: 1.5; }
+.message:not([hidden]) ~ footer { margin-top: 0; }   /* the message's margin is the gap */
 .message span { flex: 1 1 240px; }
 /* An action, not an aside: the settings button gets the same weight as the
    other controls rather than reading as body text. */
@@ -222,7 +259,7 @@ footer > * { flex: none; }
    it reflowed the image mid-drag, moving the picture under the cursor that was
    still drawing the crop. */
 .crop-bar {
-  position: absolute; left: 50%; bottom: 78px; transform: translateX(-50%); z-index: 5;
+  position: absolute; left: 50%; bottom: 86px; transform: translateX(-50%); z-index: 5;
   display: flex; align-items: center; gap: 12px; padding: 9px 10px 9px 14px;
   border-radius: 999px; background: var(--glass); font-size: 12px;
   -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
@@ -232,10 +269,13 @@ footer > * { flex: none; }
 
 /* ---- the capture -------------------------------------------------------- */
 
-.canvas { flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 26px; overflow: hidden; background: var(--canvas); }
+/* No well and no padding of its own: the canvas is the ground, and the panes
+   around it hold the capture off the edges. */
+.canvas { flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .canvas.scrolls { overflow: auto; justify-content: safe center; align-items: safe center; }
 /* The stage holds the capture's aspect ratio, so image and overlay share one box. */
-.stage { position: relative; aspect-ratio: var(--ratio, 4 / 3); max-width: 100%; max-height: 100%; border-radius: 4px; box-shadow: 0 4px 22px var(--shadow), 0 0 0 .5px #00000026; }
+/* The one opaque thing: a card, lifted well clear of the glass around it. */
+.stage { position: relative; aspect-ratio: var(--ratio, 4 / 3); max-width: 100%; max-height: 100%; border-radius: 6px; box-shadow: 0 22px 54px -22px #00000066, 0 3px 10px #00000021, 0 0 0 .5px #0000002b; }
 .stage.zoomed { aspect-ratio: auto; max-width: none; max-height: none; flex: none; }
 .capture { display: block; width: 100%; height: 100%; border-radius: inherit; user-select: none; -webkit-user-select: none; }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
@@ -282,42 +322,43 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 /* ---- narrow ------------------------------------------------------------- */
 
 /* Before anything is dropped, take back the space that costs least. */
-/* With the tools on the rail the whole bar fits to 560px. Below that it sheds
-   controls in order of what has a keyboard shortcut to fall back on: the
-   selection label first, then the reorder pair (⌘[ ⌘]), and only at the
-   minimum width Undo and Delete (⌘Z ⌫). Colour, style, fill and Size stay
-   to the end. Measured, not guessed: see the clipping test. */
+/* The bar sheds controls as the window narrows, in order of what has a
+   keyboard shortcut to fall back on: the selection label first, then the
+   reorder pair (⌘[ ⌘]), then the word beside the Size slider, and Undo and
+   Delete (⌘Z ⌫) last. Colour, style, fill and the slider stay to the 380
+   minimum. Every threshold is measured with the widest state -- an arrow
+   selected, so its three-button picker and the label both show -- and the
+   clipping test checks each one. */
 @media (max-width: 760px) {
   .weight { width: 62px; }
   .toolbar { gap: 10px; }
 }
-
+@media (max-width: 740px) { .chosen { display: none; } }
+/* .choose only exists in the browser preview; the app's footer is narrower. */
+@media (max-width: 700px) { .choose { display: none; } }
 @media (max-width: 560px) {
-  .titlebar, .toolbar, footer { padding-left: 12px; padding-right: 12px; }
-  .titlebar { padding-left: 78px; }
   .browser .titlebar { padding-left: 12px; }
-  .canvas { padding: 16px; }
   .toolbar { gap: 8px; }
-  /* ⌘0 still zooms; .choose only exists in the browser preview. */
-  .chosen, .zoom, .choose { display: none; }
+  .zoom { display: none; }   /* ⌘0 still zooms */
   .swatch { width: 16px; height: 16px; }
   .swatches { gap: 4px; }
   .copy kbd, .copy-only kbd, .capture-go kbd { display: none; }
 }
+@media (max-width: 400px) { .toolbar, footer { margin-left: 8px; margin-right: 8px; } }
 @media (prefers-reduced-motion: reduce) { .primary:active { transform: none; } }
 .chosen { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .subtle.icon { display: flex; padding: 5px 6px; }
 .subtle.icon svg { display: block; width: 18px; height: 18px; }
 .glassy.icon { padding: 0 11px; }
 .glassy.icon svg { display: block; width: 17px; height: 17px; }
-.styles, .fills { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); }
-.style { display: flex; border: none; border-radius: 999px; padding: 4px 7px; background: transparent; color: var(--muted); }
+.styles, .fills { position: relative; display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); box-shadow: inset 0 1px 1px #0000000f; }
+.style { position: relative; z-index: 1; display: flex; border: none; border-radius: 999px; padding: 4px 7px; background: transparent; color: var(--muted); transition: color .15s; }
 .style svg { display: block; width: 17px; height: 17px; }
-.style:hover { color: var(--ink); }
-.style.active { background: var(--control); color: var(--ink); box-shadow: 0 1px 2px #00000017, inset 0 1px 0 #ffffff59; }
+.style:hover, .style.active { color: var(--ink); }
 .fills[data-shape="ellipse"] .as-box, .fills:not([data-shape="ellipse"]) .as-ellipse { display: none; }
 
 /* After .subtle.icon, and as specific: that rule sets display and would
    otherwise win, leaving these buttons visible where the bar cannot hold them. */
-@media (max-width: 480px) { .toolbar .back, .toolbar .front { display: none; } }
-@media (max-width: 400px) { .toolbar .undo, .toolbar .remove, .size-word { display: none; } } /* the slider keeps its aria-label */
+@media (max-width: 640px) { .toolbar .back, .toolbar .front { display: none; } }
+@media (max-width: 480px) { .size-word { display: none; } } /* the slider keeps its aria-label */
+@media (max-width: 440px) { .toolbar .undo, .toolbar .remove { display: none; } }
