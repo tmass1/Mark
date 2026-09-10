@@ -25,8 +25,10 @@
   --ink: #1c1c1e;
   --muted: #5e5e66;
   --hairline: #00000012;
-  --scrim: #ffffffa3;         /* ~64%: the ground between the panes */
-  --panel: #ffffff8a;         /* a pane of frosted glass, laid on the ground */
+  --scrim: #ffffff59;         /* ~35%: the ground is mostly the material now */
+  --panel: #ffffffa8;         /* a pane of frosted glass, laid on the ground */
+  --frame-rim: #ffffffc4;     /* the lit top edge of the window itself */
+  --frame-line: #ffffff73;    /* and its glass edge all the way round */
   --sheen: linear-gradient(180deg, #ffffff47, #ffffff00 58%);   /* light caught along the top */
   --rim: #ffffffe0;           /* the lit top edge of a pane */
   --edge: #00000016;          /* its shadowed underside and outline */
@@ -48,8 +50,10 @@
     --ink: #f5f5f7;
     --muted: #a1a1aa;
     --hairline: #ffffff1c;
-    --scrim: #1b1b1ec4;       /* ~77%; dark vibrancy shows through more readily */
-    --panel: #ffffff14;
+    --scrim: #1b1b1e80;       /* ~50%; dark vibrancy shows through more readily */
+    --panel: #ffffff1a;
+    --frame-rim: #ffffff33;
+    --frame-line: #ffffff1c;
     --sheen: linear-gradient(180deg, #ffffff14, #ffffff00 58%);
     --rim: #ffffff38;
     --edge: #0000006b;
@@ -77,7 +81,7 @@ body { margin: 0; overflow: hidden; background: transparent; }
               radial-gradient(760px 520px at 82% 72%, #9cc4ff 0%, #9cc4ff00 70%),
               radial-gradient(520px 420px at 62% 12%, #bfead0 0%, #bfead000 70%), #dde4ee;
 }
-.browser #app { -webkit-backdrop-filter: blur(56px) saturate(1.3); backdrop-filter: blur(56px) saturate(1.3); }
+.browser #app { -webkit-backdrop-filter: blur(36px) saturate(1.5); backdrop-filter: blur(36px) saturate(1.5); }
 @media (prefers-color-scheme: dark) {
   .browser, .browser body {
     background: radial-gradient(640px 420px at 18% 28%, #6b3a2e 0%, #6b3a2e00 70%),
@@ -93,9 +97,13 @@ button:disabled { opacity: .4; }
 button:focus-visible { outline: 2.5px solid var(--blue); outline-offset: 2px; }
 kbd { font: inherit; font-size: 11px; opacity: .5; margin-left: 9px; letter-spacing: .3px; }
 
+/* The window is itself a slab of glass: the material shows through the scrim,
+   and its edge catches light -- brightest along the top, a hairline the rest of
+   the way round. The radius matches the material's mask in tauri.conf.json. */
 #app {
   position: relative; height: 100dvh; display: flex; flex-direction: column; min-width: 300px;
-  background: var(--scrim);
+  background: var(--scrim); border-radius: 12px;
+  box-shadow: inset 0 1px 0 var(--frame-rim), inset 0 0 0 .5px var(--frame-line);
 }
 
 /* ---- chrome ------------------------------------------------------------- */
@@ -300,7 +308,12 @@ footer > * { flex: none; }
 
 /* ---- empty state -------------------------------------------------------- */
 
-.empty { text-align: center; padding: 12px; }
+/* On a clear ground the words need a pane of their own. */
+.empty {
+  text-align: center; padding: 26px 34px 28px; margin: 0 24px; max-width: 460px; border-radius: 22px;
+  background: var(--sheen), var(--panel);
+  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 18px 40px -18px var(--shadow);
+}
 .viewfinder { width: 72px; height: 72px; margin-bottom: -4px; color: var(--muted); }
 h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35px; }
 .empty-hint { margin: 0 0 26px; color: var(--muted); line-height: 1.5; }
