@@ -684,6 +684,35 @@ pub fn run() {
 mod tests {
     use super::{pretty_shortcut, safe_name};
 
+    /// A command a window may not call fails at runtime with "not allowed by
+    /// ACL", and a call whose error is caught fails silently. Every command
+    /// declared here must be registered in build.rs, wired into the invoke
+    /// handler, and granted to at least one window; anything else is a
+    /// feature that quietly does nothing.
+    #[test]
+    fn every_command_is_registered_wired_and_granted() {
+        let source = include_str!("lib.rs");
+        let build = include_str!("../build.rs");
+        let capabilities = [include_str!("../capabilities/editor.json"), include_str!("../capabilities/selector.json"),
+                            include_str!("../capabilities/settings.json")].concat();
+        let handler = source.split("generate_handler![").nth(1).and_then(|rest| rest.split("])").next()).expect("an invoke handler");
+        let lines: Vec<&str> = source.lines().collect();
+        let mut problems = Vec::new();
+        let mut seen = 0;
+        for (i, line) in lines.iter().enumerate() {
+            if line.trim() != "#[tauri::command]" { continue; }
+            let signature = lines[i + 1..].iter().find(|l| l.trim_start().starts_with("fn ") || l.trim_start().starts_with("async fn "))
+                .expect("a function after the attribute");
+            let name = signature.trim_start().trim_start_matches("async ").trim_start_matches("fn ").split('(').next().unwrap();
+            seen += 1;
+            if !build.contains(&format!("\"{name}\"")) { problems.push(format!("{name}: not in build.rs, so no permission exists for it")); }
+            if !handler.contains(name) { problems.push(format!("{name}: not in the invoke handler")); }
+            if !capabilities.contains(&format!("allow-{}", name.replace('_', "-"))) { problems.push(format!("{name}: no window is allowed to call it")); }
+        }
+        assert!(seen >= 20, "found only {seen} commands; the scan is broken");
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
+    }
+
     /// The tray shows the shortcut the way the Mac prints it, and must agree
     /// with the web side's prettyShortcut on every case that side tests.
     #[test]

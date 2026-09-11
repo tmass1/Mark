@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installBridge, waitFor } from './bridge';
+import { installBridge, waitFor, clear } from './bridge';
 
 /** The settings window, against the real invoke path: each control sends the
  *  command it should, with the argument Rust expects, and shows what Rust
@@ -69,4 +69,16 @@ test('the editor shows the saved shortcut, and follows a change', async ({ page 
   await expect(page.locator('.start kbd')).toHaveText('⌥⌘4');
   await page.locator('.capture-more').click();
   await expect(page.locator('.capture-menu [data-mode="region"] kbd')).toHaveText('⌥⌘4');
+});
+
+test('the editor offers a way into settings: a gear in the title row, and ⌘,', async ({ page }) => {
+  await installBridge(page, { returns: { get_settings: SAVED } });
+  await page.goto('/');
+  const gear = page.getByRole('button', { name: 'Settings' });
+  await expect(gear).toBeVisible();
+  await gear.click();
+  await waitFor(page, 'open_settings');
+  await clear(page);
+  await page.keyboard.press('Meta+,');
+  await waitFor(page, 'open_settings');
 });

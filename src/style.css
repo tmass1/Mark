@@ -124,6 +124,7 @@ kbd { font: inherit; font-size: 11px; opacity: .5; margin-left: 9px; letter-spac
   user-select: none; -webkit-user-select: none;
 }
 .app-title { flex: 1; font-weight: 600; letter-spacing: -.1px; }
+.settings-button { margin-right: -4px; }   /* the gear sits closer to Capture than the gap between controls */
 .preview-label { color: var(--muted); font-size: 11px; }
 .browser .titlebar { padding-left: 20px; }
 

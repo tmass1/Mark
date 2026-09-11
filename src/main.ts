@@ -88,6 +88,9 @@ app.innerHTML = `
   <header class="titlebar" data-tauri-drag-region>
     <span class="app-title" data-tauri-drag-region>Mark</span>
     <span class="preview-label" hidden>Browser preview</span>
+    <button class="settings-button subtle icon" type="button" title="Settings (⌘,)" aria-label="Settings" hidden>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.1" ${STROKE}/><path d="M10 2.8v2.1M10 15.1v2.1M2.8 10h2.1M15.1 10h2.1M4.9 4.9l1.5 1.5M13.6 13.6l1.5 1.5M4.9 15.1l1.5-1.5M13.6 6.4l1.5-1.5" ${STROKE}/></svg>
+    </button>
     <div class="capture-control">
       <button class="capture-go" type="button">Capture</button>
       <button class="capture-more" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Capture options">
@@ -157,7 +160,7 @@ app.innerHTML = `
         <p class="recents-label">Recent</p>
         <div class="recent-list"></div>
       </section>
-      <p class="quit-hint" hidden>Mark lives in the menu bar · ⌘W hides it · ⌘Q quits</p>
+      <p class="quit-hint" hidden>Mark lives in the menu bar · ⌘, settings · ⌘W hides it · ⌘Q quits</p>
     </section>
   </main>
   </div>
@@ -795,6 +798,9 @@ function showShortcut(shortcut: string) {
 async function init() {
   if (isTauri) {
     app.querySelector<HTMLElement>('.quit-hint')!.hidden = false;
+    const gear = app.querySelector<HTMLButtonElement>('.settings-button')!;
+    gear.hidden = false;
+    on(gear, 'click', () => { void command('open_settings').catch(report); });
     void command<{ shortcut: string }>('get_settings').then(s => showShortcut(s.shortcut)).catch(() => {});
     cleanups.push(await watchSettings(s => showShortcut(s.shortcut)));
     // On macOS 26 the panes sit on the system's own glass, laid under the web

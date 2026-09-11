@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "description": "The settings window may read and change the preferences, and close itself.",
+  "windows": ["settings"], "platforms": ["macOS"],
+  "permissions": [
+    "allow-get-settings", "allow-set-appearance", "allow-set-shortcut",
+    "allow-login-enabled", "allow-set-login",
+    "core:window:allow-close"
+  ]
+}
