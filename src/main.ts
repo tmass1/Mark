@@ -1,5 +1,6 @@
 import './style.css';
-import { command, isTauri, watchCapture, type CapturePreview, type Snapshot } from './platform';
+import { command, isTauri, watchCapture, watchSettings, type CapturePreview, type Snapshot } from './platform';
+import { DEFAULT_SHORTCUT, prettyShortcut } from './shortcut';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
@@ -51,7 +52,7 @@ const STROKE = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-line
  *  later: a frame, a filled display, and a stopwatch, so the set reads as three
  *  answers to the same question rather than three unrelated pictures. */
 const CAPTURE_MODES: { mode: string; name: string; hint: string; art: string }[] = [
-  { mode: 'region', name: 'Region', hint: '⌘4', art:
+  { mode: 'region', name: 'Region', hint: prettyShortcut(DEFAULT_SHORTCUT), art:
     `<path d="M4.4 7.7V5.9a1.5 1.5 0 0 1 1.5-1.5h1.8M12.3 4.4h1.8a1.5 1.5 0 0 1 1.5 1.5v1.8`
     + `M15.6 12.3v1.8a1.5 1.5 0 0 1-1.5 1.5h-1.8M7.7 15.6H5.9a1.5 1.5 0 0 1-1.5-1.5v-1.8" ${STROKE}/>` },
   { mode: 'display', name: 'Whole Screen', hint: '', art:
@@ -151,7 +152,7 @@ app.innerHTML = `
         <path d="${MARK_ARROW}" fill="var(--brand)"/>
       </svg>
       <h1>Capture a region</h1><p class="empty-hint">A little less between seeing and sharing.</p>
-      <button class="start primary" type="button">Capture Region <kbd>⌘4</kbd></button>
+      <button class="start primary" type="button">Capture Region <kbd>${prettyShortcut(DEFAULT_SHORTCUT)}</kbd></button>
       <section class="recents" hidden aria-label="Recent captures">
         <p class="recents-label">Recent</p>
         <div class="recent-list"></div>
@@ -734,6 +735,8 @@ document.addEventListener('keydown', event => {
       .then(name => flash(`Material: ${name}`)).catch(report);
   } else if ((event.metaKey || event.ctrlKey) && key === 'w') {
     event.preventDefault(); void dismiss().catch(report);
+  } else if (isTauri && event.metaKey && key === ',') {
+    event.preventDefault(); void command('open_settings').catch(report);
   } else if (capture && (event.metaKey || event.ctrlKey) && key === 'a') {
     event.preventDefault();
     if (!layer.selectAll()) flash('Nothing drawn to select.');
@@ -782,9 +785,18 @@ document.addEventListener('keydown', event => {
   }
 }, { signal: abort.signal });
 
+/** Everywhere the editor shows the capture shortcut. The setting is the truth;
+ *  the markup only starts out with the default so the browser preview has one. */
+function showShortcut(shortcut: string) {
+  const pretty = prettyShortcut(shortcut);
+  for (const key of app.querySelectorAll<HTMLElement>('.start kbd, .capture-menu [data-mode="region"] kbd')) key.textContent = pretty;
+}
+
 async function init() {
   if (isTauri) {
     app.querySelector<HTMLElement>('.quit-hint')!.hidden = false;
+    void command<{ shortcut: string }>('get_settings').then(s => showShortcut(s.shortcut)).catch(() => {});
+    cleanups.push(await watchSettings(s => showShortcut(s.shortcut)));
     // On macOS 26 the panes sit on the system's own glass, laid under the web
     // view by lib.rs, so the stylesheet draws them bare there.
     document.documentElement.classList.toggle('native-glass', await command<boolean>('glass_available').catch(() => false));

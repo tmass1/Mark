@@ -396,3 +396,32 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 @media (max-width: 640px) { .toolbar .back, .toolbar .front { display: none; } }
 @media (max-width: 480px) { .size-word { display: none; } } /* the slider keeps its aria-label */
 @media (max-width: 440px) { .toolbar .undo, .toolbar .remove { display: none; } }
+
+/* ---- settings ------------------------------------------------------------- */
+
+/* Its own window, on the same material: a label column on the left, controls
+   on the right, in the shape macOS gives its own settings. Nothing here is
+   saved by a button; each control applies as it changes. */
+.prefs { padding: 20px 26px 22px; display: flex; flex-direction: column; gap: 4px; }
+.pref { display: grid; grid-template-columns: 96px 1fr; gap: 0 18px; align-items: start; padding: 12px 0; }
+.pref + .pref { border-top: 1px solid var(--hairline); }
+.pref-label { margin: 0; padding-top: 6px; font-size: 13px; font-weight: 500; text-align: right; color: var(--ink); }
+.pref-control { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.pref-hint { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+.pref-note { margin: 0; color: var(--brand); font-size: 11.5px; line-height: 1.45; }
+.pref-preview { margin: 8px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
+
+/* The appearance choice is a segmented control with the editor's sliding pill. */
+.segments { position: relative; display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); box-shadow: inset 0 1px 1px #0000000f; }
+.segment { position: relative; z-index: 1; border: none; border-radius: 999px; padding: 5px 13px; background: transparent; color: var(--muted); font-size: 12.5px; white-space: nowrap; transition: color .15s; }
+.segment:hover, .segment.active { color: var(--ink); }
+
+/* The recorder is a key cap: it shows the shortcut, and while recording it
+   lights up and shows what it is waiting for. */
+.recorder { min-width: 88px; padding: 0 14px; font-variant-numeric: tabular-nums; }
+.recorder kbd { margin: 0; opacity: 1; font-size: 13px; letter-spacing: .5px; }
+.recorder.recording { border-color: var(--blue); box-shadow: 0 0 0 3px #007aff33, inset 0 1px 0 var(--rim); }
+.recorder.recording kbd { color: var(--muted); letter-spacing: 0; }
+
+.check { display: inline-flex; align-items: center; gap: 8px; padding-top: 6px; font-size: 13px; }
+.check input { margin: 0; width: 15px; height: 15px; accent-color: var(--blue); }

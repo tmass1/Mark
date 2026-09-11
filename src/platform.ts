@@ -18,3 +18,10 @@ export async function watchCapture(update: () => void): Promise<() => void> {
   const { listen } = await import('@tauri-apps/api/event');
   return listen('capture-changed', update);
 }
+
+/** Settings change in their own window; the editor shows the shortcut, so it listens. */
+export async function watchSettings(update: (settings: { appearance: string; shortcut: string }) => void): Promise<() => void> {
+  if (!isTauri) return () => {};
+  const { listen } = await import('@tauri-apps/api/event');
+  return listen<{ appearance: string; shortcut: string }>('settings-changed', event => update(event.payload));
+}

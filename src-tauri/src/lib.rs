@@ -2,6 +2,7 @@ mod capture;
 mod glass;
 mod macos;
 mod session;
+mod settings;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use tauri_plugin_dialog::DialogExt;
@@ -11,9 +12,15 @@ use tauri::{AppHandle, Emitter, Manager, menu::{CheckMenuItem, Menu, MenuItem, P
 
 /// Kept so the tick can be corrected when macOS disagrees with what was asked.
 struct LoginToggle(CheckMenuItem<tauri::Wry>);
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+/// Kept so its accelerator can follow the shortcut the user chooses.
+struct CaptureItem(MenuItem<tauri::Wry>);
+/// The settings as last loaded or saved; every window reads from here.
+struct Prefs(Mutex<settings::Settings>);
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use std::str::FromStr;
 
 const EDITOR: &str = "editor";
+const SETTINGS: &str = "settings";
 /// One overlay window per display, labelled selector-0, selector-1, and so on.
 const SELECTOR: &str = "selector-";
 
@@ -461,6 +468,115 @@ fn toggle_login_item(app: &AppHandle) {
     }
 }
 
+fn tooltip(shortcut: &str) -> String { format!("Mark — Capture Region ({})", pretty_shortcut(shortcut)) }
+
+/// "Super+Alt+Digit4" as a person reads it: ⌥⌘4, modifiers in the order the
+/// Mac prints them. The web side has the same function; this one is for the
+/// tray, which the web side cannot reach.
+pub fn pretty_shortcut(shortcut: &str) -> String {
+    let mut symbols = String::new();
+    let mut key = String::new();
+    for part in shortcut.split('+') {
+        match part.to_ascii_lowercase().as_str() {
+            "control" | "ctrl" => symbols.insert(0, '⌃'),
+            "alt" | "option" => { let at = symbols.find(['⇧', '⌘']).unwrap_or(symbols.len()); symbols.insert(at, '⌥'); }
+            "shift" => { let at = symbols.find('⌘').unwrap_or(symbols.len()); symbols.insert(at, '⇧'); }
+            "super" | "cmd" | "command" | "meta" => symbols.push('⌘'),
+            _ => key = part.strip_prefix("Digit").or_else(|| part.strip_prefix("Key")).unwrap_or(part).to_string(),
+        }
+    }
+    format!("{symbols}{key}")
+}
+
+/// Replace whichever shortcut is registered with this one. If the new one
+/// cannot be taken, the old one is put back, so a failed change never leaves
+/// Mark with no shortcut at all.
+fn register_shortcut(app: &AppHandle, shortcut: &str) -> Result<(), String> {
+    let parsed = Shortcut::from_str(shortcut).map_err(|e| e.to_string())?;
+    let previous = app.try_state::<Prefs>().map(|p| p.0.lock().unwrap().shortcut.clone());
+    app.global_shortcut().unregister_all().map_err(|e| e.to_string())?;
+    if let Err(error) = app.global_shortcut().register(parsed) {
+        if let Some(old) = previous.and_then(|old| Shortcut::from_str(&old).ok()) { let _ = app.global_shortcut().register(old); }
+        return Err(error.to_string());
+    }
+    Ok(())
+}
+
+/// Dark and light are the window's own; system hands the choice back to macOS.
+/// The material and the glass follow the window, and the web view's
+/// prefers-color-scheme follows the material, so one call themes everything.
+fn apply_appearance(app: &AppHandle, appearance: &str) {
+    let theme = match appearance { "dark" => Some(tauri::Theme::Dark), "light" => Some(tauri::Theme::Light), _ => None };
+    for label in [EDITOR, SETTINGS] {
+        if let Some(window) = app.get_webview_window(label) { let _ = window.set_theme(theme); }
+    }
+}
+
+#[tauri::command]
+fn get_settings(app: AppHandle) -> settings::Settings { app.state::<Prefs>().0.lock().unwrap().clone() }
+
+#[tauri::command]
+fn set_appearance(app: AppHandle, appearance: String) -> Result<settings::Settings, String> {
+    if !settings::Settings::appearance_is_valid(&appearance) { return Err(format!("{appearance} isn't an appearance.")); }
+    let state = app.state::<Prefs>();
+    let updated = { let mut prefs = state.0.lock().unwrap(); prefs.appearance = appearance; prefs.clone() };
+    settings::save(&app, &updated)?;
+    apply_appearance(&app, &updated.appearance);
+    let _ = app.emit("settings-changed", &updated);
+    Ok(updated)
+}
+
+#[tauri::command]
+fn set_shortcut(app: AppHandle, shortcut: String) -> Result<settings::Settings, String> {
+    register_shortcut(&app, &shortcut).map_err(|error| {
+        if error.contains("already") || error.contains("in use") { "Something else on this Mac already uses that shortcut.".to_string() } else { error }
+    })?;
+    let state = app.state::<Prefs>();
+    let updated = { let mut prefs = state.0.lock().unwrap(); prefs.shortcut = shortcut; prefs.clone() };
+    settings::save(&app, &updated)?;
+    let _ = app.state::<CaptureItem>().0.set_accelerator(Some(updated.shortcut.as_str()));
+    if let Some(tray) = app.tray_by_id("mark") { let _ = tray.set_tooltip(Some(tooltip(&updated.shortcut))); }
+    let _ = app.emit("settings-changed", &updated);
+    Ok(updated)
+}
+
+#[tauri::command]
+fn login_enabled() -> bool { macos::login_item_status() == macos::LOGIN_ENABLED }
+
+/// Returns whether it is on afterwards, which macOS decides, not the request:
+/// a first turn-on may need approving under Login Items in System Settings.
+#[tauri::command]
+fn set_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    macos::set_login_item(enabled)?;
+    let status = macos::login_item_status();
+    app.state::<LoginToggle>().0.set_checked(status == macos::LOGIN_ENABLED).ok();
+    if status == macos::LOGIN_NEEDS_APPROVAL {
+        open_settings_pane("x-apple.systempreferences:com.apple.LoginItems-Settings.extension");
+        return Err("Allow Mark under Login Items in System Settings to finish turning this on.".into());
+    }
+    Ok(status == macos::LOGIN_ENABLED)
+}
+
+/// One settings window, made the first time it is asked for and shown after.
+#[tauri::command]
+fn open_settings(app: AppHandle) -> Result<(), String> {
+    let window = match app.get_webview_window(SETTINGS) {
+        Some(window) => window,
+        None => {
+            let appearance = app.state::<Prefs>().0.lock().unwrap().appearance.clone();
+            let theme = match appearance.as_str() { "dark" => Some(tauri::Theme::Dark), "light" => Some(tauri::Theme::Light), _ => None };
+            tauri::WebviewWindowBuilder::new(&app, SETTINGS, tauri::WebviewUrl::App("settings.html".into()))
+                .title("Mark Settings").inner_size(460.0, 244.0).resizable(false).maximizable(false).minimizable(false)
+                .transparent(true).theme(theme)
+                .effects(tauri::window::EffectsBuilder::new().effect(tauri::window::Effect::Sidebar)
+                    .state(tauri::window::EffectState::Active).radius(12.0).build())
+                .center().build().map_err(|e| e.to_string())?
+        }
+    };
+    macos::activate_self();
+    window.show().and_then(|_| window.set_focus()).map_err(|e| e.to_string())
+}
+
 fn menu_action(app: &AppHandle, id: &str) {
     match id {
         "capture" => { if let Err(e) = capture_region(app.clone(), None) { report(app, e); } }
@@ -468,6 +584,7 @@ fn menu_action(app: &AppHandle, id: &str) {
         "copy" => { if let Err(e) = copy_capture(app.clone(), true) { report(app, e); } }
         "close" => { let _ = dismiss_editor(app.clone()); }
         "login" => toggle_login_item(app),
+        "settings" => { if let Err(e) = open_settings(app.clone()) { report(app, e); } }
         "quit" => {
             app.exit(0);
         }
@@ -485,7 +602,8 @@ pub fn run() {
             }
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, cancel_selection,
-            copy_capture, copy_edited, save_image, share_image, dismiss_editor, open_screen_settings, set_material, glass_available, set_glass, quit_app])
+            copy_capture, copy_edited, save_image, share_image, dismiss_editor, open_screen_settings, set_material, glass_available, set_glass,
+            get_settings, set_appearance, set_shortcut, login_enabled, set_login, open_settings, quit_app])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -496,28 +614,32 @@ pub fn run() {
         })
         .setup(|app| {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            let capture = MenuItem::with_id(app, "capture", "Capture Region", true, Some("Ctrl+Alt+Super+4"))?;
+            let prefs = settings::load(app.handle());
+            let capture = MenuItem::with_id(app, "capture", "Capture Region", true, Some(prefs.shortcut.as_str()))?;
             let show = MenuItem::with_id(app, "show", "Show Editor", true, None::<&str>)?;
+            let preferences = MenuItem::with_id(app, "settings", "Settings…", true, Some("Super+Comma"))?;
             let quit = MenuItem::with_id(app, "quit", "Quit Mark", true, Some("Super+Q"))?;
             let separator = PredefinedMenuItem::separator(app)?;
             let login = CheckMenuItem::with_id(app, "login", "Open at Login", true,
                 macos::login_item_status() == macos::LOGIN_ENABLED, None::<&str>)?;
             app.manage(LoginToggle(login.clone()));
-            let tray_menu = Menu::with_items(app, &[&capture, &show, &separator, &login, &separator, &quit])?;
+            app.manage(CaptureItem(capture.clone()));
+            let tray_menu = Menu::with_items(app, &[&capture, &show, &separator, &login, &preferences, &PredefinedMenuItem::separator(app)?, &quit])?;
             TrayIconBuilder::with_id("mark")
                 .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
-                .icon_as_template(true).tooltip("Mark — Capture Region (⌘4)")
+                .icon_as_template(true).tooltip(tooltip(&prefs.shortcut))
                 .menu(&tray_menu).build(app)?;
             let copy = MenuItem::with_id(app, "copy", "Copy and Close", true, Some("Super+C"))?;
             let close = MenuItem::with_id(app, "close", "Close", true, Some("Super+W"))?;
-            let main = Submenu::with_items(app, "Mark", true, &[&capture, &show, &separator, &login, &separator, &quit])?;
+            let main = Submenu::with_items(app, "Mark", true, &[&capture, &show, &separator, &login, &preferences, &separator, &quit])?;
             let edit = Submenu::with_items(app, "Edit", true, &[&copy, &close])?;
             app.set_menu(Menu::with_items(app, &[&main, &edit])?)?;
             install_glass(app.handle());
-            let shortcut = Shortcut::new(Some(Modifiers::SUPER), Code::Digit4);
-            if let Err(error) = app.global_shortcut().register(shortcut) {
+            apply_appearance(app.handle(), &prefs.appearance);
+            if let Err(error) = register_shortcut(app.handle(), &prefs.shortcut) {
                 report(app.handle(), format!("The capture shortcut is unavailable ({error}). Use Capture Region in Mark's menu."));
             }
+            app.manage(Prefs(Mutex::new(prefs)));
             // Say up front that capture will not work, rather than letting the
             // first Capture Region be the thing that discovers it.
             if !macos::screen_access_granted() {
@@ -560,7 +682,18 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::safe_name;
+    use super::{pretty_shortcut, safe_name};
+
+    /// The tray shows the shortcut the way the Mac prints it, and must agree
+    /// with the web side's prettyShortcut on every case that side tests.
+    #[test]
+    fn a_shortcut_reads_the_way_the_mac_prints_it() {
+        assert_eq!(pretty_shortcut("Super+Digit4"), "⌘4");
+        assert_eq!(pretty_shortcut("Control+Alt+Super+Digit4"), "⌃⌥⌘4");
+        assert_eq!(pretty_shortcut("Super+Shift+KeyM"), "⇧⌘M");
+        assert_eq!(pretty_shortcut("Alt+Shift+Super+KeyM"), "⌥⇧⌘M");
+        assert_eq!(pretty_shortcut("ctrl+option+F5"), "⌃⌥F5");
+    }
 
     #[test]
     fn a_suggested_filename_stays_a_filename() {

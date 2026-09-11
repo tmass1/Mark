@@ -6,7 +6,7 @@ export default defineConfig({
   build: {
     target: 'safari15', sourcemap: true,
     // The editor and the selection overlay are separate windows, so separate pages.
-    rollupOptions: { input: { main: 'index.html', selector: 'selector.html' } },
+    rollupOptions: { input: { main: 'index.html', selector: 'selector.html', settings: 'settings.html' } },
   },
   // Unit tests live beside the source. tests/ belongs to Playwright.
   test: { include: ['src/**/*.test.ts'] },
