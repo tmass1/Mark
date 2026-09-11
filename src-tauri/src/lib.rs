@@ -567,6 +567,9 @@ fn open_settings(app: AppHandle) -> Result<(), String> {
             let theme = match appearance.as_str() { "dark" => Some(tauri::Theme::Dark), "light" => Some(tauri::Theme::Light), _ => None };
             tauri::WebviewWindowBuilder::new(&app, SETTINGS, tauri::WebviewUrl::App("settings.html".into()))
                 .title("Mark Settings").inner_size(460.0, 244.0).resizable(false).maximizable(false).minimizable(false)
+                // The editor floats above other windows; a settings window at the
+                // normal level would open underneath the very window that opened it.
+                .always_on_top(true)
                 .transparent(true).theme(theme)
                 .effects(tauri::window::EffectsBuilder::new().effect(tauri::window::Effect::Sidebar)
                     .state(tauri::window::EffectState::Active).radius(12.0).build())
