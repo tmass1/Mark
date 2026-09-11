@@ -1,8 +1,9 @@
 {
   "compilerOptions": {
+    "resolveJsonModule": true,
     "target": "ES2022", "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext", "moduleResolution": "Bundler", "strict": true,
-    "noEmit": true, "skipLibCheck": true, "types": ["vite/client"]
+    "noEmit": true, "skipLibCheck": true, "types": ["vite/client", "node"]
   },
   "include": ["src"]
 }

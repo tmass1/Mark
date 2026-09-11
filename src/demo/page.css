@@ -1,0 +1,73 @@
+/* The demo page: a desktop, a menu bar, and windows. This is the "Mac", so it
+   does not use Mark's tokens; it is the thing Mark's glass is glass over. */
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: #0e1118; color: #e8e8ee;
+  font: 13px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; }
+body { display: flex; flex-direction: column; align-items: center; padding: 16px 16px 28px; min-height: 100vh; }
+
+/* The stage is laid out at its own width and may be scaled to fit the page;
+   the box around it takes the scaled size, so what follows sits below the
+   picture rather than below the unscaled layout. */
+.stage-box { position: relative; flex: none; }
+.stage { position: absolute; top: 0; left: 0; overflow: hidden; border-radius: 14px; transform-origin: top left;
+  box-shadow: 0 30px 90px -30px #000c, 0 0 0 .5px #ffffff1f; user-select: none; -webkit-user-select: none; }
+.scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* ---- menu bar ------------------------------------------------------------- */
+.menubar { position: absolute; top: 0; left: 0; right: 0; height: 24px; display: flex; align-items: center; padding: 0 12px;
+  background: #ffffff14; -webkit-backdrop-filter: blur(30px) saturate(1.4); backdrop-filter: blur(30px) saturate(1.4);
+  color: #fff; font-size: 13px; text-shadow: 0 0 6px #0006; }
+.menubar-app { font-weight: 700; }
+.menubar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.clock { font-variant-numeric: tabular-nums; }
+.tray { display: flex; align-items: center; height: 22px; padding: 0 4px; border: none; border-radius: 4px; background: transparent; color: #fff; cursor: default; }
+.tray svg { width: 18px; height: 18px; }
+.tray:hover, .tray[aria-expanded="true"] { background: #ffffff2e; }
+.countdown { min-width: 20px; padding: 0 6px; border-radius: 999px; background: #ff3b30; color: #fff; font-weight: 600; font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+
+.tray-menu { position: absolute; top: 26px; right: 44px; min-width: 210px; padding: 5px; border-radius: 10px; z-index: 30;
+  background: #2a2c33f0; -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  box-shadow: 0 12px 34px #00000073, 0 0 0 .5px #ffffff2b; display: flex; flex-direction: column; }
+.tray-menu button { display: flex; align-items: center; gap: 12px; padding: 5px 10px; border: none; border-radius: 6px; background: transparent; color: #f3f3f3; font: inherit; text-align: left; cursor: default; }
+.tray-menu button kbd { margin-left: auto; font: inherit; color: #ffffff8c; letter-spacing: .5px; }
+.tray-menu button:hover { background: #0a84ff; color: #fff; }
+.tray-menu button:hover kbd { color: #ffffffcc; }
+.tray-menu hr { margin: 5px 10px; border: none; border-top: 1px solid #ffffff1f; }
+
+/* ---- windows -------------------------------------------------------------- */
+.win { position: absolute; border-radius: 12px; overflow: hidden; z-index: 10;
+  box-shadow: 0 30px 80px -20px #000000a6, 0 0 0 .5px #ffffff2b, 0 2px 8px #0000004d; }
+.win.front { z-index: 20; }
+/* The editor's own page is transparent where the Mac shows its material; here
+   the desktop behind it is blurred to stand in for that material. */
+.win.editor { -webkit-backdrop-filter: blur(48px) saturate(1.4); backdrop-filter: blur(48px) saturate(1.4); background: #1b212a80; }
+.win.settings { width: 460px; background: #1b212ad9; -webkit-backdrop-filter: blur(48px) saturate(1.4); backdrop-filter: blur(48px) saturate(1.4); display: flex; flex-direction: column; }
+.win .frame { display: block; width: 100%; height: 100%; border: none; background: transparent; }
+.win.settings .frame { height: 244px; }
+.win.settings .titlebar { position: relative; height: 28px; flex: none; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; color: #e8e8ee; background: #ffffff0a; border-bottom: 1px solid #ffffff14; cursor: default; }
+/* Traffic lights: drawn by the Mac in the real thing, so drawn by the page here. */
+.lights { position: absolute; top: 15px; left: 13px; display: flex; gap: 8px; z-index: 2; }
+.win.settings .lights { top: 8px; }
+.lights i, .lights .light { display: block; width: 12px; height: 12px; border-radius: 50%; border: none; padding: 0; background: #ffffff33; box-shadow: inset 0 0 0 .5px #0000002e; }
+.lights .light.close { background: #ff5f57; }
+.lights i:nth-of-type(1) { background: #febc2e; } .lights i:nth-of-type(2) { background: #28c840; }
+.win:not(.front) .lights .light.close, .win:not(.front) .lights i { background: #ffffff33; }
+.lights .light.close:hover { filter: brightness(.85); }
+
+/* ---- the overlay ------------------------------------------------------------ */
+.overlay { position: absolute; inset: 0; width: 100%; height: 100%; border: none; background: transparent; z-index: 40; }
+
+/* ---- hint and caption ------------------------------------------------------- */
+.hint { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 5; max-width: 80%;
+  padding: 8px 14px; border-radius: 999px; background: #1b212ad9; color: #f3f3f3; font-size: 12.5px; text-align: center;
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: 0 8px 24px #0006, 0 0 0 .5px #ffffff26; }
+.caption { max-width: 720px; margin: 18px 0 0; color: #9ca3af; font-size: 12.5px; line-height: 1.55; text-align: center; }
+
+/* ---- light appearance ------------------------------------------------------ */
+/* The "Mac" stays dark; the windows' material follows Mark's appearance. */
+:root[data-theme="light"] .win.editor { background: #ffffff99; }
+:root[data-theme="light"] .win.settings { background: #f2f3f6e6; }
+:root[data-theme="light"] .win.settings .titlebar { color: #1c1c1e; background: #0000000a; border-bottom-color: #00000014; }
+:root[data-theme="light"] .win { box-shadow: 0 30px 80px -20px #00000080, 0 0 0 .5px #00000033, 0 2px 8px #00000033; }

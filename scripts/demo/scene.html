@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mark demo scene</title>
+<style>
+  /* A 1440 x 900 Mac desktop, drawn once and rendered to public/demo/scene.png
+     at 2x. The top 24px is plain wallpaper: the demo page draws a live menu
+     bar there. Everything is fictional. */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1440px; height: 900px; overflow: hidden;
+    font: 13px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; color: #1c1c1e;
+    -webkit-font-smoothing: antialiased; }
+  .wall { position: absolute; inset: 0;
+    background:
+      radial-gradient(900px 620px at 12% 18%, #6d4a7c 0%, #6d4a7c00 65%),
+      radial-gradient(1100px 760px at 88% 82%, #1f4f8a 0%, #1f4f8a00 62%),
+      radial-gradient(700px 520px at 60% 28%, #b8557a 0%, #b8557a00 60%),
+      radial-gradient(800px 600px at 35% 95%, #2f7f7a 0%, #2f7f7a00 60%),
+      linear-gradient(160deg, #1b1f2e 0%, #141824 100%); }
+
+  .window { position: absolute; left: 170px; top: 118px; width: 1100px; height: 690px; border-radius: 12px; overflow: hidden;
+    background: #f5f5f7; box-shadow: 0 30px 80px -20px #00000099, 0 0 0 .5px #ffffff26, 0 2px 8px #00000040; display: flex; }
+  .sidebar { width: 220px; background: #ececf0; border-right: 1px solid #d9d9de; padding: 14px 12px; display: flex; flex-direction: column; gap: 2px; }
+  .lights { display: flex; gap: 8px; padding: 0 4px 16px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .nav { padding: 6px 10px; border-radius: 6px; color: #3a3a40; display: flex; align-items: center; gap: 9px; font-size: 12.5px; }
+  .nav.on { background: #d9dae0; color: #1c1c1e; font-weight: 500; }
+  .nav i { width: 14px; height: 14px; border-radius: 4px; background: #8e8e96; display: inline-block; opacity: .55; }
+  .nav.on i { background: #3b82f6; opacity: 1; }
+  .sec { margin: 14px 10px 6px; font-size: 10px; letter-spacing: .6px; text-transform: uppercase; color: #8a8a92; font-weight: 600; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .head { height: 52px; display: flex; align-items: center; gap: 14px; padding: 0 22px; border-bottom: 1px solid #e2e2e6; background: #fbfbfc; }
+  .head h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.2px; }
+  .head .range { margin-left: auto; display: inline-flex; border: 1px solid #d5d5da; border-radius: 7px; overflow: hidden; font-size: 12px; }
+  .head .range span { padding: 5px 11px; color: #52525b; border-right: 1px solid #d5d5da; }
+  .head .range span:last-child { border-right: none; }
+  .head .range span.on { background: #fff; color: #1c1c1e; font-weight: 500; }
+  .btn { padding: 6px 12px; border-radius: 7px; background: #3b82f6; color: #fff; font-weight: 500; font-size: 12px; box-shadow: 0 1px 2px #0002; }
+  .body { padding: 20px 22px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; align-content: start; }
+  .card { background: #fff; border: 1px solid #e3e3e8; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 2px #0000000a; }
+  .card .k { font-size: 11px; color: #71717a; font-weight: 500; }
+  .card .v { margin-top: 6px; font-size: 22px; font-weight: 600; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+  .card .d { margin-top: 4px; font-size: 11px; color: #16a34a; font-weight: 500; }
+  .card .d.down { color: #dc2626; }
+  .chart { grid-column: 1 / 4; height: 250px; padding: 16px 18px 10px; }
+  .chart .t { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; font-weight: 600; }
+  .chart .t small { color: #8a8a92; font-weight: 400; }
+  .side { grid-column: 4; display: flex; flex-direction: column; gap: 10px; }
+  .side .row { display: flex; justify-content: space-between; font-size: 12px; padding: 7px 0; border-bottom: 1px solid #ededf1; }
+  .side .row b { font-weight: 500; font-variant-numeric: tabular-nums; }
+  .side .row:last-child { border-bottom: none; }
+  .bar { height: 6px; border-radius: 3px; background: #e9e9ee; overflow: hidden; margin-top: 4px; }
+  .bar i { display: block; height: 100%; background: #3b82f6; border-radius: 3px; }
+  table { grid-column: 1 / 5; width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; font-size: 12px; }
+  th { text-align: left; font-weight: 500; color: #71717a; padding: 9px 14px; background: #fafafb; border-bottom: 1px solid #e3e3e8; font-size: 11.5px; }
+  td { padding: 9px 14px; border-bottom: 1px solid #efeff3; font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; }
+  .pill.ok { background: #dcfce7; color: #15803d; } .pill.warn { background: #fef3c7; color: #b45309; } .pill.mut { background: #f1f1f4; color: #52525b; }
+</style>
+</head>
+<body>
+  <div class="wall"></div>
+  <div class="window">
+    <aside class="sidebar">
+      <div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+      <div class="nav on"><i></i>Overview</div>
+      <div class="nav"><i></i>Orders</div>
+      <div class="nav"><i></i>Customers</div>
+      <div class="nav"><i></i>Inventory</div>
+      <div class="sec">Reports</div>
+      <div class="nav"><i></i>Weekly summary</div>
+      <div class="nav"><i></i>Channel mix</div>
+      <div class="nav"><i></i>Returns</div>
+      <div class="sec">Workspace</div>
+      <div class="nav"><i></i>Team</div>
+      <div class="nav"><i></i>Settings</div>
+    </aside>
+    <div class="main">
+      <div class="head"><h1>Overview</h1>
+        <div class="range"><span>7d</span><span class="on">30d</span><span>90d</span><span>1y</span></div>
+        <span class="btn">Export</span></div>
+      <div class="body">
+        <div class="card"><div class="k">Revenue</div><div class="v">$184,320</div><div class="d">▲ 12.4% vs last month</div></div>
+        <div class="card"><div class="k">Orders</div><div class="v">3,912</div><div class="d">▲ 8.1%</div></div>
+        <div class="card"><div class="k">Avg. order</div><div class="v">$47.12</div><div class="d down">▼ 1.9%</div></div>
+        <div class="card"><div class="k">Repeat rate</div><div class="v">38%</div><div class="d">▲ 2.3 pts</div></div>
+        <div class="card chart"><div class="t">Revenue by day <small>Last 30 days · USD</small></div>
+          <svg viewBox="0 0 800 190" width="100%" height="190" preserveAspectRatio="none">
+            <g stroke="#ececf0" stroke-width="1"><line x1="0" y1="40" x2="800" y2="40"/><line x1="0" y1="80" x2="800" y2="80"/><line x1="0" y1="120" x2="800" y2="120"/><line x1="0" y1="160" x2="800" y2="160"/></g>
+            <path d="M0 150 C 40 140, 60 120, 100 118 S 160 130, 200 110 S 260 70, 300 84 S 360 110, 400 96 S 460 60, 500 58 S 560 80, 600 62 S 660 30, 700 38 S 760 52, 800 30 L800 190 L0 190Z" fill="#3b82f61a"/>
+            <path d="M0 150 C 40 140, 60 120, 100 118 S 160 130, 200 110 S 260 70, 300 84 S 360 110, 400 96 S 460 60, 500 58 S 560 80, 600 62 S 660 30, 700 38 S 760 52, 800 30" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linejoin="round"/>
+            <path d="M0 165 C 60 160, 120 150, 200 152 S 320 140, 400 136 S 520 128, 600 118 S 720 110, 800 96" fill="none" stroke="#a1a1aa" stroke-width="2" stroke-dasharray="5 5"/>
+            <circle cx="700" cy="38" r="4.5" fill="#fff" stroke="#3b82f6" stroke-width="2.5"/>
+          </svg></div>
+        <div class="card side"><div class="t" style="font-size:12.5px;font-weight:600">Top channels</div>
+          <div><div class="row"><span>Direct</span><b>42%</b></div><div class="bar"><i style="width:42%"></i></div></div>
+          <div><div class="row"><span>Wholesale</span><b>27%</b></div><div class="bar"><i style="width:27%"></i></div></div>
+          <div><div class="row"><span>Marketplace</span><b>19%</b></div><div class="bar"><i style="width:19%"></i></div></div>
+          <div><div class="row"><span>Referral</span><b>12%</b></div><div class="bar"><i style="width:12%"></i></div></div>
+        </div>
+        <table>
+          <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th>Placed</th></tr></thead>
+          <tbody>
+            <tr><td>#10482</td><td>Lantern Studio</td><td>14</td><td>$1,240.00</td><td><span class="pill ok">Shipped</span></td><td>Today, 9:41</td></tr>
+            <tr><td>#10481</td><td>Maya Okafor</td><td>2</td><td>$96.00</td><td><span class="pill warn">Awaiting payment</span></td><td>Today, 9:12</td></tr>
+            <tr><td>#10480</td><td>Northline Coffee</td><td>36</td><td>$2,880.00</td><td><span class="pill ok">Shipped</span></td><td>Yesterday</td></tr>
+            <tr><td>#10479</td><td>Sweeney & Co.</td><td>5</td><td>$310.50</td><td><span class="pill mut">Draft</span></td><td>Yesterday</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

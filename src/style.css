@@ -46,13 +46,13 @@
      uses for controls, and the two should not compete. */
   --brand: #ff3b30;
 }
-@media (prefers-color-scheme: dark) {
-  /* Dark is Fritter's slate, not a neutral grey: the same ladder of
+/* Dark is Fritter's slate, not a neutral grey: the same ladder of
      lightness, on the hue of rgb(27, 33, 42). Text and muted text are
      Fritter's own; the pane, control and floor tints are that slate's
      surfaces (#222832, #293039) expressed as translucencies, so the desktop
      still comes through them. */
-  :root {
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
     --ink: #f3f3f3;
     --muted: #9ca3af;
     --hairline: #f3f3f31f;
@@ -75,6 +75,37 @@
     --frame-line: #ffffff1a;
     --brand: #ff453a;
   }
+}
+/* An appearance set by the app rather than the system -- Mark's Settings, and
+   the web demo -- arrives as data-theme. color-scheme follows it, so native
+   controls match and a frame embedded in a page of the other scheme stays
+   transparent rather than being given an opaque canvas. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+/* The same tokens again, for that attribute. A test checks that this block
+   and the one above never drift apart. */
+:root[data-theme="dark"] {
+    --ink: #f3f3f3;
+    --muted: #9ca3af;
+    --hairline: #f3f3f31f;
+    --scrim: #1b212a5c;       /* ~36% of the slate over the material */
+    --panel: #dbe3f01f;       /* a pane: a cool white, 12% */
+    --base: #1b212ab8;        /* the floor: the slate, ~72% */
+    --sheen: linear-gradient(180deg, #ffffff12, #ffffff00 58%);
+    --rim: #ffffff30;
+    --edge: #0000006b;
+    --lens: #dbe3f033;        /* #293039 on #1b212a, as a lift */
+    --control: #dbe3f01c;
+    --control-hover: #dbe3f030;
+    --control-line: #f3f3f340; /* Fritter's control border, 25% */
+    --sunken: #0000004a;
+    --glass: #222832f2;       /* menus and popovers: Fritter's surface */
+    --blue: #0a84ff;
+    --hover: #359aff;
+    --shadow: #00000080;
+    --frame-rim: #ffffff30;
+    --frame-line: #ffffff1a;
+    --brand: #ff453a;
 }
 
 * { box-sizing: border-box; }
