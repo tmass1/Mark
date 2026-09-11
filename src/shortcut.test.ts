@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent, shortcutProblem } from './shortcut';
+import { DEFAULT_SHORTCUT, codeOf, prettyShortcut, shortcutFromEvent, shortcutProblem } from './shortcut';
 
 const press = (code: string, mods: Partial<Record<'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey', boolean>> = {}) =>
   ({ code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods });
@@ -36,5 +36,28 @@ describe('recording a shortcut', () => {
   it('rules out keys that are not shortcut material', () => {
     expect(shortcutProblem(press('Escape', { metaKey: true }))).toMatch(/can't be part/);
     expect(shortcutProblem(press('CapsLock', { metaKey: true }))).toMatch(/can't be part/);
+  });
+});
+
+describe('a key press without a code', () => {
+  it('is read from the key for digits and letters', () => {
+    expect(codeOf({ code: '', key: '4' })).toBe('Digit4');
+    expect(codeOf({ code: '', key: 'm' })).toBe('KeyM');
+    expect(codeOf({ code: 'KeyM', key: 'µ' })).toBe('KeyM');   // a real code wins over an Option-altered key
+    expect(shortcutFromEvent({ ...press('', { metaKey: true }), key: '4' })).toBe('Super+Digit4');
+  });
+});
+
+describe('a real KeyboardEvent', () => {
+  it('is read through its prototype getters, not spread', () => {
+    // Unit tests run without a DOM, so this is what a KeyboardEvent is for
+    // this purpose: every property a getter on the prototype, none of them
+    // own -- exactly what a spread would lose.
+    const real = Object.create({
+      get code() { return 'KeyM'; }, get key() { return 'M'; },
+      get metaKey() { return true; }, get shiftKey() { return true; }, get ctrlKey() { return false; }, get altKey() { return false; },
+    }) as KeyboardEvent;
+    expect(Object.keys(real)).toEqual([]);
+    expect(shortcutFromEvent(real)).toBe('Shift+Super+KeyM');
   });
 });

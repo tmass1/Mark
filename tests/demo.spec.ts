@@ -6,6 +6,17 @@ import { test, expect, type Page } from '@playwright/test';
 
 test.use({ viewport: { width: 1200, height: 800 } });   // wide enough that the stage is not scaled, so the maths is plain
 
+/** Start a selection from the menu bar and wait for the overlay to be ready to
+ *  receive the pointer; in dev the frame loads its modules on demand. */
+async function startSelection(page: Page) {
+  await page.locator('.tray').click();
+  await page.locator('.tray-menu [data-act="capture"]').click();
+  const overlay = page.locator('.overlay');
+  await expect(overlay).toBeVisible();
+  await expect(page.frameLocator('.overlay').locator('.veil')).toBeVisible();
+  return overlay;
+}
+
 async function open(page: Page) {
   // Copying goes to the visitor's clipboard; record it instead.
   await page.addInitScript(() => {
@@ -22,10 +33,7 @@ async function open(page: Page) {
 
 test('the menu bar starts a real selection, and the capture is cut from the desktop', async ({ page }) => {
   const editor = await open(page);
-  await page.locator('.tray').click();
-  await page.locator('.tray-menu [data-act="capture"]').click();
-  const overlay = page.locator('.overlay');
-  await expect(overlay).toBeVisible();
+  await startSelection(page);
   await expect(page.locator('.win.editor')).toBeHidden();           // hidden while selecting, as on the Mac
 
   const stage = (await page.locator('.stage').boundingBox())!;
@@ -45,7 +53,7 @@ test('the menu bar starts a real selection, and the capture is cut from the desk
 
 test('annotating and copying produce a PNG for the clipboard, and closing returns to the desktop', async ({ page }) => {
   const editor = await open(page);
-  await page.locator('.tray').click(); await page.locator('.tray-menu [data-act="capture"]').click();
+  await startSelection(page);
   const stage = (await page.locator('.stage').boundingBox())!;
   await page.mouse.move(stage.x + 300, stage.y + 200); await page.mouse.down(); await page.mouse.move(stage.x + 700, stage.y + 420, { steps: 8 }); await page.mouse.up();
   await page.frameLocator('.overlay').getByRole('button', { name: 'Capture', exact: true }).click();
@@ -90,14 +98,19 @@ test('settings open from the gear, and the appearance switches every frame and t
   await expect(win).toBeHidden();
 });
 
-test('the shortcut is recordable, except the one browsers keep for themselves', async ({ page }) => {
+test('⌘4 starts a capture, as in the app, and the shortcut is recordable', async ({ page }) => {
   const editor = await open(page);
-  await expect(editor.locator('.start kbd')).toHaveText('⌃⌥⌘4');
+  await expect(editor.locator('.start kbd')).toHaveText('⌘4');
+  await page.locator('.caption').click();                       // focus the page, not a frame
+  await page.keyboard.press('Meta+4');
+  await expect(page.locator('.overlay')).toBeVisible();
+  await expect(page.frameLocator('.overlay').locator('.veil')).toBeVisible();   // loaded, and so listening
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.overlay')).toHaveCount(0);
+  await expect(page.locator('.win.editor')).toBeVisible();
+
   await editor.getByRole('button', { name: 'Settings' }).click();
   const settings = page.frameLocator('.win.settings iframe');
-  await settings.locator('.recorder').click();
-  await page.keyboard.press('Meta+4');
-  await expect(settings.locator('.shortcut-note')).toContainText('switch tabs');
   await settings.locator('.recorder').click();
   await page.keyboard.press('Meta+Shift+m');
   await expect(settings.locator('.recorder kbd')).toHaveText('⇧⌘M');

@@ -41,14 +41,27 @@ export function shortcutProblem(event: Pick<KeyboardEvent, 'code' | 'metaKey' | 
   return null;
 }
 
+/** The key's code, taken from `key` when an event arrives without one -- some
+ *  synthetic and assistive input does -- for the letters and digits at least. */
+export function codeOf(event: Pick<KeyboardEvent, 'code'> & Partial<Pick<KeyboardEvent, 'key'>>): string {
+  if (event.code) return event.code;
+  const key = event.key ?? '';
+  if (/^[0-9]$/.test(key)) return `Digit${key}`;
+  if (/^[a-z]$/i.test(key)) return `Key${key.toUpperCase()}`;
+  return key;
+}
+
 /** The plugin's notation for a key press, or null if shortcutProblem would object. */
-export function shortcutFromEvent(event: Pick<KeyboardEvent, 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>): string | null {
-  if (shortcutProblem(event)) return null;
+export function shortcutFromEvent(event: Pick<KeyboardEvent, 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'> & Partial<Pick<KeyboardEvent, 'key'>>): string | null {
+  // Field by field: a real KeyboardEvent's properties are prototype getters,
+  // so a spread would copy none of them.
+  const normalized = { code: codeOf(event), metaKey: event.metaKey, ctrlKey: event.ctrlKey, altKey: event.altKey, shiftKey: event.shiftKey };
+  if (shortcutProblem(normalized)) return null;
   const parts: string[] = [];
   if (event.ctrlKey) parts.push('Control');
   if (event.altKey) parts.push('Alt');
   if (event.shiftKey) parts.push('Shift');
   if (event.metaKey) parts.push('Super');
-  parts.push(event.code);
+  parts.push(normalized.code);
   return parts.join('+');
 }

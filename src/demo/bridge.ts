@@ -60,5 +60,13 @@ export function installBridge(label: string): DemoHost {
   });
   window.addEventListener('mouseup', () => host.endDrag?.());
   if (label === 'editor') window.addEventListener('keydown', e => { if (host.key?.(e)) e.preventDefault(); });
+  if (label === 'selector') {
+    // An Escape the page heard while the overlay lacked focus arrives as an event; deliver it as the key.
+    const emit = (window as DemoFrame).__markDemoEmit!;
+    (window as DemoFrame).__markDemoEmit = (event, payload) => {
+      if (event === 'demo-escape') { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return; }
+      emit(event, payload);
+    };
+  }
   return host;
 }

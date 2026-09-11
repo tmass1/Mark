@@ -9,7 +9,7 @@
  *  said so, not faked. */
 import './page.css';
 import pkg from '../../package.json';
-import { prettyShortcut, shortcutFromEvent } from '../shortcut';
+import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent } from '../shortcut';
 import type { DemoFrame, DemoHost } from './bridge';
 
 // ---- geometry, mirroring lib.rs ------------------------------------------
@@ -18,9 +18,10 @@ const SIDES = 12 + 10 + 12;
 const RAIL = 44;
 const RAIL_HEIGHT = 334 + 6;
 const COMPACT: [number, number] = [560, CHROME + RAIL_HEIGHT];
-/** Browsers own ⌘4 (it switches tabs), so the demo's default keeps Mark's
- *  original chord. The caption says so. */
-const DEMO_SHORTCUT = 'Control+Alt+Super+Digit4';
+/** The app's own shortcut. Browsers use ⌘-digit for their tabs, but it is not
+ *  among the keys they refuse to hand a page, so the demo takes it and stops it
+ *  going further; the menu-bar icon is there for any browser that disagrees. */
+const DEMO_SHORTCUT = DEFAULT_SHORTCUT;
 
 interface Capture { dataUrl: string; width: number; height: number; scale: number }
 interface Settings { appearance: 'dark' | 'light' | 'system'; shortcut: string }
@@ -148,6 +149,8 @@ async function beginSelection(delay: number) {
   overlay?.remove();
   overlay = document.createElement('iframe');
   overlay.className = 'overlay'; overlay.title = 'Select a region'; overlay.src = './demo/selector.html';
+  // The overlay takes the keyboard, as its window does on the Mac: Escape has to reach it.
+  overlay.addEventListener('load', () => { overlay?.contentWindow?.focus(); applyAppearance(); });
   stage.append(overlay);
 }
 function endSelection() { overlay?.remove(); overlay = null; state.busy = false; }
@@ -259,7 +262,6 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         applyAppearance(); emit('settings-changed', state.settings); return state.settings;
       }
       case 'set_shortcut': {
-        if (args.shortcut === 'Super+Digit4') throw 'Browsers use ⌘4 to switch tabs, so the web demo can\'t take it. In the Mac app it\'s the default.';
         state.settings = { ...state.settings, shortcut: String(args.shortcut) };
         trayMenu.querySelector('[data-act="capture"] kbd')!.textContent = prettyShortcut(state.settings.shortcut);
         emit('settings-changed', state.settings); return state.settings;
@@ -320,7 +322,10 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('.win .light.c
   });
 }
 document.querySelector<HTMLElement>('.win.settings .titlebar')!.addEventListener('mousedown', e => { if ((e.target as Element).closest('.light')) return; beginDrag(settingsWin, e.screenX, e.screenY); });
-window.addEventListener('keydown', e => { if (host.key(e)) e.preventDefault(); });
+window.addEventListener('keydown', e => {
+  if (host.key(e)) { e.preventDefault(); return; }
+  if (e.key === 'Escape' && overlay) { e.preventDefault(); (overlay.contentWindow as DemoFrame | null)?.__markDemoEmit?.('demo-escape', null); }
+});
 
 // ---- fit the stage to the page --------------------------------------------
 /** The desktop is 16:10 and reads best around 1200-1440 wide. Narrower than
