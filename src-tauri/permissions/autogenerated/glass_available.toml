@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-glass-available"
+description = "Enables the glass_available command without any pre-configured scope."
+commands.allow = ["glass_available"]
+
+[[permission]]
+identifier = "deny-glass-available"
+description = "Denies the glass_available command without any pre-configured scope."
+commands.deny = ["glass_available"]
