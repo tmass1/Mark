@@ -38,7 +38,8 @@ root.innerHTML = `
       <p class="pref-note login-note" role="status" hidden></p>
     </div>
   </section>
-  <p class="pref-preview" hidden>Browser preview: settings apply in the Mac app.</p>`;
+  <p class="pref-preview" hidden>Browser preview: settings apply in the Mac app.</p>
+  <p class="pref-version" hidden></p>`;
 
 const recorder = root.querySelector<HTMLButtonElement>('.recorder')!;
 const recorderKey = recorder.querySelector('kbd')!;
@@ -166,5 +167,10 @@ async function init() {
   const [settings, enabled] = await Promise.all([command<Settings>('get_settings'), command<boolean>('login_enabled')]);
   show(settings);
   login.checked = enabled;
+  // The first thing anyone testing a build is asked is which build.
+  const { getVersion } = await import('@tauri-apps/api/app');
+  const version = root.querySelector<HTMLElement>('.pref-version')!;
+  version.textContent = `Mark ${await getVersion()}`;
+  version.hidden = false;
 }
 void init();

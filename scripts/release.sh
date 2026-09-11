@@ -89,27 +89,59 @@ HELP
 fi
 echo "  profile '$PROFILE' is ready"
 
-step "Building"
+step "Building (universal: Apple silicon and Intel)"
 # Passed as a config overlay rather than an environment variable, so which
 # identity signed the build is unambiguous and recorded in the output.
-pnpm tauri build --bundles dmg \
+pnpm tauri build --target universal-apple-darwin --bundles app,dmg \
   --config "{\"bundle\":{\"macOS\":{\"signingIdentity\":\"$IDENTITY\"}}}"
 
-DMG=$(ls -t src-tauri/target/release/bundle/dmg/*.dmg | head -1)
+BUNDLE=src-tauri/target/universal-apple-darwin/release/bundle
+APP="$BUNDLE/macos/Mark.app"
+DMG=$(ls -t "$BUNDLE"/dmg/*.dmg | head -1)
+echo "  $APP"
 echo "  $DMG"
+lipo -archs "$APP/Contents/MacOS/mark" | sed 's/^/  architectures: /'
 
-step "Notarizing (Apple usually answers within a few minutes)"
+# Two rounds. A ticket is stapled to the thing that carries it: staple only
+# the image and the app inside has no ticket of its own, so its first launch
+# is an online check -- fine online, refused offline. So the app is notarized
+# and stapled first, inside the image, and the image is notarized after.
+step "Notarizing the app (Apple usually answers within a few minutes)"
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+ditto -c -k --keepParent "$APP" "$WORK/Mark.zip"
+xcrun notarytool submit "$WORK/Mark.zip" --keychain-profile "$PROFILE" --wait
+
+step "Stapling the app inside the image"
+# The image tauri wrote is read-only and already signed. Open a writable copy,
+# staple the app it holds, then close it back up and sign it again.
+hdiutil convert "$DMG" -format UDRW -o "$WORK/rw.dmg" -quiet
+# Room for the ticket: a few kilobytes, but the image was sized to its contents.
+hdiutil resize -size "$(( $(stat -f%z "$WORK/rw.dmg") + 4 * 1024 * 1024 ))" "$WORK/rw.dmg"
+MOUNT=$(hdiutil attach "$WORK/rw.dmg" -nobrowse -mountrandom "$WORK" | awk '/\/private\/|\/Volumes\//{print $NF}' | tail -1)
+xcrun stapler staple "$MOUNT/Mark.app"
+xcrun stapler validate "$MOUNT/Mark.app"
+hdiutil detach "$MOUNT" -quiet
+FINAL="$BUNDLE/dmg/$(basename "$DMG")"
+rm -f "$FINAL"
+hdiutil convert "$WORK/rw.dmg" -format UDZO -imagekey zlib-level=9 -o "$FINAL" -quiet
+codesign --force --sign "$IDENTITY" --timestamp "$FINAL"
+DMG="$FINAL"
+
+step "Notarizing the image"
 xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --wait
 
-step "Stapling the ticket"
-# The ticket goes onto the image, so mounting it needs no network. The app
-# dragged out of it carries no ticket of its own and is checked against
-# Apple's servers the first time it runs -- fine online, refused offline.
+step "Stapling the image"
 xcrun stapler staple "$DMG"
 
 step "Checking the result the way another Mac will"
 spctl -a -t open --context context:primary-signature -vv "$DMG"
 xcrun stapler validate "$DMG"
+# And the app a friend drags out of it, which is what actually runs.
+CHECK=$(hdiutil attach "$DMG" -nobrowse -readonly -mountrandom "$WORK" | awk '/\/private\/|\/Volumes\//{print $NF}' | tail -1)
+xcrun stapler validate "$CHECK/Mark.app"
+spctl -a -t exec -vv "$CHECK/Mark.app"
+hdiutil detach "$CHECK" -quiet
 
 step "Done"
-echo "  $DMG is ready to send anywhere."
+echo "  $DMG is ready to send anywhere, and opens without a network."

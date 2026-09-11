@@ -7,7 +7,7 @@
     "allow-current-capture", "allow-capture-region", "allow-capture-display",
     "allow-copy-capture", "allow-copy-edited", "allow-save-image", "allow-share-image",
     "allow-dismiss-editor", "allow-open-screen-settings", "allow-quit-app",
-    "allow-glass-available", "allow-set-glass", "allow-set-material",
+    "allow-glass-available", "allow-set-glass",
     "allow-get-settings", "allow-open-settings",
     "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize",
     "core:event:allow-listen", "core:event:allow-unlisten"

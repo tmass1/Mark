@@ -6,6 +6,6 @@
   "permissions": [
     "allow-get-settings", "allow-set-appearance", "allow-set-shortcut",
     "allow-login-enabled", "allow-set-login",
-    "core:window:allow-close", "core:window:allow-set-size"
+    "core:window:allow-close", "core:window:allow-set-size", "core:app:allow-version"
   ]
 }

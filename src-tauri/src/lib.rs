@@ -382,30 +382,6 @@ fn open_screen_settings() -> Result<(), String> {
         .spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
-/// The macOS materials the window can sit on, by the names tauri.conf.json
-/// uses. They differ a great deal in how much of the desktop they pass, and
-/// the only way to choose is to look, so the editor can switch between them
-/// live rather than one rebuild at a time.
-pub const MATERIALS: &[&str] = &[
-    "sidebar", "fullScreenUI", "popover", "menu", "hudWindow", "light", "mediumLight",
-    "titlebar", "headerView", "underWindowBackground", "windowBackground",
-];
-
-// light and mediumLight are the original vibrancy materials, deprecated in
-// favour of the semantic ones but still drawn, and they pass more of the
-// desktop than most of their replacements -- which is the point of trying them.
-#[allow(deprecated)]
-fn material(name: &str) -> Option<tauri::window::Effect> {
-    use tauri::window::Effect;
-    Some(match name {
-        "sidebar" => Effect::Sidebar, "fullScreenUI" => Effect::FullScreenUI, "popover" => Effect::Popover,
-        "menu" => Effect::Menu, "hudWindow" => Effect::HudWindow, "light" => Effect::Light,
-        "mediumLight" => Effect::MediumLight, "titlebar" => Effect::Titlebar, "headerView" => Effect::HeaderView,
-        "underWindowBackground" => Effect::UnderWindowBackground, "windowBackground" => Effect::WindowBackground,
-        _ => return None,
-    })
-}
-
 thread_local! {
     /// Window views belong to the main thread, and so does this. Commands run
     /// there too, so they see the same value; anything else sees nothing and
@@ -435,17 +411,6 @@ fn glass_available() -> bool { GLASS.with(|slot| slot.borrow().is_some()) }
 /// The panes exist only while a capture is open.
 #[tauri::command]
 fn set_glass(visible: bool) { GLASS.with(|slot| { if let Some(glass) = slot.borrow().as_ref() { glass.set_visible(visible); } }); }
-
-/// Put the editor window on a different material. Returns the name applied.
-#[tauri::command]
-fn set_material(app: AppHandle, name: String) -> Result<String, String> {
-    let effect = material(&name).ok_or_else(|| format!("No material called {name}."))?;
-    let window = app.get_webview_window(EDITOR).ok_or("The editor window isn't available.")?;
-    let effects = tauri::window::EffectsBuilder::new().effect(effect)
-        .state(tauri::window::EffectState::Active).radius(12.0).build();
-    window.set_effects(effects).map_err(|e| e.to_string())?;
-    Ok(name)
-}
 
 fn open_settings_pane(pane: &str) {
     let _ = std::process::Command::new("/usr/bin/open").arg(pane).spawn();
@@ -605,7 +570,7 @@ pub fn run() {
             }
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, cancel_selection,
-            copy_capture, copy_edited, save_image, share_image, dismiss_editor, open_screen_settings, set_material, glass_available, set_glass,
+            copy_capture, copy_edited, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
             get_settings, set_appearance, set_shortcut, login_enabled, set_login, open_settings, quit_app])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
         .on_window_event(|window, event| {

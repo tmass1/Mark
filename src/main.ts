@@ -255,12 +255,6 @@ const layer = new AnnotationLayer(overlay, stage, () => syncTools());
 layer.setSource(image);
 image.addEventListener('load', () => layer.refreshRedactions());
 
-/** Mirrors MATERIALS in lib.rs, in the same order; the first is the one in
- *  tauri.conf.json, so the first step goes to something new. */
-const MATERIALS = ['sidebar', 'fullScreenUI', 'popover', 'menu', 'hudWindow', 'light', 'mediumLight',
-                   'titlebar', 'headerView', 'underWindowBackground', 'windowBackground'];
-let materialIndex = 0;
-
 let flashTimer: ReturnType<typeof setTimeout>;
 function flash(text: string) {
   showMessage(text);
@@ -729,13 +723,6 @@ document.addEventListener('keydown', event => {
   } else if (event.metaKey && key === 'q') {
     // No menu bar on an accessory app, so nothing else would catch this.
     event.preventDefault(); void command('quit_app').catch(report);
-  } else if (isTauri && event.metaKey && event.altKey && event.code === 'KeyM') {   // with ⌥ held, event.key is µ
-    // ⌥⌘M walks the window through macOS's materials, live, and says which
-    // one it is on. The only way to choose a material is to look at it.
-    event.preventDefault();
-    materialIndex = (materialIndex + (event.shiftKey ? MATERIALS.length - 1 : 1)) % MATERIALS.length;
-    void command<string>('set_material', { name: MATERIALS[materialIndex] })
-      .then(name => flash(`Material: ${name}`)).catch(report);
   } else if ((event.metaKey || event.ctrlKey) && key === 'w') {
     event.preventDefault(); void dismiss().catch(report);
   } else if (isTauri && event.metaKey && key === ',') {
