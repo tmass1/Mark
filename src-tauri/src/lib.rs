@@ -716,6 +716,23 @@ mod tests {
         assert!(problems.is_empty(), "{}", problems.join("\n"));
     }
 
+    /// A capability file that is not named in tauri.conf.json is written into
+    /// the generated schemas and never compiled into the app -- which is how
+    /// the settings window came to be refused every command while every check
+    /// of the generated output said it was granted them.
+    #[test]
+    fn every_capability_file_is_compiled_in() {
+        let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let compiled: Vec<&str> = config["app"]["security"]["capabilities"].as_array().expect("an explicit capability list")
+            .iter().filter_map(|v| v.as_str()).collect();
+        for file in std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/capabilities")).unwrap() {
+            let path = file.unwrap().path();
+            let capability: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            let id = capability["identifier"].as_str().unwrap();
+            assert!(compiled.contains(&id), "{}: capability '{id}' is not in app.security.capabilities, so it does nothing", path.display());
+        }
+    }
+
     /// The tray shows the shortcut the way the Mac prints it, and must agree
     /// with the web side's prettyShortcut on every case that side tests.
     #[test]

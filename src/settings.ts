@@ -139,6 +139,15 @@ async function closeWindow() {
   await getCurrentWindow().close();
 }
 
+/** The window is as tall as its contents, so a message that wraps to a second
+ *  line grows the window rather than falling off the bottom of it. */
+async function fitWindow() {
+  if (!isTauri) return;
+  const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
+  await getCurrentWindow().setSize(new LogicalSize(460, Math.ceil(root.getBoundingClientRect().height)));
+}
+new ResizeObserver(() => { void fitWindow().catch(() => {}); }).observe(root);
+
 async function init() {
   if (!isTauri) {
     root.querySelector<HTMLElement>('.pref-preview')!.hidden = false;
