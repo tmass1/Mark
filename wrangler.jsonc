@@ -1,0 +1,16 @@
+// The site at mark.tommymassaro.com: a Cloudflare Worker that serves only
+// static assets, from the folder scripts/site/pack.sh assembles. The custom
+// domain is created on deploy, DNS record and certificate included, because
+// the zone is on the same account. That account is pinned here on purpose --
+// Tommy's personal one, never a client's.
+//   pnpm site && pnpm exec wrangler deploy
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mark",
+  "account_id": "2fbdb9eace50ce37fd227a7928e7e925",
+  "compatibility_date": "2026-09-01",
+  "assets": { "directory": "./dist-site", "html_handling": "auto-trailing-slash", "not_found_handling": "none" },
+  "routes": [{ "pattern": "mark.tommymassaro.com", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false
+}
