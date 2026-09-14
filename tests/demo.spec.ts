@@ -117,3 +117,84 @@ test('⌘4 starts a capture, as in the app, and the shortcut is recordable', asy
   await expect(editor.locator('.start kbd')).toHaveText('⇧⌘M');            // the editor followed
   await expect(page.locator('.tray-menu [data-act="capture"] kbd')).toHaveText('⇧⌘M');
 });
+
+test('a copy shows the very image that was copied, and offers it as a file', async ({ page }) => {
+  const editor = await open(page);
+  await startSelection(page);
+  const stage = (await page.locator('.stage').boundingBox())!;
+  await page.mouse.move(stage.x + 300, stage.y + 200); await page.mouse.down(); await page.mouse.move(stage.x + 700, stage.y + 420, { steps: 8 }); await page.mouse.up();
+  await page.frameLocator('.overlay').getByRole('button', { name: 'Capture', exact: true }).click();
+  await expect(page.locator('.win.editor')).toBeVisible();
+  await expect(page.locator('.clip')).toBeHidden();               // nothing copied yet
+
+  const image = (await editor.locator('.overlay').boundingBox())!;
+  await page.mouse.move(image.x + image.width * .2, image.y + image.height * .7); await page.mouse.down();
+  await page.mouse.move(image.x + image.width * .7, image.y + image.height * .3, { steps: 8 }); await page.mouse.up();
+  await editor.getByRole('button', { name: /^Copy/, exact: false }).first().click();
+  const clip = page.locator('.clip');
+  await expect(clip).toBeVisible();
+  await expect(clip.locator('strong')).toHaveText('On your clipboard');
+  await expect(clip.locator('.clip-image')).toHaveAttribute('src', /^data:image\/png;base64,/);
+  // The stage's 400 x 220 points, drawn at 2880 for the stage's width.
+  const scale = 2880 / stage.width;
+  await expect(clip.locator('.clip-meta')).toHaveText(`${Math.round(400 * scale)} × ${Math.round(220 * scale)} px`);
+  await expect(page.locator('.win.editor')).toBeVisible();        // a plain Copy leaves the editor open
+  await page.waitForTimeout(600);                                  // the card's entrance
+  await page.screenshot({ path: 'test-results/demo-copied.png' });
+
+  const saving = page.waitForEvent('download');
+  await clip.getByRole('button', { name: 'Save PNG' }).click();
+  expect((await saving).suggestedFilename()).toMatch(/^Mark \d{4}-\d{2}-\d{2} at \d{2}\.\d{2}\.\d{2}\.png$/);
+
+  await clip.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(clip).toBeHidden();
+  // The next selection clears the desktop of it, so it cannot end up in a capture.
+  await editor.getByRole('button', { name: /^Copy/, exact: false }).first().click();
+  await expect(clip).toBeVisible();
+  await startSelection(page);
+  await expect(clip).toBeHidden();
+});
+
+test('a browser that refuses the clipboard is told so, and the card offers the file instead', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async () => { throw new DOMException('denied', 'NotAllowedError'); } } });
+  });
+  await page.goto('/demo.html');
+  const editor = page.frameLocator('.win.editor iframe');
+  await expect(editor.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await startSelection(page);
+  const stage = (await page.locator('.stage').boundingBox())!;
+  await page.mouse.move(stage.x + 300, stage.y + 200); await page.mouse.down(); await page.mouse.move(stage.x + 600, stage.y + 350, { steps: 8 }); await page.mouse.up();
+  await page.frameLocator('.overlay').getByRole('button', { name: 'Capture', exact: true }).click();
+  await editor.getByRole('button', { name: /Copy and Close/ }).click();
+  await expect(page.locator('.clip strong')).toHaveText('The browser refused the copy');
+  await expect(page.locator('.clip')).toHaveClass(/refused/);
+  await expect(page.locator('.win.editor')).toBeVisible();        // not closed: nothing was copied
+  await expect(editor.getByRole('status')).toContainText('Save the image instead');
+});
+
+test('with a capture open the pill teaches, and stops when the capture closes', async ({ page }) => {
+  const editor = await open(page);
+  await expect(page.locator('.hint')).toContainText('Click the Mark icon');
+  await startSelection(page);
+  await expect(page.locator('.hint')).toBeHidden();               // nothing over the desktop while selecting
+  const stage = (await page.locator('.stage').boundingBox())!;
+  await page.mouse.move(stage.x + 300, stage.y + 200); await page.mouse.down(); await page.mouse.move(stage.x + 600, stage.y + 350, { steps: 8 }); await page.mouse.up();
+  await page.frameLocator('.overlay').getByRole('button', { name: 'Capture', exact: true }).click();
+  await expect(page.locator('.hint')).toBeVisible();
+  await expect(page.locator('.hint')).toHaveAttribute('data-tip', '0');
+  await expect(page.locator('.hint')).toContainText('Drag to draw');
+  await editor.getByRole('button', { name: /Copy and Close/ }).click();
+  await expect(page.locator('.hint')).not.toHaveAttribute('data-tip', /./);
+  await expect(page.locator('.hint')).toContainText('Closed');
+});
+
+test('a phone gets a picture of the editor and none of the frames', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.goto('/demo.html');
+  await expect(page.locator('.poster img')).toBeVisible();
+  await expect(page.locator('.poster figcaption')).toContainText('open this page on a Mac');
+  await expect(page.locator('.stage')).toHaveCount(0);
+  await expect(page.locator('iframe')).toHaveCount(0);
+  expect(await page.locator('.poster img').evaluate(el => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+});

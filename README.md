@@ -324,7 +324,11 @@ settings are the real pages, each in a frame, against a page that plays lib.rs
 and a picture of a desktop. `site.html` is the landing page, which frames the
 demo and takes its version, shortcut and mark from the app itself. Both are
 pages of the same Vite build, so `pnpm dev` serves them at
-`http://127.0.0.1:1420/demo.html` and `/site.html`.
+`http://127.0.0.1:1420/demo.html` and `/site.html`. A copy in the demo shows
+the very image that went to the clipboard, in a card at the bottom right, with
+a Save button for a browser that refuses the clipboard; below 640 pixels wide
+the demo shows a picture of the editor instead, since a phone cannot drive it.
+`demo.html?embed` drops the caption and margin for hosting in a frame.
 
 The site's pictures are renders of the demo, not mockups. After a change to the
 editor's appearance, redraw them with the dev server running:

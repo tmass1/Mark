@@ -67,6 +67,14 @@ document.body.innerHTML = `
       <iframe class="frame" title="Mark Settings"></iframe>
     </div>
     <div class="hint"><span></span></div>
+    <aside class="clip" hidden aria-live="polite">
+      <img class="clip-image" alt="The image that was copied" />
+      <div class="clip-text"><strong></strong><small class="clip-meta"></small></div>
+      <div class="clip-actions">
+        <button class="clip-save" type="button">Save PNG</button>
+        <button class="clip-close" type="button" aria-label="Dismiss">×</button>
+      </div>
+    </aside>
   </div></div>
   <p class="caption">This is Mark's real editor, selection overlay and settings, running in your browser against a stand-in for the Mac.
     Capturing takes a region of this picture of a desktop; Copy puts a real PNG on your clipboard. Liquid Glass, capturing your actual
@@ -119,7 +127,71 @@ function place(win: HTMLElement, w: number, h: number) {
 }
 function showEditor(show: boolean) { editorWin.hidden = !show; if (show) { fitEditor(); raise(editorWin); } }
 function raise(win: HTMLElement) { for (const w of document.querySelectorAll<HTMLElement>('.win')) w.classList.toggle('front', w === win); }
-function showHint(text: string | null) { hint.parentElement!.hidden = !text; hint.textContent = text ?? ''; }
+function showHint(text: string | null) {
+  const pill = hint.parentElement!;
+  pill.hidden = !text; hint.textContent = text ?? '';
+  // A change of text crossfades, so a tip arriving reads as arriving.
+  pill.classList.remove('swap'); void pill.offsetWidth; pill.classList.add('swap');
+}
+
+// ---- tips ------------------------------------------------------------------
+/** With a capture open, the pill teaches one thing at a time, in about the order
+ *  a first drawing raises them. Nothing here is invented for the demo: each is
+ *  something the app does. */
+const TIPS = [
+  'Drag to draw. The tip of an arrow lands exactly where you let go.',
+  'Three arrow styles sit beside the colours: tapered, solid and thin.',
+  'Drag an arrow\'s end to reshape it, or its body to move it.',
+  '⌘Z takes the last thing back, a crop included.',
+  'Redact pixelates rather than blurs: a blur can be undone.',
+  'Shift-click gathers several annotations; they then move and restyle together.',
+  'Crop keeps the drawing, shifted to match. ⌘Z puts the whole capture back.',
+  '⌘C copies the image and closes. ⌘⇧C copies and keeps working.',
+  'Closed a capture by accident? Recent, on the empty state, holds the last six.',
+];
+const TIP_EVERY = 6500;
+let tipTimer: number | undefined, tipIndex = 0;
+function showTip() {
+  const which = tipIndex++ % TIPS.length;
+  showHint(TIPS[which]); hint.parentElement!.dataset.tip = String(which);
+}
+function startTips() { stopTips(); tipIndex = 0; showTip(); tipTimer = window.setInterval(showTip, TIP_EVERY); }
+function stopTips() {
+  if (tipTimer !== undefined) clearInterval(tipTimer);
+  tipTimer = undefined; delete hint.parentElement!.dataset.tip;
+}
+
+// ---- what was copied -------------------------------------------------------
+/** The clipboard cannot be seen, so a copy would be taken on faith: the card
+ *  shows the very bytes that went there, and hands them over as a file when the
+ *  browser would not take them. */
+const clip = $<HTMLElement>('.clip');
+const clipImage = clip.querySelector<HTMLImageElement>('.clip-image')!, clipMeta = clip.querySelector<HTMLElement>('.clip-meta')!;
+let clipPng = '';
+function showClip(png: string, refused: string | null) {
+  clipPng = png;
+  clipImage.src = `data:image/png;base64,${png}`;
+  clipImage.onload = () => { clipMeta.textContent = `${clipImage.naturalWidth} × ${clipImage.naturalHeight} px`; };
+  clip.querySelector('strong')!.textContent = refused ? 'The browser refused the copy' : 'On your clipboard';
+  clip.classList.toggle('refused', refused !== null);
+  clip.hidden = false;
+  clip.classList.remove('in'); void clip.offsetWidth; clip.classList.add('in');   // the entrance again, for a second copy
+}
+/** The name macOS gives a screenshot, as the app's Save suggests. */
+function suggestedName(): string {
+  const now = new Date(), pad = (value: number) => String(value).padStart(2, '0');
+  return `Mark ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+    + ` at ${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}.png`;
+}
+clip.querySelector('.clip-save')!.addEventListener('click', () => download(clipPng, suggestedName()));
+clip.querySelector('.clip-close')!.addEventListener('click', () => { clip.hidden = true; });
+async function copied(png: string, close: boolean) {
+  let refused: string | null = null;
+  try { await toClipboard(png); } catch (error) { refused = String(error); }
+  showClip(png, refused);
+  if (refused) throw refused;                      // the editor's status line says so too
+  if (close) await host.invoke('dismiss_editor', {}, editorFrame.contentWindow!, 'editor');
+}
 
 /** Dragging by a title area. The frames' bridges report the mousedown; the
  *  page follows the pointer, with the frames made transparent to it meanwhile
@@ -149,7 +221,8 @@ async function beginSelection(delay: number) {
   if (state.busy) return;
   state.busy = true; state.armedDelay = delay; state.error = null;
   emitTo(editorFrame, 'capture-changed');
-  showEditor(false); settingsWin.hidden = true; showHint(null);
+  showEditor(false); settingsWin.hidden = true; stopTips(); showHint(null);
+  clip.hidden = true;                              // the desktop is about to be captured
   // One overlay per selection, as in the app, where the window is made fresh each time.
   overlay?.remove();
   overlay = document.createElement('iframe');
@@ -173,6 +246,7 @@ async function took(capture: Capture) {
   editorWanted = true;
   showEditor(true);
   emitTo(editorFrame, 'capture-changed');
+  startTips();
 }
 
 // ---- files -----------------------------------------------------------------
@@ -234,13 +308,9 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       case 'cancel_selection': endSelection(); if (editorWanted) showEditor(true); emitTo(editorFrame, 'capture-changed'); return;
       case 'copy_capture': {
         if (!state.capture) throw 'Nothing to copy yet.';
-        await toClipboard(state.capture.dataUrl.split(',')[1]);
-        if (args.close) await host.invoke('dismiss_editor', {}, editorFrame.contentWindow!, 'editor'); return;
+        await copied(state.capture.dataUrl.split(',')[1], Boolean(args.close)); return;
       }
-      case 'copy_edited': {
-        await toClipboard(String(args.png));
-        if (args.close) await host.invoke('dismiss_editor', {}, editorFrame.contentWindow!, 'editor'); return;
-      }
+      case 'copy_edited': await copied(String(args.png), Boolean(args.close)); return;
       case 'save_image': download(String(args.png), String(args.name)); return String(args.name);
       case 'share_image': {
         const file = new File([pngBlob(String(args.png))], String(args.name), { type: 'image/png' });
@@ -250,13 +320,13 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       case 'dismiss_editor': {
         if (state.busy) throw 'Press Escape to cancel the selection first.';
         state.capture = null; state.error = null; editorWanted = false;
-        showEditor(false); emitTo(editorFrame, 'capture-changed');
+        showEditor(false); emitTo(editorFrame, 'capture-changed'); stopTips();
         showHint(`Closed. Click the Mark icon in the menu bar, or press ${prettyShortcut(state.settings.shortcut)}, to capture again.`);
         return;
       }
       case 'open_screen_settings': return;
       case 'quit_app': {
-        editorWanted = false; showEditor(false); settingsWin.hidden = true; endSelection();
+        editorWanted = false; showEditor(false); settingsWin.hidden = true; endSelection(); stopTips();
         showHint('Mark quit. Click its icon in the menu bar to open it again.'); return;
       }
       case 'glass_available': return false;
