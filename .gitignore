@@ -2,8 +2,10 @@
 build/
 node_modules/
 dist/
+dist-site/
 test-results/
 src-tauri/target/
 .DS_Store
 xcuserdata/
 *.xcuserstate
+*.dmg

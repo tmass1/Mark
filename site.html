@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Mark — screenshots for the Mac, marked up in a moment</title>
+    <meta name="description" content="Mark is a fast, small screenshot tool for the Mac. Press ⌘4, drag across a region, point at what matters, and it is on your clipboard." />
+    <meta property="og:title" content="Mark for Mac" />
+    <meta property="og:description" content="Press ⌘4, drag across a region, point at what matters, and it is on your clipboard." />
+    <meta property="og:type" content="website" />
+  </head>
+  <body>
+    <a class="skip" href="#download">Skip to download</a>
+
+    <header class="top">
+      <nav class="bar" aria-label="Site">
+        <a class="brand" href="#top"><span class="mark" data-mark></span>Mark</a>
+        <div class="links">
+          <a href="#how">How it works</a>
+          <a href="#features">Features</a>
+          <a href="#try">Try it</a>
+        </div>
+        <a class="primary small" href="#download" data-download>Download for Mac</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <h1>Say it with an arrow.</h1>
+        <p class="lede">Mark is a fast, small screenshot tool for the Mac. Press <kbd data-shortcut>⌘4</kbd>, drag across a region,
+          point at what matters, and it’s on your clipboard.</p>
+        <div class="actions">
+          <a class="primary big" href="#download" data-download>
+            <svg class="apple" viewBox="0 0 17 20" aria-hidden="true"><path d="M14.2 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.8-3.1-.8C3.9 5.4 1.6 7.5 1.6 11c0 1.4.3 2.8.9 4.2.7 1.7 2.3 4.4 4 4.4.9 0 1.6-.6 2.9-.6 1.2 0 1.8.6 3 .6 1.8 0 3.2-2.4 3.9-4.1.5-1.1.7-1.6.7-1.7-.1 0-2.8-1-2.8-3.2zM11.9 3.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>
+            Download for Mac
+          </a>
+          <a class="glassy big" href="#try">Try it in your browser</a>
+        </div>
+        <p class="fine"><span class="only-mac">Version <span data-version>0.3.0</span> · macOS 13 or later · Apple silicon and Intel · Notarized by Apple</span>
+          <span class="not-mac">Mark is a Mac app. The download runs on macOS 13 or later, Apple silicon or Intel.</span></p>
+        <figure class="shot hero-shot">
+          <img src="./site/hero.png" width="938" height="564" alt="Mark’s editor over a captured dashboard: a red box around the repeat-rate card, an arrow at the chart’s peak with the note “Launch day”, and the revenue figure redacted into coarse blocks." fetchpriority="high" />
+        </figure>
+      </section>
+
+      <section class="steps" id="how" aria-labelledby="how-title">
+        <div class="steps-text">
+          <h2 id="how-title">Three keys, one screenshot.</h2>
+          <ol>
+            <li>
+              <kbd class="cap" data-shortcut>⌘4</kbd>
+              <h3>Capture</h3>
+              <p>From anywhere on your Mac. Guides run the full width and height of the display while you aim, so an edge lines up
+                with something on the far side of the screen. Adjust a corner afterwards, or type the exact size.</p>
+            </li>
+            <li>
+              <kbd class="cap">drag</kbd>
+              <h3>Mark it up</h3>
+              <p>Arrows, lines, a pen, text, boxes, ellipses, a highlighter, a redaction and a crop. Colour and size come from the
+                toolbar, and selecting something adopts its style, so the toolbar always says what the next edit will do.</p>
+            </li>
+            <li>
+              <kbd class="cap">⌘C</kbd>
+              <h3>Copy and close</h3>
+              <p>A PNG lands on the clipboard and the editor gets out of the way. <kbd>⌘S</kbd> saves a file instead;
+                <kbd>⇧⌘S</kbd> hands it to Mail, Messages or AirDrop.</p>
+            </li>
+          </ol>
+        </div>
+        <figure class="shot steps-shot">
+          <img src="./site/select.jpeg" width="1060" height="660" loading="lazy" alt="Selecting a region of a dashboard: the rest of the screen dims, guides run through the pointer to the screen’s edges, and a readout says 860 × 390." />
+        </figure>
+      </section>
+
+      <section class="features" id="features" aria-labelledby="features-title">
+        <h2 id="features-title">Small, and particular about it.</h2>
+        <div class="grid">
+          <article class="card">
+            <div class="visual arrows" data-arrows></div>
+            <h3>Arrows worth pointing with</h3>
+            <p>Tapered, in the spirit of Skitch’s; solid, one width throughout; or thin, a stroke that doesn’t cover what it
+              points at. The tip lands exactly where you let go.</p>
+          </article>
+          <article class="card">
+            <div class="visual picture"><img src="./site/redact.png" width="216" height="106" loading="lazy" alt="A revenue card whose figure has been replaced by coarse grey blocks; the change beneath it still reads 12.4% vs last month." /></div>
+            <h3>Redact, don’t blur</h3>
+            <p>A redaction replaces the region with coarse blocks averaged from the capture. A blur can be partly undone, and
+              still gives away the shape of what’s under it.</p>
+          </article>
+          <article class="card">
+            <div class="visual picture menu"><img src="./site/menu.png" width="300" height="150" loading="lazy" alt="Mark’s menu-bar menu: Capture Region ⌘4, Show Editor, Settings, Quit Mark." /></div>
+            <h3>Lives in the menu bar</h3>
+            <p>No Dock icon, and no window until you want one. Open at Login keeps it ready, and the shortcut is yours to change.</p>
+          </article>
+          <article class="card plain">
+            <span class="glyph" data-glyph="crop"></span>
+            <h3>Crop keeps your work</h3>
+            <p>Everything you drew comes along, shifted to match, so cropping never quietly discards a drawing. <kbd>⌘Z</kbd> puts
+              the whole capture back.</p>
+          </article>
+          <article class="card plain">
+            <span class="glyph" data-glyph="timed"></span>
+            <h3>Timed, for menus and hovers</h3>
+            <p>Arm 3, 5 or 10 seconds. The screen clears so you can open what you’re after, and the countdown runs in the menu
+              bar rather than over the shot.</p>
+          </article>
+          <article class="card plain">
+            <span class="glyph" data-glyph="private"></span>
+            <h3>Nothing leaves your Mac</h3>
+            <p>No account, no cloud, no history on disk. Recent keeps the last six captures in memory, drawings and all — an undo
+              for closing, not a library.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="glass" aria-labelledby="glass-title">
+        <div class="glass-text">
+          <h2 id="glass-title">Real glass, in dark or light.</h2>
+          <p>On macOS 26 the editor stands on Liquid Glass — the system’s own material, not a blurred rectangle. Dark is the
+            default; light and Match System are a click away in Settings, along with the shortcut and Open at Login.</p>
+          <figure class="shot settings-shot">
+            <img src="./site/settings.png" width="460" height="272" loading="lazy" alt="Mark’s Settings window: Appearance with Dark, Light and Match System; a shortcut recorder showing ⌘4; Open Mark at login." />
+          </figure>
+        </div>
+        <figure class="shot light-shot">
+          <img src="./site/hero-light.png" width="938" height="564" loading="lazy" alt="The same annotated capture in Mark’s light appearance." />
+        </figure>
+      </section>
+
+      <section class="try" id="try" aria-labelledby="try-title">
+        <h2 id="try-title">Try it here.</h2>
+        <p>This is Mark’s real editor, selection overlay and settings, running in your browser against a picture of a desktop.
+          Click the icon in its menu bar, or click into the picture and press <kbd data-shortcut>⌘4</kbd>.</p>
+        <div class="demo-frame">
+          <iframe class="demo" src="./demo.html?embed" title="Mark, running in your browser" loading="lazy"></iframe>
+        </div>
+        <p class="no-demo">The demo wants a pointer and a keyboard. Open this page on a Mac to try it.</p>
+      </section>
+
+      <section class="download" id="download" aria-labelledby="download-title">
+        <span class="mark large" data-mark></span>
+        <h2 id="download-title">Get Mark.</h2>
+        <p>Version <span data-version>0.3.0</span> · Universal · Notarized by Apple</p>
+        <a class="primary big" href="#" data-download>
+          <svg class="apple" viewBox="0 0 17 20" aria-hidden="true"><path d="M14.2 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.8-3.1-.8C3.9 5.4 1.6 7.5 1.6 11c0 1.4.3 2.8.9 4.2.7 1.7 2.3 4.4 4 4.4.9 0 1.6-.6 2.9-.6 1.2 0 1.8.6 3 .6 1.8 0 3.2-2.4 3.9-4.1.5-1.1.7-1.6.7-1.7-.1 0-2.8-1-2.8-3.2zM11.9 3.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>
+          Download for Mac
+        </a>
+        <p class="fine">Open the disk image and drag Mark to Applications. macOS asks for Screen Recording the first time you
+          capture; Mark uses it for still screenshots only. Requires macOS 13 or later.</p>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand" href="#top"><span class="mark" data-mark></span>Mark</a>
+      <span class="made">Made by <a href="https://tommymassaro.com">Tommy Massaro</a></span>
+      <span class="version">Version <span data-version>0.3.0</span></span>
+    </footer>
+
+    <script type="module" src="/src/site/page.ts"></script>
+  </body>
+</html>

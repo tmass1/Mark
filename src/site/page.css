@@ -1,0 +1,212 @@
+/* Mark's site.
+ *
+ * The page is built from the editor's own materials: the slate ground, panes
+ * of frosted glass with a lit top edge, the blue of its controls and the red of
+ * its arrows, and the concentric radii that make one shape sit inside another.
+ * Dark only, as the app is by default. */
+:root {
+  --ground: #0b0e14;
+  --slate: #1b212a;
+  --ink: #f3f3f3;
+  --muted: #9ca3af;
+  --dim: #6b7280;
+  --hairline: #f3f3f31f;
+  --panel: #dbe3f014;
+  --panel-hover: #dbe3f01f;
+  --sheen: linear-gradient(180deg, #ffffff10, #ffffff00 58%);
+  --rim: #ffffff2e;
+  --edge: #00000080;
+  --control: #dbe3f01c;
+  --control-hover: #dbe3f030;
+  --control-line: #f3f3f340;
+  --blue: #0a84ff;
+  --hover: #359aff;
+  --brand: #ff453a;
+  --shadow: #00000080;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Inter, "Segoe UI", Roboto, sans-serif;
+  --width: 1120px;
+  --gutter: 24px;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 92px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+html, body { margin: 0; background: var(--ground); color: var(--ink); }
+body {
+  font: 16px/1.5 var(--font); -webkit-font-smoothing: antialiased; letter-spacing: -.005em;
+  /* The demo scene's wallpaper, faintly: warm at the top left, cool at the bottom right. */
+  background:
+    radial-gradient(900px 600px at 18% -10%, #ff453a1a, #ff453a00 70%),
+    radial-gradient(1200px 700px at 90% 8%, #0a84ff1f, #0a84ff00 70%),
+    var(--ground);
+  background-repeat: no-repeat;
+}
+img { display: block; max-width: 100%; height: auto; }
+a { color: inherit; text-decoration: none; }
+h1, h2, h3, p, ol, figure { margin: 0; }
+h1, h2 { font-weight: 700; letter-spacing: -.03em; line-height: 1.05; text-wrap: balance; }
+h2 { font-size: clamp(28px, 3.4vw, 40px); }
+h3 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+kbd {
+  display: inline-block; padding: 0 6px; border-radius: 6px; vertical-align: baseline;
+  font: inherit; font-size: .88em; font-weight: 500; line-height: 1.55;
+  background: var(--control); box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--control-line);
+}
+:focus-visible { outline: 2px solid var(--hover); outline-offset: 3px; border-radius: 6px; }
+.skip { position: absolute; left: 16px; top: -60px; z-index: 100; padding: 8px 14px; border-radius: 999px; background: var(--slate); }
+.skip:focus { top: 12px; }
+
+/* Only the platform that can use the download hears about the requirements. */
+.not-mac { display: none; }
+html.elsewhere .not-mac { display: inline; }
+html.elsewhere .only-mac { display: none; }
+
+/* ---- panes and buttons, as in the editor ------------------------------------- */
+.pane, .card, .shot, .demo-frame {
+  background: var(--sheen), var(--panel);
+  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 30px 60px -30px var(--shadow);
+}
+.primary, .glassy {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 36px; padding: 0 18px;
+  border-radius: 999px; font-weight: 500; white-space: nowrap; transition: background .15s, transform .15s;
+}
+.primary {
+  color: #fff; background: linear-gradient(180deg, #ffffff33, #ffffff00 60%), var(--blue);
+  box-shadow: 0 10px 24px -10px #0a84ffcc, 0 1px 2px #0000001f, inset 0 1px 0 #ffffff40;
+}
+.primary:hover { background: linear-gradient(180deg, #ffffff33, #ffffff00 60%), var(--hover); }
+.primary:active { transform: translateY(.5px); }
+.glassy {
+  border: 1px solid var(--control-line); background: var(--control);
+  box-shadow: inset 0 1px 0 var(--rim), 0 1px 2px #00000012;
+}
+.glassy:hover { background: var(--control-hover); }
+.big { height: 48px; padding: 0 24px; font-size: 17px; }
+.small { height: 34px; padding: 0 16px; font-size: 14px; }
+.apple { width: 15px; height: 18px; fill: currentColor; margin-top: -2px; }
+
+/* ---- the mark ----------------------------------------------------------------- */
+.mark { display: inline-block; width: 26px; height: 26px; flex: none; }
+.mark svg { display: block; width: 100%; height: 100%; }
+.mark.large { width: 84px; height: 84px; filter: drop-shadow(0 18px 30px #00000080); }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; letter-spacing: -.01em; }
+
+/* ---- the bar: a capsule, like the editor's toolbar ------------------------------ */
+.top { position: sticky; top: 0; z-index: 20; padding: 14px var(--gutter) 0; pointer-events: none; }
+.bar {
+  pointer-events: auto; max-width: var(--width); margin: 0 auto; height: 52px; padding: 0 10px 0 16px;
+  display: flex; align-items: center; gap: 24px; border-radius: 26px;
+  background: var(--sheen), #1b212ab8; -webkit-backdrop-filter: blur(24px) saturate(1.4); backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 14px 34px -16px var(--shadow);
+}
+.links { display: flex; gap: 4px; margin-left: auto; }
+.links a { padding: 6px 12px; border-radius: 999px; color: var(--muted); font-size: 14px; font-weight: 500; transition: color .15s, background .15s; }
+.links a:hover { color: var(--ink); background: var(--control); }
+
+/* ---- sections ------------------------------------------------------------------ */
+main { display: block; }
+section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
+
+.hero { padding-top: 96px; text-align: center; }
+.hero h1 { font-size: clamp(44px, 7.2vw, 84px); letter-spacing: -.04em; line-height: .98; }
+.lede { max-width: 560px; margin: 24px auto 0; font-size: 19px; line-height: 1.5; color: var(--muted); text-wrap: pretty; }
+.lede kbd { color: var(--ink); }
+.actions { display: flex; justify-content: center; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
+.fine { margin-top: 18px; font-size: 13px; color: var(--dim); }
+.download .fine { max-width: 520px; margin: 22px auto 0; line-height: 1.55; }
+
+/* A picture of the app sits in a thin frame with the window's own radius, so the
+   glass edge is the frame's and not painted twice. */
+.shot { border-radius: 12px; overflow: hidden; }
+.shot img { border-radius: inherit; }
+.hero-shot {
+  width: min(100%, 938px); margin: 64px auto 0; position: relative;
+  box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge), 0 60px 120px -40px #000000cc, 0 30px 60px -30px #0a84ff33;
+}
+
+.steps { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: center; padding-top: 140px; }
+.steps ol { list-style: none; padding: 0; margin: 40px 0 0; display: grid; gap: 30px; }
+.steps li { display: grid; grid-template-columns: 56px 1fr; column-gap: 18px; row-gap: 6px; }
+.steps li .cap { grid-row: 1 / span 2; }
+.steps li h3 { align-self: end; }
+.steps li p { color: var(--muted); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
+.cap {
+  display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 44px; padding: 0 8px;
+  border-radius: 12px; font-size: 16px; font-weight: 600; color: var(--ink); letter-spacing: -.01em;
+  background: var(--sheen), var(--control); box-shadow: inset 0 1px 0 var(--rim), inset 0 -1px 0 var(--edge), 0 0 0 .5px var(--edge), 0 6px 14px -8px var(--shadow);
+}
+.steps-shot { border-radius: 14px; }
+
+.features { padding-top: 140px; }
+.features h2 { text-align: center; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 44px; }
+.card { border-radius: 22px; padding: 10px 10px 22px; transition: background .2s; }
+.card:hover { background: var(--sheen), var(--panel-hover); }
+.card h3 { margin: 18px 14px 0; }
+.card p { margin: 8px 14px 0; color: var(--muted); font-size: 14.5px; line-height: 1.55; text-wrap: pretty; }
+.card p kbd { font-size: .86em; }
+/* The concentric rule: a card's inner shape is the card's radius less its padding. */
+.visual { height: 168px; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #00000040; box-shadow: inset 0 0 0 .5px var(--edge); }
+.visual.picture img { width: 100%; height: 100%; object-fit: cover; }
+.arrows { gap: 22px; color: var(--brand); padding: 0 8px; }
+.arrows figure { display: grid; justify-items: center; gap: 2px; }
+.arrows svg { width: 92px; height: 98px; filter: drop-shadow(0 10px 16px #ff453a3d); }
+.arrows figcaption { font-size: 12px; color: var(--muted); }
+.card.plain { padding-top: 22px; }
+.card.plain h3 { margin-top: 14px; }
+.glyph { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; margin-left: 14px; border-radius: 999px; color: var(--ink); background: var(--control); box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge); }
+.glyph svg { width: 22px; height: 22px; }
+
+.glass {
+  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; align-items: center;
+  max-width: var(--width); margin: 140px auto 0; padding: 48px;
+  border-radius: 28px; background: var(--sheen), #1b212a; box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge), 0 40px 80px -40px var(--shadow);
+  overflow: hidden;
+}
+.glass-text p { margin-top: 18px; color: var(--muted); line-height: 1.55; text-wrap: pretty; }
+.settings-shot { width: min(100%, 400px); margin-top: 32px; }
+.light-shot { border-radius: 12px; margin-right: -120px; }
+
+.try { padding-top: 140px; text-align: center; }
+.try > p { max-width: 620px; margin: 18px auto 0; color: var(--muted); line-height: 1.55; text-wrap: pretty; }
+.try kbd { color: var(--ink); }
+.demo-frame { margin-top: 40px; padding: 8px; border-radius: 22px; }
+.demo { display: block; width: 100%; aspect-ratio: 16 / 10; border: none; border-radius: 14px; background: #0e1118; }
+.no-demo { display: none; margin-top: 28px; color: var(--dim); font-size: 14px; }
+
+.download { padding-top: 160px; text-align: center; display: flex; flex-direction: column; align-items: center; }
+.download h2 { margin-top: 28px; font-size: clamp(36px, 5vw, 56px); }
+.download > p:not(.fine) { margin-top: 14px; color: var(--muted); }
+.download .primary { margin-top: 28px; }
+
+footer {
+  max-width: var(--width); margin: 120px auto 0; padding: 28px var(--gutter) 48px;
+  display: flex; align-items: center; gap: 24px; border-top: 1px solid var(--hairline); color: var(--dim); font-size: 14px;
+}
+footer .made { margin-left: auto; }
+footer .made a { color: var(--muted); }
+footer .made a:hover { color: var(--ink); }
+
+/* ---- narrower ------------------------------------------------------------------ */
+@media (max-width: 900px) {
+  .steps, .glass { grid-template-columns: 1fr; }
+  .steps { gap: 40px; }
+  .light-shot { margin-right: 0; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  :root { --gutter: 16px; }
+  .top { padding-top: 10px; }
+  .links { display: none; }
+  .hero { padding-top: 72px; }
+  .hero-shot { margin-top: 44px; }
+  .steps, .features, .try { padding-top: 96px; }
+  .glass { margin-top: 96px; padding: 28px 20px; border-radius: 22px; }
+  .grid { grid-template-columns: 1fr; }
+  /* A phone cannot drive the demo, so it is not offered one. */
+  .actions .glassy, .demo-frame { display: none; }
+  .no-demo { display: block; }
+  .download { padding-top: 112px; }
+  footer { flex-wrap: wrap; gap: 12px; }
+  footer .made { margin-left: 0; width: 100%; }
+}

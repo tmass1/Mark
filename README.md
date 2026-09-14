@@ -5,9 +5,9 @@ global shortcut, drag across a region, mark it up, then copy and close.
 
 Annotation is arrows, lines, freehand, text, boxes, ellipses, a highlighter,
 redaction, and a crop. Finished work goes to the clipboard, to a file, or to macOS's share
-sheet. There are no accounts, settings window, cloud
-features, or screen recording. The UI uses the system WKWebView; the native
-shell is Rust. There is no Xcode project and no Swift source.
+sheet. There are no accounts, cloud features, or screen recording. The UI uses
+the system WKWebView; the native shell is Rust. There is no Xcode project and
+no Swift source.
 
 ## Requirements
 
@@ -72,7 +72,7 @@ notarization; an Apple Development certificate is only good for this Mac.
    may ask you to approve it under Login Items in System Settings. A login
    start is deliberately silent, while every other launch still opens the
    editor, because a start with no window at all reads as a failed launch.
-2. Press **⌃⌥⌘4**, choose **Capture Region** from Mark's menu, or use the
+2. Press **⌘4**, choose **Capture Region** from Mark's menu, or use the
    **Capture** button in the editor's title bar. That button stays put while a
    capture is open, so a second shot does not mean closing the first, and its
    menu offers **Region**, **Whole Screen** — the display the pointer is on,
@@ -316,6 +316,32 @@ xattr -dr com.apple.quarantine /Applications/Mark.app
 or approve it once under System Settings > Privacy & Security > Open Anyway.
 Both are fine for your own machines and neither is a substitute for
 notarization if Mark ever goes to someone else's.
+
+## The site and the web demo
+
+`demo.html` is Mark running in a browser: the editor, the selection overlay and
+settings are the real pages, each in a frame, against a page that plays lib.rs
+and a picture of a desktop. `site.html` is the landing page, which frames the
+demo and takes its version, shortcut and mark from the app itself. Both are
+pages of the same Vite build, so `pnpm dev` serves them at
+`http://127.0.0.1:1420/demo.html` and `/site.html`.
+
+The site's pictures are renders of the demo, not mockups. After a change to the
+editor's appearance, redraw them with the dev server running:
+
+```sh
+pnpm site:shots            # writes public/site/*.png and *.jpeg
+```
+
+To assemble a folder for a static host:
+
+```sh
+pnpm site                  # builds, then fills dist-site/
+```
+
+`dist-site/index.html` is the landing page, with the demo, their assets, and
+`Mark_<version>_universal.dmg` beside it if the disk image has been built; the
+download button points at that file name.
 
 ## Verify
 

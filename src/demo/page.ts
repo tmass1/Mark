@@ -32,6 +32,11 @@ const state = {
   armedDelay: 0,
 };
 
+/** In the site's frame the page is the desktop and nothing else: no caption,
+ *  no margin, and the frame around it is the host's to draw. */
+const embedded = new URLSearchParams(location.search).has('embed');
+document.documentElement.classList.toggle('embedded', embedded);
+
 // ---- the page --------------------------------------------------------------
 document.body.innerHTML = `
   <div class="stage-box"><div class="stage">
@@ -332,7 +337,7 @@ window.addEventListener('keydown', e => {
  *  1000 it is drawn at 1000 and scaled down, so Mark's minimum window still
  *  fits; the frames keep their own coordinates, which is what makes that safe. */
 function fitStage() {
-  const available = document.documentElement.clientWidth - 32;
+  const available = document.documentElement.clientWidth - (embedded ? 0 : 32);
   const width = Math.min(1440, Math.max(1000, available));
   const scale = Math.min(1, available / width);
   const height = Math.round(width * 10 / 16);

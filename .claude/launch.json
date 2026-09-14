@@ -8,6 +8,14 @@
       "port": 1420,
       "url": "http://127.0.0.1:1420",
       "autoPort": false
+    },
+    {
+      "name": "demo",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["exec", "vite", "--host", "127.0.0.1", "--port", "1430", "--strictPort"],
+      "port": 1430,
+      "url": "http://127.0.0.1:1430",
+      "autoPort": false
     }
   ]
 }

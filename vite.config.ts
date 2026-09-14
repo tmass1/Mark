@@ -13,6 +13,7 @@ export default defineConfig({
     rollupOptions: { input: {
       main: 'index.html', selector: 'selector.html', settings: 'settings.html',
       demo: 'demo.html', demoEditor: 'demo/editor.html', demoSelector: 'demo/selector.html', demoSettings: 'demo/settings.html',
+      site: 'site.html',
     } },
   },
   // Unit tests live beside the source. tests/ belongs to Playwright.
