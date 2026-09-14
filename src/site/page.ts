@@ -1,6 +1,7 @@
 /** Mark's site. The page is written in site.html; this fills in what the app
- *  itself knows -- its version, its shortcut, and its mark, drawn by the same
- *  function that draws every arrow in the editor -- and hosts the web demo. */
+ *  itself knows -- its version, its shortcut, and the three arrow styles, drawn
+ *  by the same function that draws every arrow in the editor. The mark itself
+ *  is the artwork in brand/, shown as it is. */
 import './page.css';
 import pkg from '../../package.json';
 import { arrowPolygon, arrowStrokes, arrowStrokeWidth, polygonPath, strokePath, type Arrow, type ArrowStyle } from '../annotations';
@@ -18,32 +19,6 @@ for (const link of all<HTMLAnchorElement>('[data-download]')) { link.href = `./$
 // The Mac gets the download line; anyone else is told what they are looking at.
 const platform = `${(navigator as { userAgentData?: { platform: string } }).userAgentData?.platform ?? ''} ${navigator.platform}`;
 document.documentElement.classList.toggle('elsewhere', !/Mac/i.test(platform));
-
-// ---- the mark --------------------------------------------------------------------
-/** The icon's arrow, from the geometry in src/annotations.ts, so the site cannot
- *  drift from the app. Small sizes are the arrow alone on the tile, as the icon is. */
-const MARK_ARROW = polygonPath(arrowPolygon(
-  { kind: 'arrow', id: 0, x1: 792, y1: 232, x2: 322, y2: 702, color: '', weight: 74 }));
-const MARK_FRAME = 'M258 396V308a50 50 0 0 1 50-50h88M628 258h88a50 50 0 0 1 50 50v88'
-  + 'M766 628v88a50 50 0 0 1-50 50h-88M396 766h-88a50 50 0 0 1-50-50v-88';
-/** The frame is the idea at large sizes and clutter at small ones, so as in the
- *  app's own icon set it is drawn only when there is room for it. */
-const markSvg = (id: string, framed = false) => `<svg viewBox="0 0 1024 1024" aria-hidden="true">
-  <defs>
-    <linearGradient id="${id}-ground" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#43454e"/><stop offset="1" stop-color="#1a1b1f"/></linearGradient>
-    <linearGradient id="${id}-ink" x1="792" y1="232" x2="322" y2="702" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ff7a63"/><stop offset=".55" stop-color="#ff4638"/><stop offset="1" stop-color="#e8281d"/></linearGradient>
-  </defs>
-  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#${id}-ground)"/>
-  <rect x="100" y="100" width="824" height="824" rx="186" fill="none" stroke="#ffffff29" stroke-width="10"/>
-  ${framed ? `<path d="${MARK_FRAME}" fill="none" stroke="#ffffff" stroke-opacity=".38" stroke-width="52" stroke-linecap="round" stroke-linejoin="round"/>` : ''}
-  <path d="${MARK_ARROW}" fill="url(#${id}-ink)"/>
-</svg>`;
-all('[data-mark]').forEach((slot, i) => { slot.innerHTML = markSvg(`mark${i}`, slot.classList.contains('large')); });
-const favicon = document.createElement('link');
-favicon.rel = 'icon'; favicon.type = 'image/svg+xml';
-favicon.href = `data:image/svg+xml,${encodeURIComponent(markSvg('fav').replace(/\n\s*/g, ''))}`;
-document.head.append(favicon);
 
 // ---- the three arrows ---------------------------------------------------------------
 /** Drawn live with the editor's own geometry rather than pictured, for the same

@@ -197,4 +197,11 @@ test('a phone gets a picture of the editor and none of the frames', async ({ pag
   await expect(page.locator('.stage')).toHaveCount(0);
   await expect(page.locator('iframe')).toHaveCount(0);
   expect(await page.locator('.poster img').evaluate(el => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  // Turned, or measured too early by a host: the poster gives way to the demo, and never the reverse.
+  await page.setViewportSize({ width: 900, height: 600 });
+  await expect(page.locator('.stage')).toBeVisible();
+  await expect(page.locator('.poster')).toHaveCount(0);
+  await expect(page.locator('html')).not.toHaveClass(/poster-page/);
+  await page.setViewportSize({ width: 390, height: 800 });
+  await expect(page.locator('.stage')).toHaveCount(1);
 });

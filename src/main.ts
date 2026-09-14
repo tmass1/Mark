@@ -1,6 +1,8 @@
 import './style.css';
 import { command, isTauri, watchCapture, watchSettings, type CapturePreview, type Snapshot } from './platform';
 import { DEFAULT_SHORTCUT, prettyShortcut } from './shortcut';
+// The icon's own arrow and corners, so what greets you on launch is what sits in the Dock.
+import { MARK_ARROW, MARK_CORNERS } from './mark';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
@@ -30,13 +32,6 @@ function fillPreview(fill: ShapeFill): string {
        <ellipse class="as-ellipse" cx="10" cy="10" rx="6.5" ry="4.5" fill="none" stroke="currentColor" stroke-width="2"/>`;
 }
 
-/** The app's mark: the same arrow the icon is built from, and the same function
- *  every arrow in the editor comes out of, so the empty state cannot drift away
- *  from what is in the Dock. */
-const MARK_ARROW = polygonPath(arrowPolygon(
-  { kind: 'arrow', id: 0, x1: 792, y1: 232, x2: 322, y2: 702, color: '', weight: 74 }));
-const MARK_FRAME = 'M258 396V308a50 50 0 0 1 50-50h88M628 258h88a50 50 0 0 1 50 50v88'
-  + 'M766 628v88a50 50 0 0 1-50 50h-88M396 766h-88a50 50 0 0 1-50-50v-88';
 
 /** Captures kept after they leave the editor, newest first. Memory only: this
  *  is an undo for closing, not a library. */
@@ -151,7 +146,7 @@ app.innerHTML = `
     </div>
     <section class="empty" hidden>
       <svg class="viewfinder" viewBox="0 0 1024 1024" aria-hidden="true">
-        <path d="${MARK_FRAME}" fill="none" stroke="currentColor" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" opacity=".38"/>
+        <path d="${MARK_CORNERS}" fill="none" stroke="currentColor" stroke-width="50" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/>
         <path d="${MARK_ARROW}" fill="var(--brand)"/>
       </svg>
       <h1>Capture a region</h1><p class="empty-hint">A little less between seeing and sharing.</p>

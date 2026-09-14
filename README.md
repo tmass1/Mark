@@ -176,37 +176,26 @@ new capture hides the old editor; cancel restores it and success replaces it.
 
 ## The mark
 
-Mark's icon is a red arrow crossing a viewfinder frame on a dark ground: the
-two halves of what the app does, framing a region and marking it. The arrow
-enters from outside the frame and overlaps it, which is what gives the icon its
-depth; the arrow carries a gradient along its own axis, tail to head, so it
-reads as one stroke catching the light rather than a shape filled with colour,
-and a soft shadow lifts it off the ground.
+Mark's icon is a coral glass arrow pointing down and to the left between two
+capture corners, on a charcoal tile: the two halves of what the app does,
+framing a region and marking it. The arrow carries its shading along its own
+axis, tail to head, with a sheen down the shaft and a small highlight near the
+tip, so it reads as one stroke catching the light rather than a shape filled
+with colour. A porcelain version exists for light contexts.
 
-The arrow is not drawn by hand. It comes out of `arrowPolygon` in
-`src/annotations.ts`, the same function that draws every arrow in the editor,
-so the identity is literally the thing the product makes and cannot drift from
-it.
-
-Artwork is drawn per size rather than scaled from one image. The frame is the
-idea at 128px and up, and clutter below that, so smaller sizes simply do not
-draw it and the icon degrades to the arrow alone. The shape is a superellipse
-rather than a rounded rectangle, which is what macOS's continuous corners
-actually are, inset to Apple's 824-of-1024 grid. The menu bar icon is the same
-arrow as alpha only, so macOS can tint it for light, dark and highlighted
-states.
+The artwork lives in `brand/` as two SVGs, and everything else is derived from
+them by `scripts/build-icon.mjs`: the app icon at every size and the `.icns`,
+rendered from the vectors at each size rather than scaled from one bitmap; the
+menu bar glyph, which is the arrow alone as alpha so macOS can tint it for
+light, dark and highlighted states, since the corners are clutter at 22 points;
+and `src/mark.ts`, the arrow's and the corners' paths, which the editor's empty
+state draws in the brand red. So what greets you on launch, what sits in the
+Dock and what the site shows cannot drift apart: change the artwork, run the
+script, and they all follow.
 
 Red is the brand; blue stays the system accent for controls. Identity and
 interface should not compete, and the red is the colour Mark draws with by
 default anyway.
-
-The editor's empty state draws the same mark, from the same call to
-`arrowPolygon`, so what greets you on launch and what sits in the Dock cannot
-drift apart. The menu bar glyph is the arrow without the frame, which is the
-same degradation the icon makes at that size.
-
-`scripts/build-icon.mjs` regenerates every size, the `.icns` and the menu bar
-icon from those definitions.
 
 ## Architecture
 

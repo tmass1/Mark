@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Mark highlight arrow — dark</title>
+  <desc id="desc">A single coral glass arrow pointing down-left between two capture corners on a charcoal tile.</desc>
+  <defs>
+    <linearGradient id="tile" x1="96" y1="48" x2="900" y2="970" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#454A51"/>
+      <stop offset="0.27" stop-color="#2E3339"/>
+      <stop offset="1" stop-color="#15181C"/>
+    </linearGradient>
+    <linearGradient id="tile-rim" x1="120" y1="72" x2="850" y2="930" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.30"/>
+      <stop offset="0.38" stop-color="#FFFFFF" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.32"/>
+    </linearGradient>
+    <radialGradient id="tile-glass" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(315 225) rotate(48) scale(790 760)">
+      <stop stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="0.48" stop-color="#FFFFFF" stop-opacity="0.015"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.24"/>
+    </radialGradient>
+    <linearGradient id="arrow" x1="760" y1="265" x2="205" y2="800" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF8C83"/>
+      <stop offset="0.22" stop-color="#FF6F64"/>
+      <stop offset="0.52" stop-color="#F94E43"/>
+      <stop offset="0.78" stop-color="#EB302F"/>
+      <stop offset="1" stop-color="#C91824"/>
+    </linearGradient>
+    <linearGradient id="arrow-rim" x1="740" y1="245" x2="220" y2="810" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.54"/>
+      <stop offset="0.42" stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#8F111B" stop-opacity="0.36"/>
+    </linearGradient>
+    <linearGradient id="corner" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#E4E8EC"/>
+      <stop offset="1" stop-color="#8E98A3"/>
+    </linearGradient>
+    <linearGradient id="shaft-sheen" x1="755" y1="270" x2="365" y2="625" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.48"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="arrow-shadow" x="-12%" y="-12%" width="132%" height="140%">
+      <feDropShadow dx="3" dy="7" stdDeviation="4" flood-color="#8D0E18" flood-opacity="0.48"/>
+    </filter>
+    <filter id="tile-shadow" x="-12%" y="-12%" width="124%" height="130%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#111317" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <rect x="60" y="45" width="904" height="923" rx="205" fill="url(#tile)" filter="url(#tile-shadow)"/>
+  <rect x="60" y="45" width="904" height="923" rx="205" fill="url(#tile-glass)"/>
+  <rect x="70" y="55" width="884" height="903" rx="195" fill="none" stroke="url(#tile-rim)" stroke-width="7"/>
+  <path d="M200 352V235Q200 205 230 205H340 M680 802H805Q835 802 835 772V635" fill="none" stroke="url(#corner)" stroke-width="50" stroke-linecap="round" stroke-linejoin="round" opacity="0.88"/>
+  <g filter="url(#arrow-shadow)">
+    <path d="M765 254C802 246 833 268 838 299C842 323 832 345 813 360L405 676L456 713C467 721 470 735 465 746C461 758 452 766 439 769L218 803C202 806 187 800 178 788C169 776 167 761 172 746L280 526C285 512 296 502 308 502C320 502 330 509 336 520L362 574C367 585 380 588 389 579L728 271C739 262 752 257 765 254Z" fill="url(#arrow)" stroke="url(#arrow-rim)" stroke-width="6.5" stroke-linejoin="round"/>
+    <path d="M754 277C704 305 656 347 607 392C516 475 440 548 352 629" fill="none" stroke="url(#shaft-sheen)" stroke-width="25" stroke-linecap="round" opacity="0.72"/>
+  </g>
+  <path d="M638 357C661 331 686 307 716 286" fill="none" stroke="#FFFFFF" stroke-opacity="0.92" stroke-width="9" stroke-linecap="round"/>
+</svg>
