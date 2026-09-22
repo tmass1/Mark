@@ -6,8 +6,8 @@ import { MARK_ARROW, MARK_CORNERS } from './mark';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
-         badgeAt, describe, drawAnnotations, fillOf, fillable, inkOn, numbered, polygonPath, stepList, strokePath,
-         styleOf, textSize,
+         FONT, badgeAt, describe, drawAnnotations, fillOf, fillable, inkOn, numbered, polygonPath, stepList,
+         strokePath, styleOf, textSize,
          type Annotation, type ArrowStyle, type ShapeFill, type Tool } from './annotations';
 
 /** Each style's button previews itself, drawn from the geometry it will draw
@@ -34,24 +34,37 @@ function fillPreview(fill: ShapeFill): string {
 }
 
 
-/** The arrow tool's pointer: a crosshair, because the tail lands exactly where
- *  you press, with a small copy of the arrow you are about to draw beside it --
- *  drawn from the same geometry the picker and the editor use, so the pointer
- *  cannot come to misrepresent what it draws either. The colour is the one in
- *  hand, which is the question the toolbar cannot answer while you are looking
- *  at the image.
+/** The pointer for a tool that has something to say about what it will draw: a
+ *  crosshair, because the mark lands exactly where you press, with a small copy
+ *  of that mark beside it. The arrow is drawn from the same geometry the picker
+ *  and the editor use, and the badge takes its ink from the same rule the badge
+ *  itself does, so the pointer cannot come to misrepresent what it draws. The
+ *  colour is the one in hand, and the badge's number is the one about to be
+ *  used -- both questions the toolbar cannot answer while you are looking at
+ *  the image.
  *
  *  Everything gets a white understroke: a cursor passes over whatever the
  *  screenshot happens to be, and a white arrow on white would otherwise be no
  *  arrow at all. */
-function arrowCursor(style: ArrowStyle, color: string): string {
-  const sample = { kind: 'arrow', id: 0, x1: 16, y1: 30, x2: 29.5, y2: 16.5, color: '', weight: 3.6, style } as const;
-  const glyph = style === 'line'
-    ? (halo: boolean) => `<path d="${strokePath(arrowStrokes(sample))}" fill="none"
-        stroke="${halo ? '#fff' : color}" stroke-width="${arrowStrokeWidth(sample.weight) + (halo ? 2.2 : 0)}"
-        stroke-linecap="round" stroke-linejoin="round"/>`
-    : (halo: boolean) => `<path d="${polygonPath(arrowPolygon(sample))}" fill="${halo ? '#fff' : color}"
-        ${halo ? 'stroke="#fff" stroke-width="2.2" stroke-linejoin="round"' : ''}/>`;
+function toolCursor(tool: Tool, style: ArrowStyle, color: string, next: number): string {
+  let glyph: (halo: boolean) => string;
+  if (tool === 'arrow') {
+    const sample = { kind: 'arrow', id: 0, x1: 16, y1: 30, x2: 29.5, y2: 16.5, color: '', weight: 3.6, style } as const;
+    glyph = style === 'line'
+      ? halo => `<path d="${strokePath(arrowStrokes(sample))}" fill="none"
+          stroke="${halo ? '#fff' : color}" stroke-width="${arrowStrokeWidth(sample.weight) + (halo ? 2.2 : 0)}"
+          stroke-linecap="round" stroke-linejoin="round"/>`
+      : halo => `<path d="${polygonPath(arrowPolygon(sample))}" fill="${halo ? '#fff' : color}"
+          ${halo ? 'stroke="#fff" stroke-width="2.2" stroke-linejoin="round"' : ''}/>`;
+  } else if (tool === 'step') {
+    // Room for two digits before the numeral has to give any up.
+    const size = next > 9 ? 9.5 : 12;
+    glyph = halo => halo
+      ? `<circle cx="22.5" cy="22.5" r="9" fill="#fff" stroke="#fff" stroke-width="2.4"/>`
+      : `<circle cx="22.5" cy="22.5" r="9" fill="${color}"/>`
+        + `<text x="22.5" y="22.5" fill="${inkOn(color)}" font-family="${FONT}" font-size="${size}"
+             font-weight="700" text-anchor="middle" dominant-baseline="central">${next}</text>`;
+  } else return '';
   const cross = 'M7 .9v12.2M.9 7h12.2';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">`
     + `<path d="${cross}" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" opacity=".92"/>`
@@ -59,7 +72,7 @@ function arrowCursor(style: ArrowStyle, color: string): string {
     + `<path d="${cross}" fill="none" stroke="#1c1c1e" stroke-width="1.4" stroke-linecap="round"/>`
     + glyph(false)
     + `</svg>`;
-  // 7,7 is where the two lines cross, and where the arrow's tail will land.
+  // 7,7 is where the two lines cross, and where the mark will land.
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 7 7, crosshair`;
 }
 
@@ -566,11 +579,14 @@ function syncTools() {
     button.setAttribute('aria-checked', String(active));
     button.classList.toggle('active', active);
   }
-  // Rebuilt only when it would differ: this runs on every change to the drawing.
-  const wantsCursor = layer.tool === 'arrow' ? `${layer.style.arrow}|${layer.style.color}` : '';
+  // Rebuilt only when it would differ: this runs on every change to the drawing,
+  // and the step's number changes with every mark.
+  const next = numbered(layer.annotations).length + 1;
+  const wantsCursor = layer.tool === 'arrow' ? `arrow|${layer.style.arrow}|${layer.style.color}`
+    : layer.tool === 'step' ? `step|${next}|${layer.style.color}` : '';
   if (overlay.dataset.cursor !== wantsCursor) {
     overlay.dataset.cursor = wantsCursor;
-    overlay.style.cursor = wantsCursor ? arrowCursor(layer.style.arrow, layer.style.color) : '';
+    overlay.style.cursor = wantsCursor ? toolCursor(layer.tool, layer.style.arrow, layer.style.color, next) : '';
   }
   overlay.classList.toggle('text-tool', layer.tool === 'text');
   overlay.classList.toggle('draw-tool', layer.tool !== 'arrow' && layer.tool !== 'text' && layer.tool !== 'pen');

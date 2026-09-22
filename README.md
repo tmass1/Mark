@@ -121,6 +121,10 @@ notarization; an Apple Development certificate is only good for this Mac.
      sequence built out of order. The numeral is white, or dark on the paler
      colours where white would not carry.
 
+     The pointer carries the badge it is about to drop, in the colour in hand
+     and bearing the number coming next, so both questions are answered where
+     you are looking rather than up in the toolbar.
+
      A badge dropped with a click still offers a grip beside it, so it can be
      given an arrow afterwards rather than the gesture deciding for good;
      pulling that head back onto the badge takes the arrow off again.

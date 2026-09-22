@@ -1384,7 +1384,37 @@ test('the arrow tool’s pointer carries the colour and style it will draw with'
   const line = await cursor();
   expect(new Set([blue, straight, line]).size).toBe(3);
 
-  // Every other tool keeps the plain crosshair: the arrow is the one with a style.
+  // A tool with nothing of its own to say keeps the plain crosshair.
   await pick(page, 'Box');
   expect(await cursor()).toBe('crosshair');
+});
+
+test('the step tool’s pointer carries the badge, its colour and the number coming next', async ({ page }) => {
+  await page.goto('/');
+  const cursor = async () => {
+    const css = await page.locator('.canvas .overlay').evaluate(el => getComputedStyle(el).cursor);
+    return decodeURIComponent(css.match(/data:image\/svg\+xml,([^"]+)/)![1]);
+  };
+  await pick(page, 'Step');
+  const first = await cursor();
+  expect(first).toContain('fill="#ff3b30"');
+  expect(first).toContain('>1</text>');
+  // White numeral on red, by the same rule the badge itself uses.
+  expect(first).toContain('fill="#ffffff"');
+
+  // Yellow takes dark ink, badge and pointer alike.
+  await page.locator('.swatch[data-color="#ffcc00"]').click();
+  const yellow = await cursor();
+  expect(yellow).toContain('fill="#ffcc00"');
+  expect(yellow).toContain('fill="#1c1c1e"');
+
+  // And the number is the one about to be used.
+  const at = await stage(page);
+  for (const [x, y] of [[300, 200], [600, 200]] as const) {
+    const spot = at(x, y);
+    await page.mouse.click(spot.x, spot.y);
+    await page.keyboard.press('Escape');
+  }
+  expect(await cursor()).toContain('>3</text>');
+  await expect(page.locator('.badge text')).toHaveText(['1', '2']);
 });
