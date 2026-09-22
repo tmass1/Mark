@@ -65,10 +65,16 @@ const TOOLS: { id: Tool; name: string; art: string }[] = [
   { id: 'pen', name: 'Pen', art:
     `<path d="M4.2 13.8c1.9-4.6 3.2 2.3 5.1-1.1s2.9 3 4.4-1.2 1.4 2 2.1.9" ${STROKE}/>` },
   { id: 'text', name: 'Text', art: `<path d="M5 6h10M10 6v8.5M7.8 14.5h4.4" ${STROKE}/>` },
+  // A filled badge with the numeral knocked out of it, which is what the tool
+  // draws. An outlined circle with a hairline 1 in it reads as a plain circle at
+  // this size, two icons above the ellipse that really is one.
   { id: 'step', name: 'Step', art:
-    `<circle cx="10" cy="10" r="6.4" ${STROKE}/>`
-    + `<path d="M8.6 8.2 10.2 6.9v6.2M8.6 13.1h3.2" fill="none" stroke="currentColor"`
-    + ` stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>` },
+    `<mask id="step-glyph">`
+    + `<circle cx="10" cy="10" r="7.2" fill="#fff"/>`
+    + `<path d="M8.4 8.4 10.4 6.8v6.4M8.6 13.2h3.6" fill="none" stroke="#000"`
+    + ` stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>`
+    + `</mask>`
+    + `<circle cx="10" cy="10" r="7.2" fill="currentColor" mask="url(#step-glyph)"/>` },
   { id: 'box', name: 'Box', art: `<rect x="4.6" y="5.8" width="10.8" height="8.4" rx="1.4" ${STROKE}/>` },
   { id: 'ellipse', name: 'Ellipse', art: `<ellipse cx="10" cy="10" rx="5.6" ry="4.4" ${STROKE}/>` },
   { id: 'highlight', name: 'Highlighter', art:
