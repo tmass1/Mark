@@ -1341,3 +1341,50 @@ test('the steps panel can be dragged out of the way, and cannot be dragged off t
   expect(far.x + far.width).toBeLessThanOrEqual(room.x + room.width);
   expect(far.y + far.height).toBeLessThanOrEqual(room.y + room.height);
 });
+
+test('Return does not close the capture, but still applies a crop that offers it', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [600, 300]);
+  await page.locator('.canvas').click({ position: { x: 5, y: 5 } });   // nothing focused in particular
+
+  // A stray Return used to copy and close, which is a real loss when what it
+  // closed took work.
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.stage')).toBeVisible();
+  await expect(page.locator('.arrow')).toHaveCount(1);
+
+  // Where the bar offers "Crop ⏎", Return still does it.
+  await pick(page, 'Crop');
+  await drawArrow(page, [200, 200], [900, 600]);
+  await expect(page.locator('.crop-bar')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.crop-bar')).toBeHidden();
+  await expect(page.locator('.dimensions')).toHaveText('700 × 400 px');
+  await expect(page.locator('.stage')).toBeVisible();
+});
+
+test('the arrow tool’s pointer carries the colour and style it will draw with', async ({ page }) => {
+  await page.goto('/');
+  const cursor = () => page.locator('.canvas .overlay').evaluate(el => getComputedStyle(el).cursor);
+  await pick(page, 'Arrow');
+  const red = await cursor();
+  expect(red).toContain('data:image/svg+xml');
+  expect(red).toContain(encodeURIComponent('#ff3b30'));
+
+  await page.locator('.swatch[data-color="#007aff"]').click();
+  const blue = await cursor();
+  expect(blue).toContain(encodeURIComponent('#007aff'));
+  expect(blue).not.toBe(red);
+
+  // The three styles draw three different arrows, so they point three different ways.
+  await page.locator('.style[data-style="straight"]').click();
+  const straight = await cursor();
+  await page.locator('.style[data-style="line"]').click();
+  const line = await cursor();
+  expect(new Set([blue, straight, line]).size).toBe(3);
+
+  // Every other tool keeps the plain crosshair: the arrow is the one with a style.
+  await pick(page, 'Box');
+  expect(await cursor()).toBe('crosshair');
+});

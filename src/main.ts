@@ -34,6 +34,35 @@ function fillPreview(fill: ShapeFill): string {
 }
 
 
+/** The arrow tool's pointer: a crosshair, because the tail lands exactly where
+ *  you press, with a small copy of the arrow you are about to draw beside it --
+ *  drawn from the same geometry the picker and the editor use, so the pointer
+ *  cannot come to misrepresent what it draws either. The colour is the one in
+ *  hand, which is the question the toolbar cannot answer while you are looking
+ *  at the image.
+ *
+ *  Everything gets a white understroke: a cursor passes over whatever the
+ *  screenshot happens to be, and a white arrow on white would otherwise be no
+ *  arrow at all. */
+function arrowCursor(style: ArrowStyle, color: string): string {
+  const sample = { kind: 'arrow', id: 0, x1: 16, y1: 30, x2: 29.5, y2: 16.5, color: '', weight: 3.6, style } as const;
+  const glyph = style === 'line'
+    ? (halo: boolean) => `<path d="${strokePath(arrowStrokes(sample))}" fill="none"
+        stroke="${halo ? '#fff' : color}" stroke-width="${arrowStrokeWidth(sample.weight) + (halo ? 2.2 : 0)}"
+        stroke-linecap="round" stroke-linejoin="round"/>`
+    : (halo: boolean) => `<path d="${polygonPath(arrowPolygon(sample))}" fill="${halo ? '#fff' : color}"
+        ${halo ? 'stroke="#fff" stroke-width="2.2" stroke-linejoin="round"' : ''}/>`;
+  const cross = 'M7 .9v12.2M.9 7h12.2';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">`
+    + `<path d="${cross}" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" opacity=".92"/>`
+    + glyph(true)
+    + `<path d="${cross}" fill="none" stroke="#1c1c1e" stroke-width="1.4" stroke-linecap="round"/>`
+    + glyph(false)
+    + `</svg>`;
+  // 7,7 is where the two lines cross, and where the arrow's tail will land.
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 7 7, crosshair`;
+}
+
 /** Captures kept after they leave the editor, newest first. Memory only: this
  *  is an undo for closing, not a library. */
 interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[] }
@@ -426,7 +455,7 @@ on(stepRows, 'keydown', event => {
   const fields = [...stepRows.querySelectorAll<HTMLInputElement>('.step-note')];
   const next = fields[fields.indexOf(event.target as HTMLInputElement) + 1];
   if (key === 'Enter' && next) next.focus();
-  else { panelWanted = false; syncSteps(); overlay.focus(); }
+  else { (event.target as HTMLInputElement).blur(); panelWanted = false; syncSteps(); }
 });
 app.querySelector<HTMLButtonElement>('.steps-copy')!.addEventListener('click', () => void copyList());
 // The panel is a popover over the canvas, so pressing anything else puts it
@@ -536,6 +565,12 @@ function syncTools() {
     const active = button.dataset.tool === layer.tool;
     button.setAttribute('aria-checked', String(active));
     button.classList.toggle('active', active);
+  }
+  // Rebuilt only when it would differ: this runs on every change to the drawing.
+  const wantsCursor = layer.tool === 'arrow' ? `${layer.style.arrow}|${layer.style.color}` : '';
+  if (overlay.dataset.cursor !== wantsCursor) {
+    overlay.dataset.cursor = wantsCursor;
+    overlay.style.cursor = wantsCursor ? arrowCursor(layer.style.arrow, layer.style.color) : '';
   }
   overlay.classList.toggle('text-tool', layer.tool === 'text');
   overlay.classList.toggle('draw-tool', layer.tool !== 'arrow' && layer.tool !== 'text' && layer.tool !== 'pen');
@@ -981,11 +1016,14 @@ document.addEventListener('keydown', event => {
     event.preventDefault();
     if (!layer.duplicateSelection().length) flash('Select something to duplicate.');
   } else if (capture && key === 'enter' && layer.pendingCrop) {
+    // The crop bar says "Crop ⏎", so here Return does what it is offered for.
     event.preventDefault(); void applyCrop().catch(report);
-  } else if (capture && key === 'enter' &&
-      (document.activeElement === document.body || document.activeElement === copy)) {
-    event.preventDefault(); void copyCapture(true);
   }
+  // Return does nothing else. macOS would have it fire the default button, and
+  // it used to, which meant a stray Return copied and closed the capture --
+  // surprising in an editor you type in, and a real loss when the thing it
+  // closed took work. Copying has ⌘C and ⌘⇧C, and Return on the Copy button
+  // itself still presses it, because that is what a focused button does.
 }, { signal: abort.signal });
 
 /** Everywhere the editor shows the capture shortcut. The setting is the truth;

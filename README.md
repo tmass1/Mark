@@ -96,7 +96,10 @@ notarization; an Apple Development certificate is only good for this Mac.
      point at the tail; **solid**, one width throughout; and **thin**, a stroked
      shaft and two wings that does not cover what it points at. Each style's
      button is drawn from the geometry it draws with, so the picker cannot come
-     to misrepresent what it picks.
+     to misrepresent what it picks — and so is the pointer, which carries a
+     small copy of the arrow in the colour in hand, since that is the question
+     the toolbar cannot answer while you are looking at the image. The
+     crosshair stays, because the tail lands exactly where you press.
    - **Line**: drag. The same two ends as an arrow, without the head, so it
      moves and reshapes the same way.
    - **Pen**: drag to scribble. The stroke is smoothed through the midpoints of
@@ -166,6 +169,11 @@ notarization; an Apple Development certificate is only good for this Mac.
    will happily bury something under. ⌘[ and ⌘] step the selection back and
    forward, ⌘⇧[ and ⌘⇧] send it all the way, and the two buttons beside Delete
    do the same.
+
+   Return does nothing on its own. macOS would have it fire the default button,
+   and it used to, which meant a stray Return copied and closed the capture —
+   surprising in an editor you type in, and a real loss when what it closed
+   took work. Where the crop bar offers **Crop ⏎** it still does that.
 
    Color and size come from the toolbar and drive every tool. Selecting an
    annotation adopts its style, so the toolbar always describes the next edit.
