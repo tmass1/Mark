@@ -6,9 +6,9 @@ import { MARK_ARROW, MARK_CORNERS } from './mark';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
-         FONT, badgeAt, describe, drawAnnotations, fillOf, fillable, inkOn, numbered, polygonPath, stepList,
-         strokePath, styleOf, textSize,
-         type Annotation, type ArrowStyle, type ShapeFill, type Tool } from './annotations';
+         FONT, arrowPaint, badgeAt, describe, drawAnnotations, fillOf, fillable, inkOn, numbered, polygonPath,
+         stepArrow, stepList, strokePath, styleOf, textSize,
+         type Annotation, type ArrowStyle, type Point, type ShapeFill, type Tool } from './annotations';
 
 /** Each style's button previews itself, drawn from the geometry it will draw
  *  with, so a picker cannot come to misrepresent what it picks. */
@@ -57,12 +57,26 @@ function toolCursor(tool: Tool, style: ArrowStyle, color: string, next: number):
       : halo => `<path d="${polygonPath(arrowPolygon(sample))}" fill="${halo ? '#fff' : color}"
           ${halo ? 'stroke="#fff" stroke-width="2.2" stroke-linejoin="round"' : ''}/>`;
   } else if (tool === 'step') {
+    // The badge with its arrow leaving it, which is what a drag makes: the
+    // number and the arrow style are both what the pointer is being asked
+    // about. Built from stepArrow, so the tail clears the disc here for the
+    // same reason it does on the image.
+    const badge = { kind: 'step', id: 0, x: 12.5, y: 25.5, to: [31, 13] as Point,
+                    color: '', weight: 5, style } as const;
+    const shaft = stepArrow(badge);
+    const paint = shaft && arrowPaint(shaft);
+    const arrow = (halo: boolean) => !paint ? ''
+      : paint.stroked
+        ? `<path d="${strokePath(paint.runs)}" fill="none" stroke="${halo ? '#fff' : color}"
+             stroke-width="${paint.width + (halo ? 2 : 0)}" stroke-linecap="round" stroke-linejoin="round"/>`
+        : `<path d="${polygonPath(paint.polygon)}" fill="${halo ? '#fff' : color}"
+             ${halo ? 'stroke="#fff" stroke-width="2" stroke-linejoin="round"' : ''}/>`;
     // Room for two digits before the numeral has to give any up.
-    const size = next > 9 ? 9.5 : 12;
+    const size = next > 9 ? 8 : 10;
     glyph = halo => halo
-      ? `<circle cx="22.5" cy="22.5" r="9" fill="#fff" stroke="#fff" stroke-width="2.4"/>`
-      : `<circle cx="22.5" cy="22.5" r="9" fill="${color}"/>`
-        + `<text x="22.5" y="22.5" fill="${inkOn(color)}" font-family="${FONT}" font-size="${size}"
+      ? arrow(true) + `<circle cx="12.5" cy="25.5" r="7" fill="#fff" stroke="#fff" stroke-width="2.4"/>`
+      : arrow(false) + `<circle cx="12.5" cy="25.5" r="7" fill="${color}"/>`
+        + `<text x="12.5" y="25.5" fill="${inkOn(color)}" font-family="${FONT}" font-size="${size}"
              font-weight="700" text-anchor="middle" dominant-baseline="central">${next}</text>`;
   } else return '';
   const cross = 'M7 .9v12.2M.9 7h12.2';
@@ -668,7 +682,7 @@ function syncTools() {
   // and the step's number changes with every mark.
   const next = numbered(layer.annotations).length + 1;
   const wantsCursor = layer.tool === 'arrow' ? `arrow|${layer.style.arrow}|${layer.style.color}`
-    : layer.tool === 'step' ? `step|${next}|${layer.style.color}` : '';
+    : layer.tool === 'step' ? `step|${next}|${layer.style.arrow}|${layer.style.color}` : '';
   if (overlay.dataset.cursor !== wantsCursor) {
     overlay.dataset.cursor = wantsCursor;
     overlay.style.cursor = wantsCursor ? toolCursor(layer.tool, layer.style.arrow, layer.style.color, next) : '';

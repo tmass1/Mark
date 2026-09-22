@@ -124,9 +124,10 @@ notarization; an Apple Development certificate is only good for this Mac.
      sequence built out of order. The numeral is white, or dark on the paler
      colours where white would not carry.
 
-     The pointer carries the badge it is about to drop, in the colour in hand
-     and bearing the number coming next, so both questions are answered where
-     you are looking rather than up in the toolbar.
+     The pointer is a miniature of what a drag makes: the badge with its arrow
+     leaving it, in the colour and the arrow style in hand, bearing the number
+     coming next — all three answered where you are looking rather than up in
+     the toolbar.
 
      A badge dropped with a click still offers a grip beside it, so it can be
      given an arrow afterwards rather than the gesture deciding for good;
@@ -184,6 +185,10 @@ notarization; an Apple Development certificate is only good for this Mac.
    and it used to, which meant a stray Return copied and closed the capture —
    surprising in an editor you type in, and a real loss when what it closed
    took work. Where the crop bar offers **Crop ⏎** it still does that.
+
+   Anything already drawn shows a move pointer, whatever tool is in hand, since
+   pressing one selects it rather than drawing over it. Cropping is the
+   exception, where a press really does start a crop.
 
    Color and size come from the toolbar and drive every tool. Selecting an
    annotation adopts its style, so the toolbar always describes the next edit.

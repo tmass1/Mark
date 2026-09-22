@@ -1410,6 +1410,13 @@ test('the step tool’s pointer carries the badge, its colour and the number com
   expect(yellow).toContain('fill="#ffcc00"');
   expect(yellow).toContain('fill="#1c1c1e"');
 
+  // The arrow it would draw is on there too, in the style the picker holds.
+  await page.locator('.style[data-style="line"]').click();
+  const thin = await cursor();
+  expect(thin).toContain('stroke-linecap="round"');          // stroked, not filled
+  await page.locator('.style[data-style="straight"]').click();
+  expect(await cursor()).not.toBe(thin);
+
   // And the number is the one about to be used.
   const at = await stage(page);
   for (const [x, y] of [[300, 200], [600, 200]] as const) {
@@ -1533,4 +1540,36 @@ test('the steps panel says what it is, folds, resizes and clings to a side', asy
   await expect(panel).toBeHidden();
   await page.locator('.steps-toggle').click();
   await expect(panel).toBeVisible();
+});
+
+
+test('anything already drawn says it can be taken hold of', async ({ page }) => {
+  await page.goto('/');
+  const cursorOf = (sel: string) => page.locator(sel).first().evaluate(el => getComputedStyle(el).cursor);
+
+  await drawArrow(page, [200, 200], [700, 300]);
+  await pick(page, 'Box');
+  await drawArrow(page, [200, 400], [600, 560]);
+  await pick(page, 'Text');
+  const at = await stage(page);
+  const where = at(900, 200);
+  await page.mouse.click(where.x, where.y);
+  await page.keyboard.type('note');
+  await page.keyboard.press('Escape');
+  await pick(page, 'Step');
+  const badge = at(900, 500);
+  await page.mouse.click(badge.x, badge.y);
+  await page.keyboard.press('Escape');
+
+  // Pressing one of these selects it rather than drawing, whatever tool is in
+  // hand, so the pointer should not go on promising a new mark over an old one.
+  for (const kind of ['.arrow', '.shape', '.note', '.step']) {
+    expect(await cursorOf(kind), kind).toBe('move');
+  }
+
+  // Except while cropping, where a press really does start a crop.
+  await pick(page, 'Crop');
+  for (const kind of ['.arrow', '.shape', '.note', '.step']) {
+    expect(await cursorOf(kind), kind).toBe('crosshair');
+  }
 });

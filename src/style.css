@@ -439,7 +439,14 @@ footer > * { flex: none; }
 .overlay.pen-tool { cursor: crosshair; }
 .overlay.draw-tool, .overlay.crop-tool { cursor: crosshair; }
 
-.arrow, .note, .shape { cursor: move; }
+/* Anything already drawn says it can be taken hold of, whatever tool is in
+   hand: pressing one selects it rather than drawing, so the pointer should not
+   go on promising a new mark over the top of an old one. */
+.arrow, .note, .shape, .step { cursor: move; }
+/* Except while cropping, where pressing really does start a crop and not a
+   selection. The pointer tells the truth about what the press will do. */
+.overlay.crop-tool .arrow, .overlay.crop-tool .note,
+.overlay.crop-tool .shape, .overlay.crop-tool .step { cursor: crosshair; }
 .handle { fill: #fff; stroke: var(--blue); cursor: grab; }
 .note-outline { fill: none; stroke: var(--blue); pointer-events: none; }
 .highlight { mix-blend-mode: multiply; opacity: .3; }
