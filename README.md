@@ -176,22 +176,25 @@ new capture hides the old editor; cancel restores it and success replaces it.
 
 ## The mark
 
-Mark's icon is a coral glass arrow pointing down and to the left between two
-capture corners, on a charcoal tile: the two halves of what the app does,
-framing a region and marking it. The arrow carries its shading along its own
-axis, tail to head, with a sheen down the shaft and a small highlight near the
-tip, so it reads as one stroke catching the light rather than a shape filled
-with colour. A porcelain version exists for light contexts.
+Mark's icon is a coral arrow pointing down and to the left between two capture
+corners, on a charcoal tile, with the arrow echoed behind itself as if caught
+mid-stroke: the two halves of what the app does, framing a region and marking
+it.
 
-The artwork lives in `brand/` as two SVGs, and everything else is derived from
-them by `scripts/build-icon.mjs`: the app icon at every size and the `.icns`,
-rendered from the vectors at each size rather than scaled from one bitmap; the
-menu bar glyph, which is the arrow alone as alpha so macOS can tint it for
-light, dark and highlighted states, since the corners are clutter at 22 points;
-and `src/mark.ts`, the arrow's and the corners' paths, which the editor's empty
-state draws in the brand red. So what greets you on launch, what sits in the
-Dock and what the site shows cannot drift apart: change the artwork, run the
-script, and they all follow.
+The artwork is `brand/mark.png`, square and edge to edge, and
+`scripts/build-icon.mjs` derives everything else from it: the app icon at every
+size and the `.icns`, cut to Apple's continuous-corner squircle on the system's
+824-of-1024 grid, so the margin macOS expects for shadow and alignment is kept;
+and `public/site/mark.png`, the same shape filling its square, which the site
+shows in its bar, its footer, beside the download and as its favicon.
+
+Two places need a shape rather than a picture, and come from
+`brand/mark-dark.svg`, the vector drawing of the same arrow: the menu bar
+glyph, which has to be flat alpha for macOS to tint it for light, dark and
+highlighted bars, and `src/mark.ts`, the arrow's and the corners' paths, which
+the editor's empty state draws in the brand red. So what greets you on launch,
+what sits in the Dock and what the site shows stay one identity: change the
+artwork, run the script, and they all follow.
 
 Red is the brand; blue stays the system accent for controls. Identity and
 interface should not compete, and the red is the colour Mark draws with by
