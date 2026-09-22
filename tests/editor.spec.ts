@@ -1183,7 +1183,8 @@ test('a circle can be numbered, and the panel offers somewhere to say what it is
   await expect(page.locator('.badge text')).toHaveText(['1', '2']);
   // The footer keeps count and is the way back to a dismissed panel.
   const reopen = page.locator('.steps-toggle');
-  await expect(reopen).toHaveText('2');
+  await expect(reopen).toContainText('Steps');
+  await expect(reopen.locator('.steps-count')).toHaveText('2');
   await reopen.click();
   await expect(panel).toBeVisible();
   await expect(page.locator('.step-chip')).toHaveText(['1', '2']);
@@ -1311,27 +1312,28 @@ test('the steps panel can be dragged out of the way, and cannot be dragged off t
   const panel = page.locator('.steps');
   await expect(panel).toBeVisible();
 
-  const grab = (await page.locator('.steps-grab').boundingBox())!;
+  const grab = (await page.locator('.steps-head').boundingBox())!;
   const before = (await panel.boundingBox())!;
-  const from = { x: grab.x + grab.width / 2, y: grab.y + grab.height / 2 };
+  const from = { x: grab.x + grab.width / 2, y: grab.y + grab.height / 2 };   // the title, not a button
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
-  await page.mouse.move(from.x - 120, from.y - 90, { steps: 10 });
+  // Right and up: left by that much would meet the rail, which it is kept clear of.
+  await page.mouse.move(from.x + 120, from.y - 90, { steps: 10 });
   await page.mouse.up();
   const after = (await panel.boundingBox())!;
-  expect(Math.round(after.x - before.x)).toBe(-120);
+  expect(Math.round(after.x - before.x)).toBe(120);
   expect(Math.round(after.y - before.y)).toBe(-90);
 
   // Moved by hand, it stays put: the flip between top and bottom is a guess,
   // and a guess should not overrule a decision.
   await expect(panel).toHaveAttribute('data-moved', '');
-  const low = at(400, 700);
+  const low = at(200, 700);
   await page.mouse.click(low.x, low.y);
   await expect(page.locator('.badge text')).toHaveCount(2);
   expect((await panel.boundingBox())!.y).toBe(after.y);
 
   // And it cannot be dropped somewhere it could never be reached.
-  const grabAgain = (await page.locator('.steps-grab').boundingBox())!;
+  const grabAgain = (await page.locator('.steps-head').boundingBox())!;
   await page.mouse.move(grabAgain.x + grabAgain.width / 2, grabAgain.y + grabAgain.height / 2);
   await page.mouse.down();
   await page.mouse.move(grabAgain.x + 3000, grabAgain.y + 3000, { steps: 10 });
@@ -1458,4 +1460,77 @@ test('a step points with whichever arrow the picker holds, and the picker follow
   await page.locator('.style[data-style="line"]').click();
   await expect(page.locator('.step path').nth(1)).toHaveAttribute('fill', 'none');
   expect(await page.locator('.step path').nth(1).getAttribute('d')).not.toBe(before);
+});
+
+
+test('the steps panel says what it is, folds, resizes and clings to a side', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Step');
+  const at = await stage(page);
+  for (const [x, y, words] of [[250, 200, 'make the headline sticky'], [250, 340, 'this line can go']] as const) {
+    const spot = at(x, y);
+    await page.mouse.click(spot.x, spot.y);
+    await page.keyboard.type(words);
+  }
+  const panel = page.locator('.steps');
+
+  // It names itself and keeps count, in the panel and in the footer.
+  await expect(panel.locator('.steps-title')).toHaveText('Steps');
+  await expect(panel.locator('.steps-tally')).toHaveText('2');
+  await expect(page.locator('.steps-toggle')).toContainText('Steps');
+  await expect(page.locator('.steps-toggle')).toContainText('2');
+
+  // Folded it is a title and nothing else, and narrower for it.
+  const open = (await panel.boundingBox())!.width;
+  await panel.locator('.steps-fold').click();
+  await expect(panel).toHaveAttribute('data-folded', '');
+  await expect(panel.locator('.step-rows')).toBeHidden();
+  await expect(panel.locator('.steps-foot')).toBeHidden();
+  await expect(panel.locator('.steps-title')).toBeVisible();
+  expect((await panel.boundingBox())!.width).toBeLessThan(open);
+
+  // Unfolding gives the width back, and placing a mark unfolds it, since a note
+  // was asked for and there is nowhere to type one.
+  await panel.locator('.steps-fold').click();
+  expect((await panel.boundingBox())!.width).toBe(open);
+  await panel.locator('.steps-fold').click();
+  const third = at(600, 200);
+  await page.mouse.click(third.x, third.y);
+  await expect(panel).not.toHaveAttribute('data-folded', /.*/);
+  await expect(page.locator('.step-note')).toHaveCount(3);
+
+  // The sides take hold of the width.
+  const edge = (await panel.locator('.steps-edge[data-edge="right"]').boundingBox())!;
+  await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(edge.x + 90, edge.y, { steps: 8 });
+  await page.mouse.up();
+  // Within a handle's width of the 90 asked for: the grip straddles the edge.
+  const widened = (await panel.boundingBox())!.width;
+  expect(widened).toBeGreaterThan(open + 75);
+  expect(widened).toBeLessThan(open + 95);
+
+  // It stops narrowing where a sentence stops fitting.
+  const narrow = (await panel.locator('.steps-edge[data-edge="right"]').boundingBox())!;
+  await page.mouse.move(narrow.x + narrow.width / 2, narrow.y + narrow.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(narrow.x - 2000, narrow.y, { steps: 10 });
+  await page.mouse.up();
+  expect(Math.round((await panel.boundingBox())!.width)).toBe(250);
+
+  // Dragged near a side it clings to it, and never over the tool rail.
+  const head = (await panel.locator('.steps-head').boundingBox())!;
+  await page.mouse.move(head.x + 60, head.y + head.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(0, 200, { steps: 10 });
+  await page.mouse.up();
+  await expect(panel).toHaveAttribute('data-dock', 'left');
+  const rail = (await page.locator('.rail').boundingBox())!;
+  expect((await panel.boundingBox())!.x).toBeGreaterThanOrEqual(rail.x + rail.width);
+
+  // And the close button shuts it, with the footer as the way back.
+  await panel.locator('.steps-close').click();
+  await expect(panel).toBeHidden();
+  await page.locator('.steps-toggle').click();
+  await expect(panel).toBeVisible();
 });

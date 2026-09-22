@@ -135,11 +135,14 @@ notarization; an Apple Development certificate is only good for this Mac.
      Every numbered mark gets a row in a panel over the capture, opened on the
      one just made, where you type what it means. **Copy list** (⌘⇧L) puts
      `1. make the nav sticky` and the rest on the clipboard as plain text. The
-     panel is a popover: pressing anything else puts it away, and the count in
-     the footer brings it back. Drag it by the bar along its top to get it off
-     whatever it is covering; moved by hand it stays where it was put, since
-     the flip between above and below the mark is Mark guessing and a guess
-     should not overrule a decision.
+     panel is a popover: pressing anything else puts it away, and **Steps** in
+     the footer, which keeps the count, brings it back. Its title row is the
+     handle — drag it off whatever it is covering, and near a side of the
+     capture it clings to that side; moved by hand it stays where it was put,
+     since the flip between above and below the mark is Mark guessing and a
+     guess should not overrule a decision. The chevron folds it to its title
+     and the × closes it, its sides take hold of its width, and it is
+     translucent, so what it covers still shows through.
 
      **Write on the image**, in that panel, draws each note beside its badge in
      the Text tool's own size and the mark's colour — for a screenshot going to

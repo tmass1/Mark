@@ -39,6 +39,7 @@
   --control-line: #00000018;
   --sunken: #0000000d;
   --glass: #fbfbfdf2;         /* menus and popovers */
+  --sheet: #fbfbfdd6;         /* the steps panel: over the capture, so more of it shows through */
   --blue: #007aff;
   --hover: #0069dc;
   --shadow: #0000002e;
@@ -68,6 +69,7 @@
     --control-line: #f3f3f340; /* Fritter's control border, 25% */
     --sunken: #0000004a;
     --glass: #222832f2;       /* menus and popovers: Fritter's surface */
+    --sheet: #222832d6;       /* the steps panel, over the capture */
     --blue: #0a84ff;
     --hover: #359aff;
     --shadow: #00000080;
@@ -100,6 +102,7 @@
     --control-line: #f3f3f340; /* Fritter's control border, 25% */
     --sunken: #0000004a;
     --glass: #222832f2;       /* menus and popovers: Fritter's surface */
+    --sheet: #222832d6;       /* the steps panel, over the capture */
     --blue: #0a84ff;
     --hover: #359aff;
     --shadow: #00000080;
@@ -327,22 +330,51 @@ footer > * { flex: none; }
 .steps {
   position: absolute; left: 50%; bottom: 82px; transform: translateX(-50%); z-index: 5;
   transition: bottom .2s ease, top .2s ease;
-  width: min(460px, calc(100% - 48px)); max-height: 46%; display: flex; flex-direction: column;
-  padding: 10px; border-radius: 18px; background: var(--glass); font-size: 12px;
-  -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  width: 460px; max-width: calc(100% - 48px); max-height: 46%; display: flex; flex-direction: column;
+  padding: 4px 10px 10px; border-radius: 18px; background: var(--sheet); font-size: 12px;
+  -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
   box-shadow: 0 12px 34px var(--shadow), 0 0 0 .5px var(--control-line);
 }
+/* Clung to an edge of the canvas, when dragged near one. */
+.steps[data-dock] { transition: none; }
+
+/* A title row rather than a bare pill: it names the thing, says how many, and
+   carries the two controls the panel needs -- which is also what makes dragging
+   obvious, since the whole row is the handle. */
+.steps-head {
+  flex: none; display: flex; align-items: center; gap: 7px; padding: 2px 2px 6px;
+  cursor: grab; user-select: none; -webkit-user-select: none;
+}
+.steps-head:active { cursor: grabbing; }
+.steps-title { font-weight: 600; }
+.steps-tally {
+  min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--sunken); color: var(--muted); font-size: 10.5px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.steps-head .subtle { cursor: default; }
+.steps-fold svg { transition: transform .18s ease; }
+.steps[data-folded] .steps-fold svg { transform: rotate(-90deg); }
+.steps[data-folded] { padding-bottom: 4px; min-width: 190px; }
+.steps[data-folded] .step-rows, .steps[data-folded] .steps-foot, .steps[data-folded] .steps-edge { display: none; }
+
+/* The sides take hold of the width. Both of them, since the panel can end up
+   against either edge and the one against it cannot be reached. */
+.steps-edge { position: absolute; top: 8px; bottom: 8px; width: 9px; cursor: ew-resize; }
+.steps-edge[data-edge="left"] { left: -3px; }
+.steps-edge[data-edge="right"] { right: -3px; }
+.steps-edge::after {
+  content: ''; position: absolute; top: 50%; left: 50%; width: 2px; height: 22px;
+  transform: translate(-50%, -50%); border-radius: 999px; background: var(--control-line); opacity: 0;
+  transition: opacity .15s;
+}
+.steps-edge:hover::after { opacity: 1; }
 /* Up at the top of the canvas instead, when the mark being described is down in
    the lower half: the panel must never sit over the thing it is about. Offset
    past the title row and the toolbar pane, the same 46 + 48 + 10 the window's
    chrome is built from. */
 .steps[data-at="top"] { bottom: auto; top: 114px; }
-/* Somewhere to take hold of it. A popover that cannot be moved is in the way by
-   definition, and the rows are nearly all input, so there is nothing else to
-   grab it by. */
-.steps-grab { flex: none; height: 16px; display: flex; align-items: center; justify-content: center; cursor: grab; }
-.steps-grab::before { content: ''; width: 34px; height: 4px; border-radius: 999px; background: var(--control-line); }
-.steps-grab:active { cursor: grabbing; }
 /* The flip between top and bottom eases; a drag must not. A dragged thing that
    animates to each new position lags behind the pointer holding it. */
 .steps[data-moved] { transform: none; transition: none; }
@@ -375,7 +407,10 @@ footer > * { flex: none; }
 .steps-show:hover { color: var(--ink); }
 .steps-show input { margin: 0; accent-color: var(--blue); }
 .steps-copy { flex: none; height: 28px; padding: 0 14px; font-size: 12px; }
+/* Named, not just a glyph and a number: it is the only way back to a closed
+   panel, and a badge with a 3 beside it did not say so. */
 .steps-toggle { gap: 6px; padding: 0 12px; font-variant-numeric: tabular-nums; }
+.steps-toggle .steps-count { color: var(--muted); }
 .steps-toggle svg { display: block; width: 16px; height: 16px; }
 .steps-toggle.active { background: var(--control-hover); }
 

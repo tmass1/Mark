@@ -221,7 +221,19 @@ app.innerHTML = `
   </div>
   <aside class="message" role="status" aria-live="polite" hidden><span></span><button class="settings" hidden>Open System Settings</button></aside>
   <aside class="steps" hidden aria-label="Steps">
-    <div class="steps-grab" title="Drag to move"></div>
+    <header class="steps-head" title="Drag to move">
+      <button class="steps-fold subtle icon" type="button" aria-expanded="true" title="Minimise">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 8.4 10 11.8l3.4-3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <span class="steps-title">Steps</span>
+      <span class="steps-tally"></span>
+      <span class="push"></span>
+      <button class="steps-close subtle icon" type="button" title="Close (the count in the footer brings it back)" aria-label="Close">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.8 5.8l8.4 8.4M14.2 5.8l-8.4 8.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <div class="steps-edge" data-edge="left" title="Drag to resize"></div>
+    <div class="steps-edge" data-edge="right" title="Drag to resize"></div>
     <div class="step-rows"></div>
     <div class="steps-foot">
       <label class="steps-show"
@@ -261,7 +273,7 @@ app.innerHTML = `
       <svg viewBox="0 0 20 20" aria-hidden="true">
         <mask id="steps-toggle-glyph"><circle cx="10" cy="10" r="7.2" fill="#fff"/><path d="M8.4 8.4 10.4 6.8v6.4M8.6 13.2h3.6" fill="none" stroke="#000" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></mask>
         <circle cx="10" cy="10" r="7.2" fill="currentColor" mask="url(#steps-toggle-glyph)"/>
-      </svg><span class="steps-count"></span>
+      </svg>Steps <span class="steps-count"></span>
     </button>
     <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘⇧C</kbd></button>
     <button class="copy primary" type="button">Copy and Close <kbd>⌘C</kbd></button>
@@ -381,6 +393,7 @@ function syncSteps(focusId?: number) {
   // list exists at all when it is closed.
   stepsToggle.hidden = !capture || !marks.length;
   app.querySelector<HTMLElement>('.steps-count')!.textContent = String(marks.length);
+  app.querySelector<HTMLElement>('.steps-tally')!.textContent = String(marks.length);
   stepsPanel.hidden = !capture || !marks.length || !panelWanted;
   stepsToggle.setAttribute('aria-expanded', String(!stepsPanel.hidden));
   app.querySelector<HTMLInputElement>('.steps-show-box')!.checked = layer.showNotes;
@@ -417,31 +430,99 @@ function syncSteps(focusId?: number) {
  *  stays where it was put: the flip between top and bottom is Mark guessing,
  *  and a guess should not overrule a decision. Kept inside the window, so it
  *  cannot be dropped somewhere it can never be reached. */
+const PANEL_MARGIN = 8;
+/** Near enough an edge to cling to it. */
+const PANEL_SNAP = 28;
+/** The canvas's box in the panel's own coordinates, which are the window's. The
+ *  panel belongs over the capture, so that is what it is kept inside: the
+ *  window would let it sit on the tool rail, where it covers the tools. */
+function panelRoom() {
+  const frame = app.getBoundingClientRect(), canvas = stage.parentElement!.getBoundingClientRect();
+  return { left: canvas.left - frame.left, top: canvas.top - frame.top,
+           width: canvas.width, height: canvas.height };
+}
 function placePanel(left: number, top: number) {
-  const room = app.getBoundingClientRect(), panel = stepsPanel.getBoundingClientRect();
-  const margin = 8;
+  const room = panelRoom(), panel = stepsPanel.getBoundingClientRect();
+  const least = { x: room.left + PANEL_MARGIN, y: room.top + PANEL_MARGIN };
+  const most = { x: Math.max(least.x, room.left + room.width - panel.width - PANEL_MARGIN),
+                 y: Math.max(least.y, room.top + room.height - panel.height - PANEL_MARGIN) };
+  // Dragged near a side, it clings to it, which is both tidier than almost-flush
+  // and the answer to "can it attach to an edge". Dragging away lets go.
+  if (left <= least.x + PANEL_SNAP) { left = least.x; stepsPanel.dataset.dock = 'left'; }
+  else if (left >= most.x - PANEL_SNAP) { left = most.x; stepsPanel.dataset.dock = 'right'; }
+  else delete stepsPanel.dataset.dock;
   stepsPanel.dataset.moved = '';
-  stepsPanel.style.left = `${Math.min(Math.max(left, margin), Math.max(margin, room.width - panel.width - margin))}px`;
-  stepsPanel.style.top = `${Math.min(Math.max(top, margin), Math.max(margin, room.height - panel.height - margin))}px`;
+  stepsPanel.style.left = `${Math.min(Math.max(left, least.x), most.x)}px`;
+  stepsPanel.style.top = `${Math.min(Math.max(top, least.y), most.y)}px`;
   stepsPanel.style.bottom = 'auto';
 }
-app.querySelector<HTMLElement>('.steps-grab')!.addEventListener('pointerdown', event => {
-  const grab = event.currentTarget as HTMLElement;
+
+/** Follow the pointer until it is let go, through one element's capture. */
+function whileDragging(on: HTMLElement, event: PointerEvent, move: (moved: PointerEvent) => void) {
+  on.setPointerCapture(event.pointerId);
+  event.preventDefault();
+  const done = () => {
+    on.removeEventListener('pointermove', move);
+    on.removeEventListener('pointerup', done);
+    on.removeEventListener('pointercancel', done);
+  };
+  on.addEventListener('pointermove', move);
+  on.addEventListener('pointerup', done);
+  on.addEventListener('pointercancel', done);
+}
+
+// The whole title row moves it, which is what makes the moving obvious.
+app.querySelector<HTMLElement>('.steps-head')!.addEventListener('pointerdown', event => {
+  if ((event.target as Element).closest('button')) return;
+  const head = event.currentTarget as HTMLElement;
   const room = app.getBoundingClientRect(), panel = stepsPanel.getBoundingClientRect();
   const offsetX = event.clientX - panel.left, offsetY = event.clientY - panel.top;
-  grab.setPointerCapture(event.pointerId);
-  event.preventDefault();
-  const move = (moved: PointerEvent) =>
-    placePanel(moved.clientX - room.left - offsetX, moved.clientY - room.top - offsetY);
-  const done = () => {
-    grab.removeEventListener('pointermove', move);
-    grab.removeEventListener('pointerup', done);
-    grab.removeEventListener('pointercancel', done);
-  };
-  grab.addEventListener('pointermove', move);
-  grab.addEventListener('pointerup', done);
-  grab.addEventListener('pointercancel', done);
+  whileDragging(head, event, moved =>
+    placePanel(moved.clientX - room.left - offsetX, moved.clientY - room.top - offsetY));
 });
+
+/** Wide enough for a sentence, never wider than there is room for. */
+const PANEL_WIDTH = { least: 250, most: 720 };
+for (const edge of app.querySelectorAll<HTMLElement>('.steps-edge')) {
+  edge.addEventListener('pointerdown', event => {
+    const frame = app.getBoundingClientRect(), panel = stepsPanel.getBoundingClientRect();
+    const fromLeft = edge.dataset.edge === 'left';
+    const anchor = fromLeft ? panel.right : panel.left;
+    whileDragging(edge, event, moved => {
+      const wanted = fromLeft ? anchor - moved.clientX : moved.clientX - anchor;
+      const width = Math.min(Math.max(wanted, PANEL_WIDTH.least),
+                             Math.min(PANEL_WIDTH.most, panelRoom().width - PANEL_MARGIN * 2));
+      stepsPanel.style.width = `${width}px`;
+      // Anchored by the edge that is not being dragged.
+      placePanel(fromLeft ? anchor - frame.left - width : panel.left - frame.left,
+                 panel.top - frame.top);
+    });
+  });
+}
+
+const fold = app.querySelector<HTMLButtonElement>('.steps-fold')!;
+/** The width it had before it was folded, since folded it shrinks to its title. */
+let unfoldedWidth = '';
+on(fold, 'click', () => {
+  const folded = stepsPanel.dataset.folded === undefined;
+  if (folded) {
+    stepsPanel.dataset.folded = '';
+    unfoldedWidth = stepsPanel.style.width;
+    // A title-wide bar, not a wide bar with a title in it.
+    stepsPanel.style.width = 'fit-content';
+  } else {
+    delete stepsPanel.dataset.folded;
+    stepsPanel.style.width = unfoldedWidth;
+  }
+  fold.setAttribute('aria-expanded', String(!folded));
+  fold.title = folded ? 'Show the list' : 'Minimise';
+  // Folding changes its height, so a panel sitting at the foot would drift.
+  if (stepsPanel.dataset.moved !== undefined) {
+    placePanel(parseFloat(stepsPanel.style.left), parseFloat(stepsPanel.style.top));
+  }
+});
+on(app.querySelector<HTMLButtonElement>('.steps-close')!, 'click', () => { panelWanted = false; syncSteps(); });
+
 // A window that changed size may have left it hanging over an edge.
 window.addEventListener('resize', () => {
   if (stepsPanel.hidden || stepsPanel.dataset.moved === undefined) return;
@@ -452,6 +533,8 @@ window.addEventListener('resize', () => {
  *  immediately started a caption". */
 function offerNote(id: number) {
   panelWanted = true;
+  // There is nothing to type into while it is folded, and a note was asked for.
+  if (stepsPanel.dataset.folded !== undefined) fold.click();
   syncSteps(id);
 }
 
