@@ -179,10 +179,13 @@ app.innerHTML = `
   </div>
   <aside class="message" role="status" aria-live="polite" hidden><span></span><button class="settings" hidden>Open System Settings</button></aside>
   <aside class="steps" hidden aria-label="Steps">
+    <div class="steps-grab" title="Drag to move"></div>
     <div class="step-rows"></div>
     <div class="steps-foot">
-      <label class="steps-show"><input class="steps-show-box" type="checkbox" />Write on the image</label>
-      <span class="steps-hint">Otherwise the words are copied as text and the image keeps only the numbers.</span>
+      <label class="steps-show"
+        title="Off, the image carries only the numbers and the words are copied as text — which is the point, since words in a picture have to be read back out of it. On, they are drawn beside their badges as the Text tool would.">
+        <input class="steps-show-box" type="checkbox" />Write on the image
+      </label>
       <button class="steps-copy glassy" type="button">Copy list <kbd>⌘⇧L</kbd></button>
     </div>
   </aside>
@@ -357,7 +360,7 @@ function syncSteps(focusId?: number) {
   // Stay off the mark being talked about: a panel sitting over the thing you
   // just circled is the one place it must not be.
   const mark = marks.find(item => item.id === wanted);
-  if (mark) {
+  if (mark && stepsPanel.dataset.moved === undefined) {
     const [, y] = badgeAt(mark, layer.imageWidth, layer.imageHeight);
     stepsPanel.dataset.at = y > layer.imageHeight * 0.55 ? 'top' : 'bottom';
   }
@@ -367,6 +370,41 @@ function syncSteps(focusId?: number) {
   if (keep && keep.id === wanted && keep.start !== null) field.setSelectionRange(keep.start, keep.end);
   else field.setSelectionRange(field.value.length, field.value.length);
 }
+
+/** Drag the panel out of the way by its grab bar. Once it has been moved it
+ *  stays where it was put: the flip between top and bottom is Mark guessing,
+ *  and a guess should not overrule a decision. Kept inside the window, so it
+ *  cannot be dropped somewhere it can never be reached. */
+function placePanel(left: number, top: number) {
+  const room = app.getBoundingClientRect(), panel = stepsPanel.getBoundingClientRect();
+  const margin = 8;
+  stepsPanel.dataset.moved = '';
+  stepsPanel.style.left = `${Math.min(Math.max(left, margin), Math.max(margin, room.width - panel.width - margin))}px`;
+  stepsPanel.style.top = `${Math.min(Math.max(top, margin), Math.max(margin, room.height - panel.height - margin))}px`;
+  stepsPanel.style.bottom = 'auto';
+}
+app.querySelector<HTMLElement>('.steps-grab')!.addEventListener('pointerdown', event => {
+  const grab = event.currentTarget as HTMLElement;
+  const room = app.getBoundingClientRect(), panel = stepsPanel.getBoundingClientRect();
+  const offsetX = event.clientX - panel.left, offsetY = event.clientY - panel.top;
+  grab.setPointerCapture(event.pointerId);
+  event.preventDefault();
+  const move = (moved: PointerEvent) =>
+    placePanel(moved.clientX - room.left - offsetX, moved.clientY - room.top - offsetY);
+  const done = () => {
+    grab.removeEventListener('pointermove', move);
+    grab.removeEventListener('pointerup', done);
+    grab.removeEventListener('pointercancel', done);
+  };
+  grab.addEventListener('pointermove', move);
+  grab.addEventListener('pointerup', done);
+  grab.addEventListener('pointercancel', done);
+});
+// A window that changed size may have left it hanging over an edge.
+window.addEventListener('resize', () => {
+  if (stepsPanel.hidden || stepsPanel.dataset.moved === undefined) return;
+  placePanel(parseFloat(stepsPanel.style.left), parseFloat(stepsPanel.style.top));
+});
 
 /** Open the panel on a mark just made: their "circled something and it
  *  immediately started a caption". */
@@ -527,6 +565,10 @@ function render() {
       stage.style.setProperty('--ratio', `${capture.width} / ${capture.height}`);
       layer.setImage(capture.width, capture.height);
       shown = capture; mustFlatten = false; crops.length = 0; zoom = startingZoom(capture);
+      // A different capture is a differently sized window, so a position chosen
+      // for the last one means nothing here.
+      delete stepsPanel.dataset.moved;
+      stepsPanel.style.left = ''; stepsPanel.style.top = ''; stepsPanel.style.bottom = '';
     }
     image.alt = `Captured screenshot, ${capture.width} by ${capture.height} pixels`;
   } else {

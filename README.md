@@ -126,7 +126,10 @@ notarization; an Apple Development certificate is only good for this Mac.
      one just made, where you type what it means. **Copy list** (⌘⇧L) puts
      `1. make the nav sticky` and the rest on the clipboard as plain text. The
      panel is a popover: pressing anything else puts it away, and the count in
-     the footer brings it back.
+     the footer brings it back. Drag it by the bar along its top to get it off
+     whatever it is covering; moved by hand it stays where it was put, since
+     the flip between above and below the mark is Mark guessing and a guess
+     should not overrule a decision.
 
      **Write on the image**, in that panel, draws each note beside its badge in
      the Text tool's own size and the mark's colour — for a screenshot going to

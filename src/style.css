@@ -337,7 +337,17 @@ footer > * { flex: none; }
    past the title row and the toolbar pane, the same 46 + 48 + 10 the window's
    chrome is built from. */
 .steps[data-at="top"] { bottom: auto; top: 114px; }
-.step-rows { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+/* Somewhere to take hold of it. A popover that cannot be moved is in the way by
+   definition, and the rows are nearly all input, so there is nothing else to
+   grab it by. */
+.steps-grab { flex: none; height: 16px; display: flex; align-items: center; justify-content: center; cursor: grab; }
+.steps-grab::before { content: ''; width: 34px; height: 4px; border-radius: 999px; background: var(--control-line); }
+.steps-grab:active { cursor: grabbing; }
+/* The flip between top and bottom eases; a drag must not. A dragged thing that
+   animates to each new position lags behind the pointer holding it. */
+.steps[data-moved] { transform: none; transition: none; }
+
+.step-rows { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; padding-top: 4px; }
 .step-row { display: flex; align-items: center; gap: 9px; }
 /* The chip is the badge, from the same colour and the same ink rule, so the row
    and the mark it stands for are plainly the same thing. */
@@ -354,15 +364,20 @@ footer > * { flex: none; }
 }
 .step-note::placeholder { color: var(--muted); }
 .step-note:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px #0a84ff33; }
-.steps-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
-.steps-show { flex: none; display: flex; align-items: center; gap: 6px; }
+/* Two things, one to a side, with the rows' own rule between: the foot was three
+   competing for a line and the explanation wrapped to three of them. What it
+   said now sits on the checkbox, where it is read once and then not again. */
+.steps-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin-top: 12px; padding: 12px 4px 2px; border-top: 1px solid var(--hairline);
+}
+.steps-show { flex: none; display: flex; align-items: center; gap: 7px; color: var(--muted); }
+.steps-show:hover { color: var(--ink); }
 .steps-show input { margin: 0; accent-color: var(--blue); }
-.steps-hint { flex: 1 1 120px; color: var(--muted); font-size: 11px; line-height: 1.35; }
-.steps-copy { flex: none; height: 26px; padding: 0 12px; font-size: 12px; }
+.steps-copy { flex: none; height: 28px; padding: 0 14px; font-size: 12px; }
 .steps-toggle { gap: 6px; padding: 0 12px; font-variant-numeric: tabular-nums; }
 .steps-toggle svg { display: block; width: 16px; height: 16px; }
 .steps-toggle.active { background: var(--control-hover); }
-@media (max-width: 520px) { .steps-hint { display: none; } }
 
 .crop-bar {
   position: absolute; left: 50%; bottom: 82px; transform: translateX(-50%); z-index: 5;

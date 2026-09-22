@@ -1300,3 +1300,44 @@ test('the notes can be written on the image, and then they are in the copy too',
   await page.keyboard.press('Meta+Shift+l');
   await expect(page.getByRole('status')).toContainText('1 step copied as text');
 });
+
+test('the steps panel can be dragged out of the way, and cannot be dragged off the edge', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Step');
+  const at = await stage(page);
+  const spot = at(300, 400);
+  await page.mouse.click(spot.x, spot.y);
+  await page.keyboard.type('say this');
+  const panel = page.locator('.steps');
+  await expect(panel).toBeVisible();
+
+  const grab = (await page.locator('.steps-grab').boundingBox())!;
+  const before = (await panel.boundingBox())!;
+  const from = { x: grab.x + grab.width / 2, y: grab.y + grab.height / 2 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x - 120, from.y - 90, { steps: 10 });
+  await page.mouse.up();
+  const after = (await panel.boundingBox())!;
+  expect(Math.round(after.x - before.x)).toBe(-120);
+  expect(Math.round(after.y - before.y)).toBe(-90);
+
+  // Moved by hand, it stays put: the flip between top and bottom is a guess,
+  // and a guess should not overrule a decision.
+  await expect(panel).toHaveAttribute('data-moved', '');
+  const low = at(400, 700);
+  await page.mouse.click(low.x, low.y);
+  await expect(page.locator('.badge text')).toHaveCount(2);
+  expect((await panel.boundingBox())!.y).toBe(after.y);
+
+  // And it cannot be dropped somewhere it could never be reached.
+  const grabAgain = (await page.locator('.steps-grab').boundingBox())!;
+  await page.mouse.move(grabAgain.x + grabAgain.width / 2, grabAgain.y + grabAgain.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grabAgain.x + 3000, grabAgain.y + 3000, { steps: 10 });
+  await page.mouse.up();
+  const far = (await panel.boundingBox())!;
+  const room = (await page.locator('#app').boundingBox())!;
+  expect(far.x + far.width).toBeLessThanOrEqual(room.x + room.width);
+  expect(far.y + far.height).toBeLessThanOrEqual(room.y + room.height);
+});
