@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
-  ARROW_STYLES, arrowStrokes, describe as describeKind, isSegment, offsetBy, penPath,
-  polygonPath, styleOf, textSize, thin,
-  type Arrow, type Note, type Point, type Shape,
+  ARROW_STYLES, COLORS, arrowStrokes, describe as describeKind, inkOn, isSegment, offsetBy, penPath,
+  polygonPath, stepArrow, stepNumbers, stepRadius, styleOf, textSize, thin,
+  type Arrow, type Note, type Point, type Shape, type Step,
 } from './annotations';
 
 const arrow = (over: Partial<Arrow> = {}): Arrow =>
@@ -96,6 +96,8 @@ describe('text notes', () => {
 
 const shape = (over: Partial<Shape> = {}): Shape =>
   ({ kind: 'box', id: 3, x: 10, y: 20, width: 200, height: 100, color: '#34c759', weight: 8, ...over });
+const step = (over: Partial<Step> = {}): Step =>
+  ({ kind: 'step', id: 4, x: 100, y: 100, color: '#ff3b30', weight: 10, ...over });
 
 /** Records the calls drawAnnotations makes, so export can be checked without a canvas. */
 function recorder() {
@@ -114,7 +116,9 @@ function recorder() {
     fillRect: (x: number, y: number, w: number, h: number) => calls.push(`rect!:${x},${y},${w},${h}`),
     rect: (x: number, y: number, w: number, h: number) => calls.push(`path:${x},${y},${w},${h}`),
     ellipse: (x: number, y: number, rx: number, ry: number) => calls.push(`oval:${x},${y},${rx},${ry}`),
-    fillText: () => {}, drawImage: () => calls.push('image'),
+    fillText: (text: string, x: number, y: number) => calls.push(`text!:${text}@${x},${y}`),
+    arc: (x: number, y: number, r: number) => calls.push(`arc:${x},${y},${r}`),
+    textAlign: '', drawImage: () => calls.push('image'),
   } as unknown as CanvasRenderingContext2D;
   return { ctx, calls };
 }
@@ -302,5 +306,83 @@ describe('arrow styles', () => {
   it('keeps the wings inside a very short arrow', () => {
     const runs = arrowStrokes(arrow({ style: 'line', x2: 8, weight: 20 }));
     for (const [x] of runs[1]) expect(x).toBeGreaterThanOrEqual(-1);
+  });
+});
+
+
+/** WCAG contrast, so the test checks the rule rather than restating the answer. */
+function contrastBetween(a: string, b: string): number {
+  const lum = (color: string) => {
+    const hex = color.replace('#', '');
+    const channel = (at: number) => {
+      const value = parseInt(hex.slice(at, at + 2), 16) / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+  };
+  const [x, y] = [lum(a), lum(b)];
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+describe('numbered steps', () => {
+  it('numbers the badges by the order they were drawn, and only the badges', () => {
+    const items = [step({ id: 7 }), arrow(), step({ id: 9 }), note(), step({ id: 3 })];
+    expect([...stepNumbers(items)]).toEqual([[7, 1], [9, 2], [3, 3]]);
+  });
+
+  it('closes the gap when one is deleted, so the sequence is always contiguous', () => {
+    const items = [step({ id: 7 }), step({ id: 9 }), step({ id: 3 })];
+    const left = items.filter(item => item.id !== 9);
+    expect([...stepNumbers(left)].map(([, n]) => n)).toEqual([1, 2]);
+    // And a pasted copy -- which the layer gives an id of its own -- takes the
+    // next number rather than repeating one.
+    const pasted = [...left, { ...offsetBy(left[0], 20), id: 42 }];
+    expect([...stepNumbers(pasted)]).toEqual([[7, 1], [3, 2], [42, 3]]);
+  });
+
+  it('starts the arrow clear of the badge and lands the head where the pointer was released', () => {
+    const arrowOf = stepArrow(step({ to: [300, 100] }))!;
+    expect(arrowOf).not.toBeNull();
+    expect([arrowOf.x2, arrowOf.y2]).toEqual([300, 100]);
+    // The tail sits outside the disc, so the badge stays a disc.
+    expect(arrowOf.x1).toBeGreaterThan(100 + stepRadius(10));
+    expect(arrowPolygon(arrowOf)[3]).toEqual([300, 100]);
+  });
+
+  it('draws no arrow for a badge that was clicked, or dragged barely at all', () => {
+    expect(stepArrow(step())).toBeNull();
+    expect(stepArrow(step({ to: [104, 103] }))).toBeNull();
+  });
+
+  it('carries the arrow head when a copy is offset', () => {
+    const moved = offsetBy(step({ to: [300, 100] }), 20);
+    expect([moved.x, moved.y]).toEqual([120, 120]);
+    expect(moved.to).toEqual([320, 120]);
+    expect(offsetBy(step(), 20).to).toBeUndefined();
+  });
+
+  it('picks the numeral ink that carries on each swatch', () => {
+    // A white numeral on Mark's white or yellow is no numeral at all, and on
+    // its orange and green it falls under the 3:1 a large glyph needs.
+    const ink = Object.fromEntries(COLORS.map(c => [c.name, inkOn(c.value)]));
+    for (const name of ['White', 'Yellow', 'Orange', 'Green']) expect(ink[name]).toBe('#1c1c1e');
+    for (const name of ['Red', 'Blue', 'Purple', 'Black']) expect(ink[name]).toBe('#ffffff');
+    // Every swatch clears the bar one way or the other, which is the point.
+    for (const { value } of COLORS) {
+      const chosen = inkOn(value) === '#ffffff' ? '#ffffff' : '#1c1c1e';
+      expect(contrastBetween(value, chosen)).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('exports the disc, the numeral and the arrow, with the numeral drawn last', () => {
+    const { ctx, calls } = recorder();
+    drawAnnotations(ctx, [step({ to: [300, 100] }), step({ id: 5, x: 50, y: 50 })]);
+    expect(calls).toContain('arc:100,100,14.5');
+    expect(calls).toContain('text!:1@100,100');
+    expect(calls).toContain('text!:2@50,50');
+    // The numeral is painted over its own disc, not under it.
+    expect(calls.indexOf('arc:100,100,14.5')).toBeLessThan(calls.indexOf('text!:1@100,100'));
+    // And the arrow goes down before the badge, so the disc covers the tail.
+    expect(calls.filter(call => call === 'fill!').length).toBeGreaterThanOrEqual(3);
   });
 });

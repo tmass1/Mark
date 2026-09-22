@@ -310,7 +310,7 @@ test('no tool, colour or control is ever clipped out of reach, at any width', as
         picker: shown(bar.querySelector('.fills')!) || shown(bar.querySelector('.styles')!),
       };
     });
-    expect(report, `${width}px, ${tool}`).toMatchObject({ barOverflow: 0, pageOverflow: 0, clippedInBar: [], tools: 9, swatches: 8, size: true, picker: true });
+    expect(report, `${width}px, ${tool}`).toMatchObject({ barOverflow: 0, pageOverflow: 0, clippedInBar: [], tools: 10, swatches: 8, size: true, picker: true });
   }
 });
 
@@ -1058,4 +1058,78 @@ test('the copied image carries the thin style, stroked not filled', async ({ pag
   // Present in the file, and far less ink than a filled arrow of the same span.
   await expect.poll(async () => Number(await page.locator('body').getAttribute('data-red-pixels')))
     .toBeGreaterThan(500);
+});
+
+test('numbered steps count up, renumber when one goes, and a drag points with an arrow', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Step');
+  const at = await stage(page);
+  const numerals = page.locator('.step text');
+
+  // A click is the whole gesture: no drag, and the badge stays.
+  for (const [x, y] of [[300, 200], [600, 200], [900, 200]] as const) {
+    const spot = at(x, y);
+    await page.mouse.click(spot.x, spot.y);
+  }
+  await expect(numerals).toHaveText(['1', '2', '3']);
+  await expect(page.locator('.step circle')).toHaveCount(3);
+  await expect(page.locator('.step path')).toHaveCount(0);      // clicked, so none of them points
+
+  // Deleting the middle one closes the gap rather than leaving a hole.
+  const second = at(600, 200);
+  await page.mouse.click(second.x, second.y);
+  await expect(page.locator('.chosen')).toHaveText('Step selected');
+  await page.keyboard.press('Backspace');
+  await expect(numerals).toHaveText(['1', '2']);
+
+  // A drag puts the badge where it started and an arrow where it ended.
+  await drawArrow(page, [300, 500], [800, 620]);
+  await expect(numerals).toHaveText(['1', '2', '3']);
+  await expect(page.locator('.step path')).toHaveCount(1);
+  await expect(page.locator('.handle')).toHaveCount(1);         // one grip, at the head
+
+  // Undo takes the whole step back, arrow and all.
+  await page.keyboard.press('Meta+z');
+  await expect(numerals).toHaveText(['1', '2']);
+  await expect(page.locator('.step path')).toHaveCount(0);
+});
+
+test('a numbered step travels as one, and reaches the copied image', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async (items: any[]) => {
+      const bitmap = await createImageBitmap(await items[0].getType('image/png'));
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(bitmap, 0, 0);
+      // Inside the disc but clear of the numeral, which is drawn at its centre.
+      // The badge was placed at 300,200 of a 1200x740 shot.
+      const [r, g, b] = ctx.getImageData(316, 200, 1, 1).data;
+      document.body.dataset.badge = `${r},${g},${b}`;
+    } } });
+  });
+  await page.goto('/');
+  await pick(page, 'Step');
+  await drawArrow(page, [300, 200], [700, 420]);
+  const before = await page.locator('.step path').getAttribute('d');
+
+  // Dragging the badge carries what it points at: the arrow moves, it does not stretch.
+  const at = await stage(page);
+  const from = at(300, 200), to = at(340, 260);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+  const after = await page.locator('.step path').getAttribute('d');
+  expect(after).not.toBe(before);
+  const length = (d: string) => {
+    const n = d.match(/-?\d+(\.\d+)?/g)!.map(Number);
+    return Math.round(Math.hypot(n[0] - n[6], n[1] - n[7]));       // tail to the far shoulder
+  };
+  expect(length(after!)).toBe(length(before!));                     // same arrow, new place
+
+  // Put it back over 300,200 and copy: the badge is in the PNG, not only on screen.
+  await page.keyboard.press('Meta+z');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /Copy and Close/ }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-badge', '255,59,48');
 });

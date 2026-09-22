@@ -38,8 +38,19 @@ export interface Shape {
 export function fillOf(shape: Shape): ShapeFill { return shape.fill ?? 'outline'; }
 /** The shapes a fill applies to: ink and redaction are already solid by nature. */
 export function fillable(item: Annotation): item is Shape { return item.kind === 'box' || item.kind === 'ellipse'; }
-export type Annotation = Segment | Stroke | Note | Shape;
-export type Tool = 'arrow' | 'line' | 'pen' | 'text' | ShapeKind | 'crop';
+/** A numbered badge, so a screenshot can be talked about rather than described:
+ *  "1. do this, 2. do that" instead of "the circle in the middle below the nav".
+ *  Its number is nowhere in here -- it is the badge's place among the steps, so
+ *  deleting, undoing or pasting one renumbers the rest and nothing can fall out
+ *  of step with anything else. */
+export interface Step {
+  kind: 'step'; id: number; x: number; y: number;
+  /** The head of the arrow, when the step was dragged rather than clicked. */
+  to?: Point;
+  color: string; weight: number;
+}
+export type Annotation = Segment | Stroke | Note | Shape | Step;
+export type Tool = 'arrow' | 'line' | 'pen' | 'text' | ShapeKind | 'step' | 'crop';
 export function isSegment(item: Annotation): item is Segment { return item.kind === 'arrow' || item.kind === 'line'; }
 
 export const SHAPES: readonly ShapeKind[] = ['box', 'ellipse', 'highlight', 'redact'];
@@ -61,6 +72,10 @@ export function offsetBy<T extends Annotation>(item: T, distance: number): T {
   if (isSegment(item)) {
     return { ...item, x1: item.x1 + distance, y1: item.y1 + distance,
                       x2: item.x2 + distance, y2: item.y2 + distance };
+  }
+  if (item.kind === 'step' && item.to) {
+    return { ...item, x: item.x + distance, y: item.y + distance,
+             to: [item.to[0] + distance, item.to[1] + distance] as Point };
   }
   return { ...item, x: item.x + distance, y: item.y + distance };
 }
@@ -93,6 +108,65 @@ export function baseWeight(width: number, height: number): number {
 }
 /** Text is sized off the same base, so one slider drives both tools. */
 export function textSize(weight: number): number { return weight * 2; }
+/** A badge is sized off it too, so a step reads the same on a small region and
+ *  a Retina full-screen grab. */
+export function stepRadius(weight: number): number { return weight * 1.45; }
+/** The numeral inside a badge, big enough to read at two digits. */
+export function stepTextSize(weight: number): number { return stepRadius(weight) * 1.25; }
+
+/** sRGB relative luminance, the sum WCAG contrast is built on. */
+function luminance(color: string): number {
+  const hex = color.replace('#', '');
+  const six = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
+  const channel = (at: number) => {
+    const value = parseInt(six.slice(at, at + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+}
+
+/** The ink for a badge's numeral. White by default, because that is what a
+ *  badge looks like, and dark where white would not carry -- which the palette
+ *  makes a real case and not a nicety: a white numeral on Mark's white or
+ *  yellow is no numeral at all, and on its orange and green it is nearly none.
+ *
+ *  The line is WCAG's 3:1 for large text, which a bold numeral this size is.
+ *  Maximising contrast instead would put dark ink on red, and a red badge with
+ *  a black number in it is not a thing anyone means to draw. */
+const LARGE_TEXT_CONTRAST = 3;
+export function inkOn(color: string): string {
+  const badge = luminance(color);
+  const contrast = (ink: number) => (Math.max(badge, ink) + 0.05) / (Math.min(badge, ink) + 0.05);
+  return contrast(luminance('#ffffff')) >= LARGE_TEXT_CONTRAST ? '#ffffff' : '#1c1c1e';
+}
+
+/** The arrow a dragged step points with, as an ordinary arrow, so it is drawn by
+ *  the same geometry as every other one. The tail starts clear of the disc,
+ *  which keeps the badge a disc rather than a lollipop; a drag too short to
+ *  leave the badge has no arrow to draw. */
+export function stepArrow(step: Step): Arrow | null {
+  if (!step.to) return null;
+  const [x2, y2] = step.to;
+  const dx = x2 - step.x, dy = y2 - step.y;
+  const length = Math.hypot(dx, dy);
+  const clear = stepRadius(step.weight) + step.weight * 0.35;
+  if (length <= clear + step.weight) return null;
+  return {
+    kind: 'arrow', id: step.id, style: 'straight',
+    x1: step.x + (dx / length) * clear, y1: step.y + (dy / length) * clear, x2, y2,
+    color: step.color, weight: step.weight * 0.72,
+  };
+}
+
+/** What each badge is numbered: its place among the steps, in the order they
+ *  are drawn. Derived rather than stored, so a delete, an undo, a paste or a
+ *  reorder renumbers the rest and no two views can disagree. */
+export function stepNumbers(items: readonly Annotation[]): Map<number, number> {
+  const numbers = new Map<number, number>();
+  let n = 0;
+  for (const item of items) if (item.kind === 'step') numbers.set(item.id, ++n);
+  return numbers;
+}
 
 /** The axis of an arrow: along it, across it, and how long it is. */
 function axis(a: Arrow) {
@@ -222,8 +296,29 @@ export function redactionPatch(source: CanvasImageSource, shape: Shape): string 
 export function drawAnnotations(
   ctx: CanvasRenderingContext2D, items: readonly Annotation[], source?: CanvasImageSource,
 ): void {
+  const numbers = stepNumbers(items);
   for (const item of items) {
     ctx.fillStyle = item.color;
+    if (item.kind === 'step') {
+      const arrow = stepArrow(item);
+      if (arrow) {
+        ctx.beginPath();
+        arrowPolygon(arrow).forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.arc(item.x, item.y, stepRadius(item.weight), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = inkOn(item.color);
+      ctx.font = `700 ${stepTextSize(item.weight)}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(numbers.get(item.id) ?? 1), item.x, item.y);
+      ctx.textAlign = 'start';
+      ctx.textBaseline = 'alphabetic';
+      continue;
+    }
     if (isShape(item)) {
       const { x, y, width, height } = item;
       if (item.kind === 'redact') { if (source) pixelateRegion(ctx, source, item); continue; }
@@ -326,6 +421,13 @@ function bounds(item: Annotation): { x: number; y: number; width: number; height
     return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
   }
   if (item.kind === 'text') return { x: item.x, y: item.y, width: 1, height: 1 };
+  if (item.kind === 'step') {
+    const r = stepRadius(item.weight);
+    const xs = [item.x - r, item.x + r], ys = [item.y - r, item.y + r];
+    if (item.to) { xs.push(item.to[0]); ys.push(item.to[1]); }
+    const x = Math.min(...xs), y = Math.min(...ys);
+    return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+  }
   return item;
 }
 
@@ -417,7 +519,10 @@ export class AnnotationLayer {
     for (const item of this.items) {
       if (isSegment(item)) { item.x1 += dx; item.y1 += dy; item.x2 += dx; item.y2 += dy; }
       else if (item.kind === 'pen') item.points = item.points.map(([x, y]) => [x + dx, y + dy] as Point);
-      else { item.x += dx; item.y += dy; }
+      else {
+        item.x += dx; item.y += dy;
+        if (item.kind === 'step' && item.to) item.to = [item.to[0] + dx, item.to[1] + dy];
+      }
       // Coordinates moved, so every redaction patch is now of the wrong region.
       if (item.kind === 'redact') item.pixels = undefined;
     }
@@ -725,7 +830,7 @@ export class AnnotationLayer {
       return;
     }
 
-    if (end && current && isSegment(current)) {
+    if (end && current && (isSegment(current) || current.kind === 'step')) {
       this.commitHistory();
       this.drag = { kind: 'reshape', id: current.id, end: end === '1' ? 1 : 2 };
     } else if (corner && current && isShape(current)) {
@@ -762,6 +867,14 @@ export class AnnotationLayer {
       this.svg.releasePointerCapture(event.pointerId);
       this.edit(note, true);
       return;
+    } else if (this.tool === 'step') {
+      // A click is the whole gesture here, so unlike every other tool the badge
+      // stays put when the pointer never moves; a drag adds an arrow to it.
+      this.commitHistory();
+      const step: Step = { kind: 'step', id: this.nextId++, x, y, color: this.style.color, weight: this.weight };
+      this.items.push(step);
+      this.chosen = new Set([step.id]);
+      this.drag = { kind: 'create', id: step.id, ox: x, oy: y };
     } else if (this.tool === 'arrow' || this.tool === 'line') {
       this.commitHistory();
       const segment: Segment = this.tool === 'arrow'
@@ -816,6 +929,10 @@ export class AnnotationLayer {
           live.points = from.points.map(([x, y]) => [x + dx, y + dy] as Point);
         } else if (live.kind === 'text' && from.kind === 'text') {
           live.x = from.x + dx; live.y = from.y + dy;
+        } else if (live.kind === 'step' && from.kind === 'step') {
+          live.x = from.x + dx; live.y = from.y + dy;
+          // The badge and what it points at travel together.
+          live.to = from.to && [from.to[0] + dx, from.to[1] + dy];
         } else if (isShape(live) && isShape(from)) {
           live.x = from.x + dx; live.y = from.y + dy;
         }
@@ -831,6 +948,8 @@ export class AnnotationLayer {
       else if (this.drag.kind === 'reshape') {
         if (this.drag.end === 1) { item.x1 = x; item.y1 = y; } else { item.x2 = x; item.y2 = y; }
       }
+    } else if (item.kind === 'step' && (this.drag.kind === 'create' || this.drag.kind === 'reshape')) {
+      item.to = [x, y];
     } else if (this.drag.kind === 'create' && item.kind === 'pen') {
       // Every sample is kept while drawing and thinned once, on release: a
       // stroke that simplifies as you draw it visibly changes shape behind the
@@ -864,6 +983,13 @@ export class AnnotationLayer {
     if (drag.kind === 'create' && item?.kind === 'pen') {
       item.points = thin(item.points, this.base * 0.12);
     }
+    // A badge dropped with a twitch of the hand is a click, not an arrow. The
+    // badge itself always survives -- that is the gesture -- so only the arrow
+    // is in question, and stepArrow would refuse to draw one this short anyway.
+    if (item?.kind === 'step' && item.to
+        && Math.hypot(item.to[0] - item.x, item.to[1] - item.y) < stepRadius(item.weight) * 2) {
+      item.to = undefined;
+    }
     const stillborn = drag.kind === 'create' && item !== undefined && (isSegment(item)
       ? Math.hypot(item.x2 - item.x1, item.y2 - item.y1) < this.base
       : item.kind === 'pen'
@@ -882,8 +1008,10 @@ export class AnnotationLayer {
 
   render(): void {
     while (this.svg.firstChild) this.svg.removeChild(this.svg.firstChild);
+    const numbers = stepNumbers(this.items);
     for (const item of this.items) {
       if (item.id === this.editing) continue;   // the textarea stands in while editing
+      if (item.kind === 'step') { this.svg.append(this.stepNode(item, numbers.get(item.id) ?? 1)); continue; }
       if (item.kind === 'arrow' && styleOf(item) === 'line') {
         const path = document.createElementNS(SVG, 'path');
         path.setAttribute('d', strokePath(arrowStrokes(item)));
@@ -961,6 +1089,10 @@ export class AnnotationLayer {
     if (chosen && isSegment(chosen)) {
       this.svg.append(this.grip(chosen.x1, chosen.y1, 'data-handle', '1'),
                       this.grip(chosen.x2, chosen.y2, 'data-handle', '2'));
+    } else if (chosen?.kind === 'step') {
+      // One grip, at the head: the badge is moved by dragging the badge, so a
+      // second grip on top of it would only be a smaller way to do the same.
+      if (chosen.to) this.svg.append(this.grip(chosen.to[0], chosen.to[1], 'data-handle', '2'));
     } else if (chosen && isShape(chosen)) {
       this.svg.append(this.dashedOutline(chosen, 0));
       for (const corner of CORNERS) {
@@ -1016,6 +1148,36 @@ export class AnnotationLayer {
     outline.setAttribute('stroke-width', String(1.5 / this.scale));
     outline.setAttribute('stroke-dasharray', `${4 / this.scale} ${3 / this.scale}`);
     return outline;
+  }
+
+  /** A badge, and the arrow it points with. The numeral is drawn here rather
+   *  than stored, from the badge's place in the sequence. */
+  private stepNode(item: Step, number: number): SVGElement {
+    const group = document.createElementNS(SVG, 'g');
+    group.setAttribute('data-item', String(item.id));
+    group.setAttribute('class', 'step');
+    const arrow = stepArrow(item);
+    if (arrow) {
+      const path = document.createElementNS(SVG, 'path');
+      path.setAttribute('d', polygonPath(arrowPolygon(arrow)));
+      path.setAttribute('fill', item.color);
+      group.append(path);
+    }
+    const disc = document.createElementNS(SVG, 'circle');
+    disc.setAttribute('cx', String(item.x)); disc.setAttribute('cy', String(item.y));
+    disc.setAttribute('r', String(stepRadius(item.weight)));
+    disc.setAttribute('fill', item.color);
+    const text = document.createElementNS(SVG, 'text');
+    text.setAttribute('x', String(item.x)); text.setAttribute('y', String(item.y));
+    text.setAttribute('fill', inkOn(item.color));
+    text.setAttribute('font-family', FONT);
+    text.setAttribute('font-size', String(stepTextSize(item.weight)));
+    text.setAttribute('font-weight', '700');
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'central');
+    text.textContent = String(number);
+    group.append(disc, text);
+    return group;
   }
 
   private shapeNode(item: Shape): SVGElement {

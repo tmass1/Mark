@@ -3,8 +3,8 @@
 Mark is a fast, small macOS screenshot utility built with Tauri v2. Press a
 global shortcut, drag across a region, mark it up, then copy and close.
 
-Annotation is arrows, lines, freehand, text, boxes, ellipses, a highlighter,
-redaction, and a crop. Finished work goes to the clipboard, to a file, or to macOS's share
+Annotation is arrows, lines, freehand, text, numbered steps, boxes, ellipses,
+a highlighter, redaction, and a crop. Finished work goes to the clipboard, to a file, or to macOS's share
 sheet. There are no accounts, cloud features, or screen recording. The UI uses
 the system WKWebView; the native shell is Rust. There is no Xcode project and
 no Swift source.
@@ -105,6 +105,18 @@ notarization; an Apple Development certificate is only good for this Mac.
      shape as you make it.
    - **Text**: click, then type. Enter starts a new line and Escape finishes.
      Click a note to move it; click it again to edit it.
+   - **Step**: click to drop the next number in a filled badge — 1, then 2,
+     then 3 — so a screenshot can be talked about rather than described: "1. do
+     this, 2. do that" instead of "the circle in the middle just below the nav".
+     Drag instead of clicking and the badge stays where you pressed with an
+     arrow to where you let go, which is one gesture for a numbered arrow.
+
+     A badge's number is its place in the sequence rather than something written
+     on it, so deleting one closes the gap and the numbers are always 1 to n
+     with nothing missing. The order is the order they were drawn, which makes
+     ⌘[ and ⌘] — already how everything is reordered — the way to renumber a
+     sequence built out of order. The numeral is white, or dark on the paler
+     colours where white would not carry.
    - **Box** and **Ellipse**: drag out an outline. Grab the outline to move it,
      or a corner to resize.
    - **Highlighter**: drag a band of translucent ink over what matters.
