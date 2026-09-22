@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
   ARROW_STYLES, COLORS, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
-  offsetBy, penPath, polygonPath, stepArrow, stepList, stepNumbers, stepRadius, styleOf, textSize, thin,
+  noteAt, offsetBy, penPath, polygonPath, stepArrow, stepList, stepNumbers, stepRadius, styleOf, textSize, thin,
   type Arrow, type Note, type Point, type Shape, type Step,
 } from './annotations';
 
@@ -431,5 +431,36 @@ describe('one sequence over circles and badges', () => {
     ];
     expect(stepList(items)).toBe('1. make the nav sticky\n2.\n3. remove this');
     expect(stepList([arrow(), note()])).toBe('');
+  });
+});
+
+describe('notes written on the image', () => {
+  it('sits the note beside its badge, and flips to the other side at the edge', () => {
+    const near = noteAt(step({ x: 100, y: 200, note: 'make the nav sticky' }), 1200, 740)!;
+    expect(near.anchor).toBe('start');
+    expect(near.x).toBeGreaterThan(100 + stepRadius(10));   // clear of the disc
+    expect(near.y).toBe(200);                               // level with it
+    expect(near.size).toBe(textSize(10));                   // the Text tool's own size
+
+    const edge = noteAt(step({ x: 1150, y: 200, note: 'make the nav sticky' }), 1200, 740)!;
+    expect(edge.anchor).toBe('end');
+    expect(edge.x).toBeLessThan(1150);
+  });
+
+  it('has nothing to write for a mark with no note, or only spaces', () => {
+    expect(noteAt(step(), 1200, 740)).toBeNull();
+    expect(noteAt(step({ note: '   ' }), 1200, 740)).toBeNull();
+  });
+
+  it('writes the note only when asked, and the number either way', () => {
+    const quiet = recorder();
+    drawAnnotations(quiet.ctx, [step({ note: 'say this' })]);
+    expect(quiet.calls).toContain('text!:1@100,100');
+    expect(quiet.calls.join(' ')).not.toContain('say this');
+
+    const loud = recorder();
+    drawAnnotations(loud.ctx, [step({ note: 'say this' })], undefined, true);
+    expect(loud.calls).toContain('text!:1@100,100');
+    expect(loud.calls.some(call => call.startsWith('text!:say this@'))).toBe(true);
   });
 });

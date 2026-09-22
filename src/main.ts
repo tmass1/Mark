@@ -181,7 +181,8 @@ app.innerHTML = `
   <aside class="steps" hidden aria-label="Steps">
     <div class="step-rows"></div>
     <div class="steps-foot">
-      <span class="steps-hint">Typed here, copied as text — never drawn on the image.</span>
+      <label class="steps-show"><input class="steps-show-box" type="checkbox" />Write on the image</label>
+      <span class="steps-hint">Otherwise the words are copied as text and the image keeps only the numbers.</span>
       <button class="steps-copy glassy" type="button">Copy list <kbd>⌘⇧L</kbd></button>
     </div>
   </aside>
@@ -337,6 +338,7 @@ function syncSteps(focusId?: number) {
   app.querySelector<HTMLElement>('.steps-count')!.textContent = String(marks.length);
   stepsPanel.hidden = !capture || !marks.length || !panelWanted;
   stepsToggle.setAttribute('aria-expanded', String(!stepsPanel.hidden));
+  app.querySelector<HTMLInputElement>('.steps-show-box')!.checked = layer.showNotes;
   stepsToggle.classList.toggle('active', !stepsPanel.hidden);
   if (stepsPanel.hidden) { stepRows.replaceChildren(); return; }
   const active = document.activeElement as HTMLInputElement | null;
@@ -389,14 +391,33 @@ on(stepRows, 'keydown', event => {
   else { panelWanted = false; syncSteps(); overlay.focus(); }
 });
 app.querySelector<HTMLButtonElement>('.steps-copy')!.addEventListener('click', () => void copyList());
-// The layer calls preventDefault on pointerdown, so a click on the canvas does
-// not move focus by itself and the note field keeps it -- which would turn a
-// Delete meant for the selected mark into a Delete inside the text. Reaching for
-// the image is leaving the field.
-overlay.addEventListener('pointerdown', () => {
+// The panel is a popover over the canvas, so pressing anything else puts it
+// away -- otherwise it sits between you and the part of the image underneath
+// it. Making another numbered mark opens it again on that mark's row, and the
+// footer's count opens it for review.
+//
+// Blurring matters on its own: the layer calls preventDefault on pointerdown,
+// so a click on the canvas does not move focus by itself and the note field
+// would keep it, turning a Delete meant for the selected mark into a Delete
+// inside the text.
+document.addEventListener('pointerdown', event => {
+  // The footer's own count is not "anything else": it has to be able to close
+  // the panel, and it cannot if this has already closed it a moment before.
+  if ((event.target as Element).closest?.('.steps, .steps-toggle')) return;
   const active = document.activeElement;
   if (active instanceof HTMLElement && active.classList.contains('step-note')) active.blur();
+  if (!panelWanted) return;
+  panelWanted = false;
+  syncSteps();
 }, true);
+
+on(app.querySelector<HTMLInputElement>('.steps-show-box')!, 'change', event => {
+  layer.showNotes = (event.target as HTMLInputElement).checked;
+  // Drawn words are part of the picture, so a plain capture can no longer be
+  // copied as its original bytes.
+  mustFlatten = true;
+  layer.render(); syncTools();
+});
 
 on(stepsToggle, 'click', () => {
   panelWanted = !panelWanted;
@@ -560,7 +581,7 @@ async function flatten(): Promise<HTMLCanvasElement> {
   canvas.width = capture!.width; canvas.height = capture!.height;
   const context = canvas.getContext('2d')!;
   context.drawImage(source, 0, 0, canvas.width, canvas.height);
-  drawAnnotations(context, layer.annotations, source);
+  drawAnnotations(context, layer.annotations, source, layer.showNotes);
   return canvas;
 }
 

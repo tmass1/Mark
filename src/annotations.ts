@@ -202,6 +202,22 @@ export function badgeAt(item: Numbered, width = Infinity, height = Infinity): Po
   ];
 }
 
+/** A note drawn beside its badge, in the Text tool's own size so it reads as
+ *  the same kind of writing. Laid out from one estimate of its width, used by
+ *  the overlay and the export alike, so the two put it in the same place: to
+ *  the right of the badge, or the left when the right would run off the image.
+ *  0.55 em a character is the same rough measure the text editor's box uses. */
+export interface DrawnNote { x: number; y: number; size: number; anchor: 'start' | 'end'; text: string }
+export function noteAt(item: Numbered, width = Infinity, height = Infinity): DrawnNote | null {
+  const text = item.note?.trim();
+  if (!text) return null;
+  const [bx, by] = badgeAt(item, width, height);
+  const size = textSize(item.weight);
+  const gap = stepRadius(item.weight) + size * 0.55;
+  const fits = bx + gap + text.length * size * 0.55 <= width;
+  return { x: fits ? bx + gap : bx - gap, y: by, size, anchor: fits ? 'start' : 'end', text };
+}
+
 /** The list as it goes to the clipboard. A mark with nothing typed still takes
  *  its number, so an untyped list is the stub and still saves the typing. */
 export function stepList(items: readonly Annotation[]): string {
@@ -335,6 +351,10 @@ export function redactionPatch(source: CanvasImageSource, shape: Shape): string 
  *  Redaction samples the capture itself, which is why the source is needed. */
 export function drawAnnotations(
   ctx: CanvasRenderingContext2D, items: readonly Annotation[], source?: CanvasImageSource,
+  /** Write each note beside its badge, as the Text tool would. Off by default:
+   *  a note is for the message, and words in a picture have to be read back out
+   *  of it. On when the drawing is meant for a person rather than a prompt. */
+  showNotes = false,
 ): void {
   const numbers = stepNumbers(items);
   /** The badge: a disc and its numeral. The note is never painted -- it goes to
@@ -350,6 +370,13 @@ export function drawAnnotations(
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(String(numbers.get(item.id) ?? 1), x, y);
+    const note = showNotes ? noteAt(item, ctx.canvas.width, ctx.canvas.height) : null;
+    if (note) {
+      ctx.fillStyle = item.color;
+      ctx.font = `${WEIGHT} ${note.size}px ${FONT}`;
+      ctx.textAlign = note.anchor === 'end' ? 'right' : 'left';
+      ctx.fillText(note.text, note.x, note.y);
+    }
     ctx.textAlign = 'start';
     ctx.textBaseline = 'alphabetic';
   };
@@ -542,6 +569,10 @@ export class AnnotationLayer {
   }
 
   get annotations(): readonly Annotation[] { return this.items; }
+  /** Whether the notes are written on the image as well as copied as text.
+   *  A view setting rather than part of the drawing, so it is not undone; the
+   *  overlay and the export both read it, so what is copied is what is shown. */
+  showNotes = false;
   get imageWidth(): number { return this.width; }
   get imageHeight(): number { return this.height; }
 
@@ -1165,9 +1196,12 @@ export class AnnotationLayer {
       this.svg.append(this.grip(chosen.x1, chosen.y1, 'data-handle', '1'),
                       this.grip(chosen.x2, chosen.y2, 'data-handle', '2'));
     } else if (chosen?.kind === 'step') {
-      // One grip, at the head: the badge is moved by dragging the badge, so a
-      // second grip on top of it would only be a smaller way to do the same.
-      if (chosen.to) this.svg.append(this.grip(chosen.to[0], chosen.to[1], 'data-handle', '2'));
+      // One grip, at the arrow's head -- or tucked beside the badge when there
+      // is no arrow yet, so a badge dropped with a click can still be given one
+      // afterwards rather than the gesture deciding for good. Pulling that head
+      // back onto the badge takes the arrow off again.
+      const at = chosen.to ?? [chosen.x + stepRadius(chosen.weight) * 1.9, chosen.y + stepRadius(chosen.weight) * 1.9];
+      this.svg.append(this.grip(at[0], at[1], 'data-handle', '2'));
     } else if (chosen && isShape(chosen)) {
       this.svg.append(this.dashedOutline(chosen, 0));
       for (const corner of CORNERS) {
@@ -1231,6 +1265,20 @@ export class AnnotationLayer {
   private badgeNode(item: Numbered, number: number): SVGElement {
     const group = document.createElementNS(SVG, 'g');
     group.setAttribute('class', 'badge');
+    const written = this.showNotes ? noteAt(item, this.width, this.height) : null;
+    if (written) {
+      const label = document.createElementNS(SVG, 'text');
+      label.setAttribute('x', String(written.x)); label.setAttribute('y', String(written.y));
+      label.setAttribute('fill', item.color);
+      label.setAttribute('font-family', FONT);
+      label.setAttribute('font-size', String(written.size));
+      label.setAttribute('font-weight', String(WEIGHT));
+      label.setAttribute('text-anchor', written.anchor);
+      label.setAttribute('dominant-baseline', 'central');
+      label.setAttribute('xml:space', 'preserve');
+      label.textContent = written.text;
+      group.append(label);
+    }
     const [x, y] = badgeAt(item, this.width, this.height);
     const disc = document.createElementNS(SVG, 'circle');
     disc.setAttribute('cx', String(x)); disc.setAttribute('cy', String(y));

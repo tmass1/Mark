@@ -1082,7 +1082,9 @@ test('numbered steps count up, renumber when one goes, and a drag points with an
   await page.keyboard.press('Backspace');
   await expect(numerals).toHaveText(['1', '2']);
 
-  // A drag puts the badge where it started and an arrow where it ended.
+  // A drag puts the badge where it started and an arrow where it ended. The
+  // panel is a popover, and reaching for the badge above already put it away.
+  await expect(page.locator('.steps')).toBeHidden();
   await drawArrow(page, [300, 500], [800, 620]);
   await expect(numerals).toHaveText(['1', '2', '3']);
   await expect(page.locator('.step path')).toHaveCount(1);
@@ -1218,4 +1220,83 @@ test('the list copies as text, and the words never reach the image', async ({ pa
   await page.getByRole('button', { name: /^Copy/ }).first().click();
   await expect(page.getByRole('status')).toContainText('⌘⇧L copies the 2 steps');
   await expect(page.locator('body')).toHaveAttribute('data-copied-size', '1200x740');
+});
+
+test('a badge placed with a click can still be given an arrow afterwards', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Step');
+  const at = await stage(page);
+  const spot = at(300, 400);
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.locator('.step path')).toHaveCount(0);
+  await page.keyboard.press('Escape');                       // out of the note field
+
+  // Selected, the badge offers one grip tucked beside it; pulling it makes the arrow.
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.locator('.handle')).toHaveCount(1);
+  const grip = (await page.locator('.handle').boundingBox())!;
+  const head = at(900, 250);
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(head.x, head.y, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator('.step path')).toHaveCount(1);
+
+  // And pulling the head back onto the badge takes the arrow off again.
+  const back = (await page.locator('.handle').boundingBox())!;
+  await page.mouse.move(back.x + back.width / 2, back.y + back.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(spot.x, spot.y, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator('.step path')).toHaveCount(0);
+});
+
+test('the notes can be written on the image, and then they are in the copy too', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: {
+      writeText: async () => {},
+      write: async (items: any[]) => {
+        const bitmap = await createImageBitmap(await items[0].getType('image/png'));
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(bitmap, 0, 0);
+        // A band to the right of the badge at 300,400, where the words go.
+        const { data } = ctx.getImageData(360, 380, 320, 40);
+        let red = 0;
+        for (let i = 0; i < data.length; i += 4) if (data[i] > 200 && data[i + 1] < 120) red++;
+        document.body.dataset.inkRight = String(red);
+      },
+    } });
+  });
+  await page.goto('/');
+  await pick(page, 'Step');
+  const at = await stage(page);
+  const spot = at(300, 400);
+  await page.mouse.click(spot.x, spot.y);
+  await page.keyboard.type('make the headline sticky');
+
+  // Off by default: the badge is drawn, the words are not.
+  await expect(page.locator('.badge text')).toHaveText(['1']);
+  // The footer's own Copy: the panel has a "Copy list" that would match by name.
+  // The write is async, so wait for it rather than for the click to return.
+  const copyImage = page.locator('footer .copy-only');
+  const copy = async () => {
+    await page.evaluate(() => { delete document.body.dataset.inkRight; });
+    await copyImage.click();
+    await expect(page.locator('body')).toHaveAttribute('data-ink-right', /\d+/);
+    return Number(await page.locator('body').getAttribute('data-ink-right'));
+  };
+  const withoutWords = await copy();
+
+  // Copying pressed outside the panel, which put it away; open it again.
+  await page.locator('.steps-toggle').click();
+  await page.locator('.steps-show-box').check();
+  // The words go down before the disc, so the badge covers them where they meet.
+  await expect(page.locator('.badge text')).toHaveText(['make the headline sticky', '1']);
+  const withWords = await copy();
+  expect(withWords).toBeGreaterThan(withoutWords + 100);     // the words reached the PNG
+
+  // The list still copies as text whichever way that switch is set.
+  await page.keyboard.press('Meta+Shift+l');
+  await expect(page.getByRole('status')).toContainText('1 step copied as text');
 });

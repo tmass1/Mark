@@ -118,13 +118,24 @@ notarization; an Apple Development certificate is only good for this Mac.
      sequence built out of order. The numeral is white, or dark on the paler
      colours where white would not carry.
 
+     A badge dropped with a click still offers a grip beside it, so it can be
+     given an arrow afterwards rather than the gesture deciding for good;
+     pulling that head back onto the badge takes the arrow off again.
+
      Every numbered mark gets a row in a panel over the capture, opened on the
      one just made, where you type what it means. **Copy list** (⌘⇧L) puts
-     `1. make the nav sticky` and the rest on the clipboard as plain text.
+     `1. make the nav sticky` and the rest on the clipboard as plain text. The
+     panel is a popover: pressing anything else puts it away, and the count in
+     the footer brings it back.
 
-     The words are never drawn on the image, which is the whole point: text in
-     a picture has to be read back out of it, while text in a message is read
-     as it stands. So the image carries cheap numerals and the message carries
+     **Write on the image**, in that panel, draws each note beside its badge in
+     the Text tool's own size and the mark's colour — for a screenshot going to
+     a person rather than a prompt. On or off, what is copied is what is on
+     screen.
+
+     Left alone the words are not drawn on the image, which is the point: text
+     in a picture has to be read back out of it, while text in a message is
+     read as it stands. So the image carries cheap numerals and the message carries
      the words, and Mark renumbers the list when a mark is deleted rather than
      you doing it. The image and the list are two copies because they have to
      be — one clipboard write cannot be pasted as the picture and then as the
