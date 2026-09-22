@@ -117,8 +117,23 @@ notarization; an Apple Development certificate is only good for this Mac.
      ⌘[ and ⌘] — already how everything is reordered — the way to renumber a
      sequence built out of order. The numeral is white, or dark on the paler
      colours where white would not carry.
+
+     Every numbered mark gets a row in a panel over the capture, opened on the
+     one just made, where you type what it means. **Copy list** (⌘⇧L) puts
+     `1. make the nav sticky` and the rest on the clipboard as plain text.
+
+     The words are never drawn on the image, which is the whole point: text in
+     a picture has to be read back out of it, while text in a message is read
+     as it stands. So the image carries cheap numerals and the message carries
+     the words, and Mark renumbers the list when a mark is deleted rather than
+     you doing it. The image and the list are two copies because they have to
+     be — one clipboard write cannot be pasted as the picture and then as the
+     words, since the second paste would only repeat the first.
    - **Box** and **Ellipse**: drag out an outline. Grab the outline to move it,
-     or a corner to resize.
+     or a corner to resize. **Number them**, beside the fill picker, gives each
+     one a badge at its corner, in the same sequence the Step tool uses — so
+     circling four things numbers them 1 to 4 whether they are circles, badges
+     or numbered arrows.
    - **Highlighter**: drag a band of translucent ink over what matters.
    - **Crop**: drag out what to keep. Everything else dims, corners adjust the
      region, and Enter or the Crop button trims to it. The drawing comes along,

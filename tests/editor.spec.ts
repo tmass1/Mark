@@ -1133,3 +1133,89 @@ test('a numbered step travels as one, and reaches the copied image', async ({ pa
   await page.getByRole('button', { name: /Copy and Close/ }).click();
   await expect(page.locator('body')).toHaveAttribute('data-badge', '255,59,48');
 });
+
+test('a circle can be numbered, and the panel offers somewhere to say what it is for', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Ellipse');
+  const toggle = page.getByRole('switch', { name: 'Number them' });
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await toggle.click();
+
+  // Circling something numbers it and opens the panel focused on that row.
+  await drawArrow(page, [150, 180], [520, 300]);
+  await expect(page.locator('.badge text')).toHaveText(['1']);
+  const panel = page.locator('.steps');
+  await expect(panel).toBeVisible();
+  await expect(page.locator('.step-row')).toHaveCount(1);
+  await expect(page.locator('.step-note')).toBeFocused();
+  await page.keyboard.type('make the headline sticky');
+
+  await drawArrow(page, [620, 180], [980, 300]);
+  await page.keyboard.type('drop this panel');
+  await expect(page.locator('.badge text')).toHaveText(['1', '2']);
+  await expect(page.locator('.step-chip')).toHaveText(['1', '2']);
+
+  // A step badge joins the same run rather than starting one of its own.
+  // Escape puts the panel away first: it floats over the canvas, so a click
+  // aimed through it would land on the panel.
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await pick(page, 'Step');
+  const at = await stage(page);
+  const spot = at(800, 560);
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.locator('.badge text')).toHaveText(['1', '2', '3']);
+  // And the panel keeps off the mark it is about: that one is low, so it moves up.
+  await expect(panel).toHaveAttribute('data-at', 'top');
+
+  // Deleting the first renumbers the badges and the rows together.
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  // On the first circle's own outline: clicking empty canvas with the Step tool
+  // in hand would drop a fourth badge rather than select anything.
+  const first = at(335, 181);
+  await page.mouse.click(first.x, first.y);
+  await expect(page.locator('.chosen')).toHaveText('Ellipse selected');
+  await page.keyboard.press('Backspace');
+  await expect(page.locator('.badge text')).toHaveText(['1', '2']);
+  // The footer keeps count and is the way back to a dismissed panel.
+  const reopen = page.locator('.steps-toggle');
+  await expect(reopen).toHaveText('2');
+  await reopen.click();
+  await expect(panel).toBeVisible();
+  await expect(page.locator('.step-chip')).toHaveText(['1', '2']);
+  await expect(page.locator('.step-note').first()).toHaveValue('drop this panel');
+});
+
+test('the list copies as text, and the words never reach the image', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).__text = null;
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: async (t: string) => { (window as any).__text = t; },
+        write: async (items: any[]) => {
+          const bitmap = await createImageBitmap(await items[0].getType('image/png'));
+          document.body.dataset.copiedSize = `${bitmap.width}x${bitmap.height}`;
+        },
+      },
+    });
+  });
+  await page.goto('/');
+  await pick(page, 'Ellipse');
+  await page.getByRole('switch', { name: 'Number them' }).click();
+  await drawArrow(page, [150, 180], [520, 300]);
+  await page.keyboard.type('make the headline sticky');
+  await drawArrow(page, [620, 180], [980, 300]);
+  // Second one left untyped on purpose: it should still take its number.
+  await page.keyboard.press('Escape');
+
+  await page.keyboard.press('Meta+Shift+l');
+  await expect(page.getByRole('status')).toContainText('2 steps copied as text');
+  expect(await page.evaluate(() => (window as any).__text)).toBe('1. make the headline sticky\n2.');
+
+  // The image copy is untouched, and says the list is there to be had.
+  await page.getByRole('button', { name: /^Copy/ }).first().click();
+  await expect(page.getByRole('status')).toContainText('⌘⇧L copies the 2 steps');
+  await expect(page.locator('body')).toHaveAttribute('data-copied-size', '1200x740');
+});

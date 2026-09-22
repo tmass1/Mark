@@ -84,6 +84,19 @@ pub fn copy_png(bytes: &[u8]) -> Result<(), String> {
     write_png(&NSPasteboard::generalPasteboard(), bytes)
 }
 
+/// The steps as text. Its own write rather than a second flavour beside the
+/// PNG: a single pasteboard write cannot be pasted as the image and then as the
+/// words, since the second paste would only repeat the first.
+pub fn copy_text(text: &str) -> Result<(), String> {
+    if MainThreadMarker::new().is_none() { return Err("Clipboard must be accessed on the main thread.".into()); }
+    let pasteboard = NSPasteboard::generalPasteboard();
+    pasteboard.clearContents();
+    if !pasteboard.setString_forType(&NSString::from_str(text), &NSString::from_str("public.utf8-plain-text")) {
+        return Err("The list couldn't be copied. Please try again.".into());
+    }
+    Ok(())
+}
+
 fn write_png(pasteboard: &NSPasteboard, bytes: &[u8]) -> Result<(), String> {
     let data = NSData::with_bytes(bytes);
     let image = NSImage::initWithData(NSImage::alloc(), &data).ok_or("The screenshot couldn't be opened.")?;

@@ -32,6 +32,12 @@ export interface Shape {
   color: string; weight: number;
   /** Boxes and ellipses only. Shapes drawn before fills existed are outlines. */
   fill?: ShapeFill;
+  /** Boxes and ellipses only: carry a numbered badge at the corner, so a circle
+   *  drawn round something can be referred to by number. */
+  numbered?: boolean;
+  /** What to say about this mark. Never drawn: it is copied as text, which is
+   *  the point -- words in the picture have to be read back out of it. */
+  note?: string;
   /** Redaction only: the pixelated patch, rebuilt when the region settles. */
   pixels?: string;
 }
@@ -47,6 +53,8 @@ export interface Step {
   kind: 'step'; id: number; x: number; y: number;
   /** The head of the arrow, when the step was dragged rather than clicked. */
   to?: Point;
+  /** What to say about this mark. Never drawn; copied as text. */
+  note?: string;
   color: string; weight: number;
 }
 export type Annotation = Segment | Stroke | Note | Shape | Step;
@@ -158,14 +166,46 @@ export function stepArrow(step: Step): Arrow | null {
   };
 }
 
-/** What each badge is numbered: its place among the steps, in the order they
- *  are drawn. Derived rather than stored, so a delete, an undo, a paste or a
- *  reorder renumbers the rest and no two views can disagree. */
+/** A mark that carries a number: a step, or a shape drawn with the toggle on.
+ *  One run of numbers covers both, so circling a thing and dropping a badge
+ *  beside another can be the same sequence. */
+export type Numbered = Step | Shape;
+export function isNumbered(item: Annotation): item is Numbered {
+  return item.kind === 'step' || (isShape(item) && item.numbered === true);
+}
+/** Every numbered mark, in the order they were drawn: what the badges, the
+ *  panel and the copied list all read, so none of them can count differently. */
+export function numbered(items: readonly Annotation[]): Numbered[] {
+  return items.filter(isNumbered);
+}
+
+/** What each badge is numbered: its place in that run. Derived rather than
+ *  stored, so a delete, an undo, a paste or a reorder renumbers the rest and no
+ *  two views can disagree. */
 export function stepNumbers(items: readonly Annotation[]): Map<number, number> {
   const numbers = new Map<number, number>();
   let n = 0;
-  for (const item of items) if (item.kind === 'step') numbers.set(item.id, ++n);
+  for (const item of items) if (isNumbered(item)) numbers.set(item.id, ++n);
   return numbers;
+}
+
+/** Where a mark's badge sits: a step's own point, or just outside a shape's top
+ *  left corner, pulled back inside the image so a circle drawn against an edge
+ *  still shows its number. */
+export function badgeAt(item: Numbered, width = Infinity, height = Infinity): Point {
+  if (item.kind === 'step') return [item.x, item.y];
+  const r = stepRadius(item.weight);
+  const off = r * 0.7;
+  return [
+    Math.min(Math.max(item.x - off, r), Math.max(r, width - r)),
+    Math.min(Math.max(item.y - off, r), Math.max(r, height - r)),
+  ];
+}
+
+/** The list as it goes to the clipboard. A mark with nothing typed still takes
+ *  its number, so an untyped list is the stub and still saves the typing. */
+export function stepList(items: readonly Annotation[]): string {
+  return numbered(items).map((item, i) => `${i + 1}. ${item.note ?? ''}`.trimEnd()).join('\n');
 }
 
 /** The axis of an arrow: along it, across it, and how long it is. */
@@ -297,6 +337,22 @@ export function drawAnnotations(
   ctx: CanvasRenderingContext2D, items: readonly Annotation[], source?: CanvasImageSource,
 ): void {
   const numbers = stepNumbers(items);
+  /** The badge: a disc and its numeral. The note is never painted -- it goes to
+   *  the clipboard as text instead, which is the whole point of it. */
+  const badge = (item: Numbered) => {
+    const [x, y] = badgeAt(item, ctx.canvas.width, ctx.canvas.height);
+    ctx.fillStyle = item.color;
+    ctx.beginPath();
+    ctx.arc(x, y, stepRadius(item.weight), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = inkOn(item.color);
+    ctx.font = `700 ${stepTextSize(item.weight)}px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(numbers.get(item.id) ?? 1), x, y);
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
+  };
   for (const item of items) {
     ctx.fillStyle = item.color;
     if (item.kind === 'step') {
@@ -307,27 +363,21 @@ export function drawAnnotations(
         ctx.closePath();
         ctx.fill();
       }
-      ctx.beginPath();
-      ctx.arc(item.x, item.y, stepRadius(item.weight), 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = inkOn(item.color);
-      ctx.font = `700 ${stepTextSize(item.weight)}px ${FONT}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(String(numbers.get(item.id) ?? 1), item.x, item.y);
-      ctx.textAlign = 'start';
-      ctx.textBaseline = 'alphabetic';
+      badge(item);
       continue;
     }
     if (isShape(item)) {
       const { x, y, width, height } = item;
-      if (item.kind === 'redact') { if (source) pixelateRegion(ctx, source, item); continue; }
+      // The badge goes on last whichever way the shape itself was drawn.
+      const finish = () => { if (item.numbered) badge(item); };
+      if (item.kind === 'redact') { if (source) pixelateRegion(ctx, source, item); finish(); continue; }
       if (item.kind === 'highlight') {
         ctx.save();
         ctx.globalAlpha = HIGHLIGHT_ALPHA;
         ctx.globalCompositeOperation = 'multiply';
         ctx.fillRect(x, y, width, height);
         ctx.restore();
+        finish();
         continue;
       }
       ctx.beginPath();
@@ -340,6 +390,7 @@ export function drawAnnotations(
           ctx.rect(x, y, Math.max(width, 1), Math.max(height, 1));
         }
         ctx.fill();
+        finish();
         continue;
       }
       ctx.strokeStyle = item.color;
@@ -352,6 +403,7 @@ export function drawAnnotations(
         ctx.rect(x + inset, y + inset, Math.max(width - item.weight, 1), Math.max(height - item.weight, 1));
       }
       ctx.stroke();
+      finish();
       continue;
     }
     if (item.kind === 'arrow' && styleOf(item) === 'line') {
@@ -436,7 +488,7 @@ function span(ax: number, ay: number, bx: number, by: number) {
   return { x: Math.min(ax, bx), y: Math.min(ay, by), width: Math.abs(bx - ax), height: Math.abs(by - ay) };
 }
 
-export interface LayerStyle { color: string; scale: number; arrow: ArrowStyle; fill: ShapeFill }
+export interface LayerStyle { color: string; scale: number; arrow: ArrowStyle; fill: ShapeFill; numbered: boolean }
 
 export class AnnotationLayer {
   private items: Annotation[] = [];
@@ -465,7 +517,7 @@ export class AnnotationLayer {
   private chosen = new Set<number>();
   tool: Tool = 'arrow';
   base = 12;
-  style: LayerStyle = { color: COLORS[0].value, scale: 1, arrow: 'taper', fill: 'outline' };
+  style: LayerStyle = { color: COLORS[0].value, scale: 1, arrow: 'taper', fill: 'outline', numbered: false };
 
   constructor(private svg: SVGSVGElement, private stage: HTMLElement, private onChange: () => void) {
     svg.addEventListener('pointerdown', this.down);
@@ -490,6 +542,24 @@ export class AnnotationLayer {
   }
 
   get annotations(): readonly Annotation[] { return this.items; }
+  get imageWidth(): number { return this.width; }
+  get imageHeight(): number { return this.height; }
+
+  /** Called when a numbered mark is finished, so the editor can offer a place
+   *  to type about it straight away. */
+  onNumbered: (id: number) => void = () => {};
+
+  /** What to say about a numbered mark. One undo step per burst of typing: a
+   *  keystroke each would make ⌘Z useless for anything else. */
+  setNote(id: number, note: string): void {
+    const item = this.find(id);
+    if (!item || !isNumbered(item)) return;
+    if (this.noting !== id) { this.commitHistory(); this.noting = id; }
+    item.note = note;
+    this.onChange();
+  }
+  /** The next edit of anything else starts a fresh undo step for the note too. */
+  private noting: number | null = null;
   /** Selected annotations, in the order they are drawn. */
   get selection(): Annotation[] { return this.items.filter(item => this.chosen.has(item.id)); }
   /** The sole selection, or null when none or several are chosen. Handles and
@@ -589,6 +659,7 @@ export class AnnotationLayer {
   }
 
   private commitHistory(): void {
+    this.noting = null;
     this.past.push(this.items.map(item => ({ ...item })));
     if (this.past.length > 60) this.past.shift();
   }
@@ -709,7 +780,7 @@ export class AnnotationLayer {
         if (item.kind === 'text') item.size = textSize(this.weight);
         else item.weight = this.weight;
         if (item.kind === 'arrow') item.style = this.style.arrow;
-        if (fillable(item)) item.fill = this.style.fill;
+        if (fillable(item)) { item.fill = this.style.fill; item.numbered = this.style.numbered; }
         // Coarseness follows the size control, so the patch must be rebuilt.
         this.settle(item);
       }
@@ -898,7 +969,7 @@ export class AnnotationLayer {
         kind: this.tool as ShapeKind, id: this.nextId++, x, y, width: 0, height: 0,
         color: this.style.color, weight: this.weight,
       };
-      if (fillable(shape)) shape.fill = this.style.fill;
+      if (fillable(shape)) { shape.fill = this.style.fill; shape.numbered = this.style.numbered; }
       this.items.push(shape);
       this.chosen = new Set([shape.id]);
       this.drag = { kind: 'create', id: shape.id, ox: x, oy: y };
@@ -1002,6 +1073,8 @@ export class AnnotationLayer {
     } else if (drag.kind === 'move') drag.from.forEach(from => this.settle(this.find(from.id)));
     else this.settle(item);
     this.render(); this.onChange();
+    // A mark that just gained a number gets a place to type about it.
+    if (!stillborn && drag.kind === 'create' && item && isNumbered(item)) this.onNumbered(item.id);
   };
 
   // ---- rendering ----------------------------------------------------------
@@ -1044,7 +1117,9 @@ export class AnnotationLayer {
         path.setAttribute('class', 'arrow');
         this.svg.append(path);
       } else if (isShape(item)) {
-        this.svg.append(this.shapeNode(item));
+        const node = this.shapeNode(item);
+        if (item.numbered) node.append(this.badgeNode(item, numbers.get(item.id) ?? 1));
+        this.svg.append(node);
       } else {
         const group = document.createElementNS(SVG, 'g');
         group.setAttribute('data-item', String(item.id));
@@ -1150,8 +1225,31 @@ export class AnnotationLayer {
     return outline;
   }
 
-  /** A badge, and the arrow it points with. The numeral is drawn here rather
-   *  than stored, from the badge's place in the sequence. */
+  /** The badge a numbered mark carries: a disc and its numeral. The number is
+   *  drawn here rather than stored, from the mark's place in the sequence. The
+   *  note is not drawn at all -- it is copied as text instead. */
+  private badgeNode(item: Numbered, number: number): SVGElement {
+    const group = document.createElementNS(SVG, 'g');
+    group.setAttribute('class', 'badge');
+    const [x, y] = badgeAt(item, this.width, this.height);
+    const disc = document.createElementNS(SVG, 'circle');
+    disc.setAttribute('cx', String(x)); disc.setAttribute('cy', String(y));
+    disc.setAttribute('r', String(stepRadius(item.weight)));
+    disc.setAttribute('fill', item.color);
+    const text = document.createElementNS(SVG, 'text');
+    text.setAttribute('x', String(x)); text.setAttribute('y', String(y));
+    text.setAttribute('fill', inkOn(item.color));
+    text.setAttribute('font-family', FONT);
+    text.setAttribute('font-size', String(stepTextSize(item.weight)));
+    text.setAttribute('font-weight', '700');
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'central');
+    text.textContent = String(number);
+    group.append(disc, text);
+    return group;
+  }
+
+  /** A step: its badge, and the arrow it points with. */
   private stepNode(item: Step, number: number): SVGElement {
     const group = document.createElementNS(SVG, 'g');
     group.setAttribute('data-item', String(item.id));
@@ -1163,20 +1261,7 @@ export class AnnotationLayer {
       path.setAttribute('fill', item.color);
       group.append(path);
     }
-    const disc = document.createElementNS(SVG, 'circle');
-    disc.setAttribute('cx', String(item.x)); disc.setAttribute('cy', String(item.y));
-    disc.setAttribute('r', String(stepRadius(item.weight)));
-    disc.setAttribute('fill', item.color);
-    const text = document.createElementNS(SVG, 'text');
-    text.setAttribute('x', String(item.x)); text.setAttribute('y', String(item.y));
-    text.setAttribute('fill', inkOn(item.color));
-    text.setAttribute('font-family', FONT);
-    text.setAttribute('font-size', String(stepTextSize(item.weight)));
-    text.setAttribute('font-weight', '700');
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('dominant-baseline', 'central');
-    text.textContent = String(number);
-    group.append(disc, text);
+    group.append(this.badgeNode(item, number));
     return group;
   }
 

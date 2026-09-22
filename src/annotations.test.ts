@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
-  ARROW_STYLES, COLORS, arrowStrokes, describe as describeKind, inkOn, isSegment, offsetBy, penPath,
-  polygonPath, stepArrow, stepNumbers, stepRadius, styleOf, textSize, thin,
+  ARROW_STYLES, COLORS, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
+  offsetBy, penPath, polygonPath, stepArrow, stepList, stepNumbers, stepRadius, styleOf, textSize, thin,
   type Arrow, type Note, type Point, type Shape, type Step,
 } from './annotations';
 
@@ -99,10 +99,13 @@ const shape = (over: Partial<Shape> = {}): Shape =>
 const step = (over: Partial<Step> = {}): Step =>
   ({ kind: 'step', id: 4, x: 100, y: 100, color: '#ff3b30', weight: 10, ...over });
 
-/** Records the calls drawAnnotations makes, so export can be checked without a canvas. */
-function recorder() {
+/** Records the calls drawAnnotations makes, so export can be checked without a
+ *  canvas. The size stands in for the capture's, which is what a badge is
+ *  clamped into. */
+function recorder(width = 1200, height = 740) {
   const calls: string[] = [];
   const ctx = {
+    canvas: { width, height },
     set fillStyle(v: string) { calls.push(`fill:${v}`); },
     set strokeStyle(v: string) { calls.push(`stroke:${v}`); },
     set lineWidth(v: number) { calls.push(`width:${v}`); },
@@ -384,5 +387,49 @@ describe('numbered steps', () => {
     expect(calls.indexOf('arc:100,100,14.5')).toBeLessThan(calls.indexOf('text!:1@100,100'));
     // And the arrow goes down before the badge, so the disc covers the tail.
     expect(calls.filter(call => call === 'fill!').length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+
+describe('one sequence over circles and badges', () => {
+  it('numbers steps and numbered shapes together, in the order drawn', () => {
+    const items = [
+      shape({ id: 1, kind: 'ellipse', numbered: true }),
+      shape({ id: 2, kind: 'box' }),                       // not numbered: not in the run
+      step({ id: 3 }),
+      arrow(),
+      shape({ id: 5, kind: 'ellipse', numbered: true }),
+    ];
+    expect(numbered(items).map(item => item.id)).toEqual([1, 3, 5]);
+    expect([...stepNumbers(items)]).toEqual([[1, 1], [3, 2], [5, 3]]);
+  });
+
+  it('puts a shape’s badge outside its corner, and keeps it inside the image', () => {
+    const r = stepRadius(8);
+    const [x, y] = badgeAt(shape({ x: 300, y: 200, weight: 8, numbered: true }), 1200, 740);
+    expect(x).toBeLessThan(300);                            // clear of the outline, not on it
+    expect(y).toBeLessThan(200);
+    // A circle drawn hard against the corner still shows its whole badge.
+    const [cx, cy] = badgeAt(shape({ x: 0, y: 0, weight: 8, numbered: true }), 1200, 740);
+    expect(cx).toBeGreaterThanOrEqual(r);
+    expect(cy).toBeGreaterThanOrEqual(r);
+  });
+
+  it('exports a numbered circle’s badge, and never its note', () => {
+    const { ctx, calls } = recorder();
+    drawAnnotations(ctx, [shape({ id: 1, kind: 'ellipse', numbered: true, note: 'do not draw me' })]);
+    expect(calls.some(call => call.startsWith('arc:'))).toBe(true);
+    expect(calls).toContain('text!:1@' + badgeAt(shape({ kind: 'ellipse', numbered: true }), 1200, 740).join(','));
+    expect(calls.join(' ')).not.toContain('do not draw me');
+  });
+
+  it('writes the list one line per mark, and a bare number where nothing was typed', () => {
+    const items = [
+      shape({ id: 1, kind: 'ellipse', numbered: true, note: 'make the nav sticky' }),
+      step({ id: 2 }),
+      shape({ id: 3, kind: 'box', numbered: true, note: 'remove this' }),
+    ];
+    expect(stepList(items)).toBe('1. make the nav sticky\n2.\n3. remove this');
+    expect(stepList([arrow(), note()])).toBe('');
   });
 });

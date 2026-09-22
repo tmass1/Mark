@@ -5,7 +5,7 @@
   "windows": ["editor"], "platforms": ["macOS"],
   "permissions": [
     "allow-current-capture", "allow-capture-region", "allow-capture-display",
-    "allow-copy-capture", "allow-copy-edited", "allow-save-image", "allow-share-image",
+    "allow-copy-capture", "allow-copy-edited", "allow-copy-text", "allow-save-image", "allow-share-image",
     "allow-dismiss-editor", "allow-open-screen-settings", "allow-quit-app",
     "allow-glass-available", "allow-set-glass",
     "allow-get-settings", "allow-open-settings",

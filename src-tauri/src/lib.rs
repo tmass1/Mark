@@ -290,6 +290,13 @@ fn copy_capture(app: AppHandle, close: bool) -> Result<(), String> {
 
 /// The editor sends a flattened PNG only when something was drawn; an untouched
 /// capture still takes the copy_and_close path and keeps its original bytes.
+/// The numbered list, as plain text. Capped well past any real list of steps.
+#[tauri::command]
+fn copy_text(text: String) -> Result<(), String> {
+    if text.len() > 64 * 1024 { return Err("That list is too long to copy.".into()); }
+    macos::copy_text(&text)
+}
+
 #[tauri::command]
 fn copy_edited(app: AppHandle, png: String, close: bool) -> Result<(), String> {
     // Roughly 96 MB of image once decoded, well past any real screenshot.
@@ -572,7 +579,7 @@ pub fn run() {
             }
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, cancel_selection,
-            copy_capture, copy_edited, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
+            copy_capture, copy_edited, copy_text, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
             get_settings, set_appearance, set_shortcut, login_enabled, set_login, open_settings, quit_app])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
         .on_window_event(|window, event| {

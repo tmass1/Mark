@@ -311,6 +311,7 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         await copied(state.capture.dataUrl.split(',')[1], Boolean(args.close)); return;
       }
       case 'copy_edited': await copied(String(args.png), Boolean(args.close)); return;
+      case 'copy_text': await navigator.clipboard.writeText(String(args.text)); return;
       case 'save_image': download(String(args.png), String(args.name)); return String(args.name);
       case 'share_image': {
         const file = new File([pngBlob(String(args.png))], String(args.name), { type: 'image/png' });

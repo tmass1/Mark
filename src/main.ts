@@ -6,7 +6,8 @@ import { MARK_ARROW, MARK_CORNERS } from './mark';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
-         describe, drawAnnotations, fillOf, fillable, polygonPath, strokePath, styleOf, textSize,
+         badgeAt, describe, drawAnnotations, fillOf, fillable, inkOn, numbered, polygonPath, stepList, strokePath,
+         styleOf, textSize,
          type Annotation, type ArrowStyle, type ShapeFill, type Tool } from './annotations';
 
 /** Each style's button previews itself, drawn from the geometry it will draw
@@ -124,6 +125,13 @@ app.innerHTML = `
         aria-checked="${fill === 'outline'}" title="${FILL_NAMES[fill]} shape"><svg viewBox="0 0 20 20"
         aria-hidden="true">${fillPreview(fill)}</svg><span class="sr">${FILL_NAMES[fill]}</span></button>`).join('')}
     </div>
+    <button class="numbering style" type="button" role="switch" aria-checked="false" hidden
+      title="Number the shapes you draw, so you can say &quot;1. do this, 2. do that&quot;">
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <mask id="numbering-glyph"><circle cx="10" cy="10" r="7.2" fill="#fff"/><path d="M8.4 8.4 10.4 6.8v6.4M8.6 13.2h3.6" fill="none" stroke="#000" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></mask>
+        <circle cx="10" cy="10" r="7.2" fill="currentColor" mask="url(#numbering-glyph)"/>
+      </svg><span class="sr">Number them</span>
+    </button>
     <label class="size"><span class="size-word">Size</span>
       <input class="weight" type="range" min="0.1" max="2.5" step="0.05" value="1" aria-label="Size" />
     </label>
@@ -170,6 +178,13 @@ app.innerHTML = `
   </main>
   </div>
   <aside class="message" role="status" aria-live="polite" hidden><span></span><button class="settings" hidden>Open System Settings</button></aside>
+  <aside class="steps" hidden aria-label="Steps">
+    <div class="step-rows"></div>
+    <div class="steps-foot">
+      <span class="steps-hint">Typed here, copied as text — never drawn on the image.</span>
+      <button class="steps-copy glassy" type="button">Copy list <kbd>⌘⇧L</kbd></button>
+    </div>
+  </aside>
   <aside class="crop-bar" hidden>
     <span class="crop-size"></span>
     <button class="crop-cancel subtle" type="button">Cancel</button>
@@ -195,6 +210,13 @@ app.innerHTML = `
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.8v9M6.8 8.6 10 11.8l3.2-3.2"/><path d="M3.4 14v2.2a1.4 1.4 0 0 0 1.4 1.4h10.4a1.4 1.4 0 0 0 1.4-1.4V14"/></svg>
     </button>
     </span>
+    <button class="steps-toggle glassy" type="button" hidden aria-expanded="false"
+      title="What each number means (⌘⇧L copies the list)">
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <mask id="steps-toggle-glyph"><circle cx="10" cy="10" r="7.2" fill="#fff"/><path d="M8.4 8.4 10.4 6.8v6.4M8.6 13.2h3.6" fill="none" stroke="#000" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></mask>
+        <circle cx="10" cy="10" r="7.2" fill="currentColor" mask="url(#steps-toggle-glyph)"/>
+      </svg><span class="steps-count"></span>
+    </button>
     <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘⇧C</kbd></button>
     <button class="copy primary" type="button">Copy and Close <kbd>⌘C</kbd></button>
   </footer>
@@ -206,6 +228,10 @@ const overlay = app.querySelector<SVGSVGElement>('.overlay')!;
 const toolbar = app.querySelector<HTMLElement>('.toolbar')!;
 const rail = app.querySelector<HTMLElement>('.rail')!;
 const tools = app.querySelector<HTMLElement>('.tools')!;
+const numbering = app.querySelector<HTMLButtonElement>('.numbering')!;
+const stepsPanel = app.querySelector<HTMLElement>('.steps')!;
+const stepRows = app.querySelector<HTMLElement>('.step-rows')!;
+const stepsToggle = app.querySelector<HTMLButtonElement>('.steps-toggle')!;
 const weight = app.querySelector<HTMLInputElement>('.weight')!;
 const undoButton = app.querySelector<HTMLButtonElement>('.undo')!;
 const backButton = app.querySelector<HTMLButtonElement>('.back')!;
@@ -255,6 +281,7 @@ function pixelRatio(at: number): number { return at / (capture?.scale || 1); }
 const crops: { capture: CapturePreview; dx: number; dy: number; depth: number }[] = [];
 
 const layer = new AnnotationLayer(overlay, stage, () => syncTools());
+layer.onNumbered = id => offerNote(id);
 // Redaction samples the capture, so the layer needs the decoded image, and any
 // region drawn before it finished decoding has to be filled in afterwards.
 layer.setSource(image);
@@ -297,6 +324,107 @@ function placeLens(group: HTMLElement) {
   if (snap) { void lens.offsetWidth; lens.style.transition = ''; lens.dataset.placed = ''; }
 }
 
+/** The steps panel: one row per numbered mark, in sequence. Rebuilt from the
+ *  layer rather than kept in step with it, so the panel and the badges cannot
+ *  drift; the focused row and caret are carried across so typing survives a
+ *  rebuild triggered by something else. */
+let panelWanted = false;
+function syncSteps(focusId?: number) {
+  const marks = numbered(layer.annotations);
+  // The way back in once the panel has been dismissed, and the only sign the
+  // list exists at all when it is closed.
+  stepsToggle.hidden = !capture || !marks.length;
+  app.querySelector<HTMLElement>('.steps-count')!.textContent = String(marks.length);
+  stepsPanel.hidden = !capture || !marks.length || !panelWanted;
+  stepsToggle.setAttribute('aria-expanded', String(!stepsPanel.hidden));
+  stepsToggle.classList.toggle('active', !stepsPanel.hidden);
+  if (stepsPanel.hidden) { stepRows.replaceChildren(); return; }
+  const active = document.activeElement as HTMLInputElement | null;
+  const keep = active?.classList.contains('step-note')
+    ? { id: Number(active.dataset.item), start: active.selectionStart, end: active.selectionEnd } : null;
+  stepRows.replaceChildren(...marks.map((mark, i) => {
+    const row = document.createElement('label');
+    row.className = 'step-row';
+    row.innerHTML = `<span class="step-chip" style="--chip:${mark.color};--chip-ink:${inkOn(mark.color)}">${i + 1}</span>`
+      + `<input class="step-note" type="text" data-item="${mark.id}" placeholder="Say what to do here" />`;
+    row.querySelector<HTMLInputElement>('.step-note')!.value = mark.note ?? '';
+    return row;
+  }));
+  const wanted = focusId ?? keep?.id;
+  if (wanted === undefined) return;
+  // Stay off the mark being talked about: a panel sitting over the thing you
+  // just circled is the one place it must not be.
+  const mark = marks.find(item => item.id === wanted);
+  if (mark) {
+    const [, y] = badgeAt(mark, layer.imageWidth, layer.imageHeight);
+    stepsPanel.dataset.at = y > layer.imageHeight * 0.55 ? 'top' : 'bottom';
+  }
+  const field = stepRows.querySelector<HTMLInputElement>(`.step-note[data-item="${wanted}"]`);
+  if (!field) return;
+  field.focus();
+  if (keep && keep.id === wanted && keep.start !== null) field.setSelectionRange(keep.start, keep.end);
+  else field.setSelectionRange(field.value.length, field.value.length);
+}
+
+/** Open the panel on a mark just made: their "circled something and it
+ *  immediately started a caption". */
+function offerNote(id: number) {
+  panelWanted = true;
+  syncSteps(id);
+}
+
+on(stepRows, 'input', event => {
+  const field = event.target as HTMLInputElement;
+  if (!field.classList.contains('step-note')) return;
+  layer.setNote(Number(field.dataset.item), field.value);
+});
+on(stepRows, 'keydown', event => {
+  const key = (event as KeyboardEvent).key;
+  if (key !== 'Enter' && key !== 'Escape') return;
+  event.preventDefault();
+  // Enter moves to the next mark; Escape puts the panel away without losing what is typed.
+  const fields = [...stepRows.querySelectorAll<HTMLInputElement>('.step-note')];
+  const next = fields[fields.indexOf(event.target as HTMLInputElement) + 1];
+  if (key === 'Enter' && next) next.focus();
+  else { panelWanted = false; syncSteps(); overlay.focus(); }
+});
+app.querySelector<HTMLButtonElement>('.steps-copy')!.addEventListener('click', () => void copyList());
+// The layer calls preventDefault on pointerdown, so a click on the canvas does
+// not move focus by itself and the note field keeps it -- which would turn a
+// Delete meant for the selected mark into a Delete inside the text. Reaching for
+// the image is leaving the field.
+overlay.addEventListener('pointerdown', () => {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active.classList.contains('step-note')) active.blur();
+}, true);
+
+on(stepsToggle, 'click', () => {
+  panelWanted = !panelWanted;
+  syncSteps(panelWanted ? numbered(layer.annotations)[0]?.id : undefined);
+});
+
+/** The list as text. Its own action rather than a second flavour on the image
+ *  copy: one clipboard write cannot be pasted as the picture and then as the
+ *  words -- the second paste would only repeat the first. */
+/** Said after an image copy when there is a list to go with it: a nudge, not
+ *  magic. The image and the list are two clipboard writes because they have to
+ *  be -- one write cannot be pasted as the picture and then as the words. */
+function listHint(): string {
+  const n = numbered(layer.annotations).length;
+  return n ? ` ⌘⇧L copies the ${n} ${n === 1 ? 'step' : 'steps'} as text.` : '';
+}
+
+async function copyList() {
+  const marks = numbered(layer.annotations);
+  if (!marks.length) { flash('Nothing numbered yet. Drop a badge, or circle something with Number them on.'); return; }
+  const text = stepList(layer.annotations);
+  try {
+    if (isTauri) await command('copy_text', { text });
+    else await navigator.clipboard.writeText(text);
+    flash(`${marks.length} ${marks.length === 1 ? 'step' : 'steps'} copied as text. Paste it beside the image.`);
+  } catch (error) { report(error); }
+}
+
 function syncTools() {
   const picked = layer.selection;
   // Say what a colour or size change is about to land on. Restyling the thing
@@ -317,7 +445,13 @@ function syncTools() {
   const shapes = picked.filter(fillable);
   const shaping = layer.tool === 'box' || layer.tool === 'ellipse';
   fills.hidden = !shaping && shapes.length === 0;
-  if (shapes.length) layer.style.fill = fillOf(shapes[shapes.length - 1]);
+  numbering.hidden = fills.hidden;
+  if (shapes.length) {
+    layer.style.fill = fillOf(shapes[shapes.length - 1]);
+    layer.style.numbered = shapes[shapes.length - 1].numbered === true;
+  }
+  numbering.setAttribute('aria-checked', String(layer.style.numbered));
+  numbering.classList.toggle('active', layer.style.numbered);
   // Preview the shape in hand: the selection's if there is one, else the tool's.
   fills.dataset.shape = shapes.length ? shapes[shapes.length - 1].kind : layer.tool === 'ellipse' ? 'ellipse' : 'box';
   for (const button of app.querySelectorAll<HTMLButtonElement>('.style[data-fill]')) {
@@ -333,6 +467,7 @@ function syncTools() {
       : selected.weight / layer.base;
   }
   weight.value = layer.style.scale.toFixed(2);
+  syncSteps();
   for (const swatch of app.querySelectorAll<HTMLButtonElement>('.swatch')) {
     const active = swatch.dataset.color === layer.style.color;
     swatch.setAttribute('aria-checked', String(active));
@@ -460,7 +595,7 @@ async function copyCapture(close = true) {
       // A crop makes the original bytes wrong, so it forces a re-encode too.
       if (layer.empty && !mustFlatten) await command('copy_capture', { close });
       else await command('copy_edited', { png: (await flatten()).toDataURL('image/png').split(',')[1], close });
-      if (close) capture = null; else flash('Copied to clipboard.');
+      if (close) capture = null; else flash(`Copied to clipboard.${listHint()}`);
     } else {
       // Start clipboard.write inside the gesture; Safari accepts a promised Blob.
       const png = layer.empty
@@ -471,7 +606,7 @@ async function copyCapture(close = true) {
         if (!navigator.clipboard?.write) throw new Error('Image copying needs clipboard access on localhost or HTTPS.');
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
       }, () => { if (close) capture = null; });
-      flash('Copied to clipboard.');
+      flash(`Copied to clipboard.${listHint()}`);
     }
   } catch (error) { report(error); }
   finally { copyPending = false; render(); }
@@ -526,6 +661,14 @@ on(toolbar, 'click', event => {
   layer.applyStyle();
 });
 on(weight, 'input', () => { layer.style.scale = Number(weight.value); layer.applyStyle(); });
+on(numbering, 'click', () => {
+  layer.style.numbered = !layer.style.numbered;
+  layer.applyStyle();
+  // Turning it on with a circle already selected numbers that circle, which is
+  // the point; the panel then offers somewhere to say what it is for.
+  const picked = layer.selection.filter(fillable);
+  if (layer.style.numbered && picked.length) offerNote(picked[picked.length - 1].id);
+});
 on(undoButton, 'click', () => { stepBack(); });
 on(app.querySelector<HTMLButtonElement>('.crop-apply')!, 'click', () => { void applyCrop().catch(report); });
 on(app.querySelector<HTMLButtonElement>('.crop-cancel')!, 'click', () => layer.clearCrop());
@@ -753,6 +896,8 @@ document.addEventListener('keydown', event => {
     event.preventDefault(); stepBack();
   } else if (capture && !typing && (key === 'backspace' || key === 'delete')) {
     event.preventDefault(); layer.deleteSelected();
+  } else if (capture && key === 'l' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault(); void copyList();
   } else if (capture && key === 's' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault(); void exportImage(event.shiftKey ? 'share_image' : 'save_image');
   } else if (capture && key === 'c' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
