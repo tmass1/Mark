@@ -112,7 +112,10 @@ notarization; an Apple Development certificate is only good for this Mac.
      then 3 — so a screenshot can be talked about rather than described: "1. do
      this, 2. do that" instead of "the circle in the middle just below the nav".
      Drag instead of clicking and the badge stays where you pressed with an
-     arrow to where you let go, which is one gesture for a numbered arrow.
+     arrow to where you let go, which is one gesture for a numbered arrow. That
+     arrow is an arrow like any other: the three styles beside the colours
+     apply to it, and selecting a step adopts its style the way selecting an
+     arrow does.
 
      A badge's number is its place in the sequence rather than something written
      on it, so deleting one closes the gap and the numbers are always 1 to n

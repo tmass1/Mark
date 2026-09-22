@@ -534,9 +534,11 @@ function syncTools() {
   chosenCount.textContent = picked.length === 1
     ? `${describe(picked[0].kind)} selected`
     : `${picked.length} selected`;
-  // Only worth showing when it would change something.
-  const arrows = picked.filter(item => item.kind === 'arrow');
-  styles.hidden = layer.tool !== 'arrow' && arrows.length === 0;
+  // Only worth showing when it would change something. A step points with an
+  // arrow of its own, so the picker is its business too.
+  const arrows = picked.filter(item => item.kind === 'arrow' || item.kind === 'step');
+  const pointing = layer.tool === 'arrow' || layer.tool === 'step';
+  styles.hidden = !pointing && arrows.length === 0;
   if (arrows.length) layer.style.arrow = styleOf(arrows[arrows.length - 1]);
   for (const button of app.querySelectorAll<HTMLButtonElement>('.style[data-style]')) {
     const active = button.dataset.style === layer.style.arrow;

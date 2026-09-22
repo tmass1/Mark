@@ -17,7 +17,7 @@ export type ArrowStyle = 'taper' | 'straight' | 'line';
 export const ARROW_STYLES: readonly ArrowStyle[] = ['taper', 'straight', 'line'];
 export interface Arrow extends Ends { kind: 'arrow'; style?: ArrowStyle }
 /** Arrows drawn before styles existed, and anything restored, are tapered. */
-export function styleOf(a: Arrow): ArrowStyle { return a.style ?? 'taper'; }
+export function styleOf(a: Arrow | Step): ArrowStyle { return a.style ?? 'taper'; }
 export interface Line extends Ends { kind: 'line' }
 export type Segment = Arrow | Line;
 export interface Stroke { kind: 'pen'; id: number; points: Point[]; color: string; weight: number }
@@ -53,6 +53,8 @@ export interface Step {
   kind: 'step'; id: number; x: number; y: number;
   /** The head of the arrow, when the step was dragged rather than clicked. */
   to?: Point;
+  /** Which arrow it points with, from the same picker the arrow tool uses. */
+  style?: ArrowStyle;
   /** What to say about this mark. Never drawn; copied as text. */
   note?: string;
   color: string; weight: number;
@@ -160,7 +162,7 @@ export function stepArrow(step: Step): Arrow | null {
   const clear = stepRadius(step.weight) + step.weight * 0.35;
   if (length <= clear + step.weight) return null;
   return {
-    kind: 'arrow', id: step.id, style: 'straight',
+    kind: 'arrow', id: step.id, style: styleOf(step),
     x1: step.x + (dx / length) * clear, y1: step.y + (dy / length) * clear, x2, y2,
     color: step.color, weight: step.weight * 0.72,
   };
@@ -248,6 +250,19 @@ export function arrowStrokes(a: Arrow): Point[][] {
 
 /** How thick the line style is stroked. */
 export function arrowStrokeWidth(weight: number): number { return weight * 0.62; }
+
+/** How an arrow is painted: the thin style is stroked, the other two are one
+ *  filled polygon. One answer for the overlay and the export, and for an arrow
+ *  drawn on its own or carried by a step -- the step's used to skip this and
+ *  fill whatever it was given, so a thin arrow came out solid. */
+export type ArrowPaint =
+  | { stroked: false; polygon: Point[] }
+  | { stroked: true; runs: Point[][]; width: number };
+export function arrowPaint(a: Arrow): ArrowPaint {
+  return styleOf(a) === 'line'
+    ? { stroked: true, runs: arrowStrokes(a), width: arrowStrokeWidth(a.weight) }
+    : { stroked: false, polygon: arrowPolygon(a) };
+}
 
 /** The line style's polylines as one path, for the overlay. */
 export function strokePath(runs: readonly Point[][]): string {
@@ -349,6 +364,29 @@ export function redactionPatch(source: CanvasImageSource, shape: Shape): string 
 
 /** Paint onto a 2D context at natural size, so the copied PNG matches the screen.
  *  Redaction samples the capture itself, which is why the source is needed. */
+/** An arrow onto a 2D context, stroked or filled as its style asks. The points
+ *  are walked rather than handed over as a Path2D, so the export can be checked
+ *  against a recording stand-in with no canvas behind it. */
+function paintArrow(ctx: CanvasRenderingContext2D, a: Arrow): void {
+  const paint = arrowPaint(a);
+  const trace = (run: readonly Point[]) => {
+    ctx.beginPath();
+    run.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  };
+  if (paint.stroked) {
+    ctx.strokeStyle = a.color;
+    ctx.lineWidth = paint.width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const run of paint.runs) { trace(run); ctx.stroke(); }
+  } else {
+    ctx.fillStyle = a.color;
+    trace(paint.polygon);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
 export function drawAnnotations(
   ctx: CanvasRenderingContext2D, items: readonly Annotation[], source?: CanvasImageSource,
   /** Write each note beside its badge, as the Text tool would. Off by default:
@@ -384,12 +422,7 @@ export function drawAnnotations(
     ctx.fillStyle = item.color;
     if (item.kind === 'step') {
       const arrow = stepArrow(item);
-      if (arrow) {
-        ctx.beginPath();
-        arrowPolygon(arrow).forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-        ctx.closePath();
-        ctx.fill();
-      }
+      if (arrow) paintArrow(ctx, arrow);
       badge(item);
       continue;
     }
@@ -433,18 +466,7 @@ export function drawAnnotations(
       finish();
       continue;
     }
-    if (item.kind === 'arrow' && styleOf(item) === 'line') {
-      ctx.strokeStyle = item.color;
-      ctx.lineWidth = arrowStrokeWidth(item.weight);
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      for (const run of arrowStrokes(item)) {
-        ctx.beginPath();
-        run.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-        ctx.stroke();
-      }
-      continue;
-    }
+    if (item.kind === 'arrow' && styleOf(item) === 'line') { paintArrow(ctx, item); continue; }
     if (item.kind === 'pen' || item.kind === 'line') {
       ctx.strokeStyle = item.color;
       ctx.lineWidth = item.weight;
@@ -465,11 +487,7 @@ export function drawAnnotations(
       } else { ctx.moveTo(item.x1, item.y1); ctx.lineTo(item.x2, item.y2); }
       ctx.stroke();
     } else if (item.kind === 'arrow') {
-      const points = arrowPolygon(item);
-      ctx.beginPath();
-      points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-      ctx.closePath();
-      ctx.fill();
+      paintArrow(ctx, item);
     } else {
       ctx.font = `${WEIGHT} ${item.size}px ${FONT}`;
       ctx.textBaseline = 'top';
@@ -810,7 +828,7 @@ export class AnnotationLayer {
         item.color = this.style.color;
         if (item.kind === 'text') item.size = textSize(this.weight);
         else item.weight = this.weight;
-        if (item.kind === 'arrow') item.style = this.style.arrow;
+        if (item.kind === 'arrow' || item.kind === 'step') item.style = this.style.arrow;
         if (fillable(item)) { item.fill = this.style.fill; item.numbered = this.style.numbered; }
         // Coarseness follows the size control, so the patch must be rebuilt.
         this.settle(item);
@@ -973,7 +991,8 @@ export class AnnotationLayer {
       // A click is the whole gesture here, so unlike every other tool the badge
       // stays put when the pointer never moves; a drag adds an arrow to it.
       this.commitHistory();
-      const step: Step = { kind: 'step', id: this.nextId++, x, y, color: this.style.color, weight: this.weight };
+      const step: Step = { kind: 'step', id: this.nextId++, x, y,
+                           color: this.style.color, weight: this.weight, style: this.style.arrow };
       this.items.push(step);
       this.chosen = new Set([step.id]);
       this.drag = { kind: 'create', id: step.id, ox: x, oy: y };
@@ -1116,21 +1135,8 @@ export class AnnotationLayer {
     for (const item of this.items) {
       if (item.id === this.editing) continue;   // the textarea stands in while editing
       if (item.kind === 'step') { this.svg.append(this.stepNode(item, numbers.get(item.id) ?? 1)); continue; }
-      if (item.kind === 'arrow' && styleOf(item) === 'line') {
-        const path = document.createElementNS(SVG, 'path');
-        path.setAttribute('d', strokePath(arrowStrokes(item)));
-        path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', item.color);
-        path.setAttribute('stroke-width', String(arrowStrokeWidth(item.weight)));
-        path.setAttribute('stroke-linecap', 'round');
-        path.setAttribute('stroke-linejoin', 'round');
-        path.setAttribute('data-item', String(item.id));
-        path.setAttribute('class', 'arrow');
-        this.svg.append(path);
-      } else if (item.kind === 'arrow') {
-        const path = document.createElementNS(SVG, 'path');
-        path.setAttribute('d', polygonPath(arrowPolygon(item)));
-        path.setAttribute('fill', item.color);
+      if (item.kind === 'arrow') {
+        const path = this.arrowNode(item);
         path.setAttribute('data-item', String(item.id));
         path.setAttribute('class', 'arrow');
         this.svg.append(path);
@@ -1259,6 +1265,23 @@ export class AnnotationLayer {
     return outline;
   }
 
+  /** An arrow as SVG, stroked or filled as its style asks. */
+  private arrowNode(item: Arrow): SVGElement {
+    const paint = arrowPaint(item);
+    const path = document.createElementNS(SVG, 'path');
+    path.setAttribute('d', paint.stroked ? strokePath(paint.runs) : polygonPath(paint.polygon));
+    if (paint.stroked) {
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', item.color);
+      path.setAttribute('stroke-width', String(paint.width));
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+    } else {
+      path.setAttribute('fill', item.color);
+    }
+    return path;
+  }
+
   /** The badge a numbered mark carries: a disc and its numeral. The number is
    *  drawn here rather than stored, from the mark's place in the sequence. The
    *  note is not drawn at all -- it is copied as text instead. */
@@ -1303,12 +1326,7 @@ export class AnnotationLayer {
     group.setAttribute('data-item', String(item.id));
     group.setAttribute('class', 'step');
     const arrow = stepArrow(item);
-    if (arrow) {
-      const path = document.createElementNS(SVG, 'path');
-      path.setAttribute('d', polygonPath(arrowPolygon(arrow)));
-      path.setAttribute('fill', item.color);
-      group.append(path);
-    }
+    if (arrow) group.append(this.arrowNode(arrow));
     group.append(this.badgeNode(item, number));
     return group;
   }

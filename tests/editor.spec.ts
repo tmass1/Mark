@@ -1418,3 +1418,44 @@ test('the step tool’s pointer carries the badge, its colour and the number com
   expect(await cursor()).toContain('>3</text>');
   await expect(page.locator('.badge text')).toHaveText(['1', '2']);
 });
+
+test('a step points with whichever arrow the picker holds, and the picker follows the one selected', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Step');
+  const styles = page.locator('.styles');
+  await expect(styles).toBeVisible();                        // the step points, so the picker is its business
+
+  const at = await stage(page);
+  const draw = async (style: string, y: number) => {
+    await page.locator(`.style[data-style="${style}"]`).click();
+    const a = at(200, y), b = at(700, y - 90);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 8 });
+    await page.mouse.up();
+    await page.keyboard.press('Escape');
+  };
+  await draw('taper', 180);
+  await draw('straight', 380);
+  await draw('line', 580);
+  await expect(page.locator('.step path')).toHaveCount(3);
+
+  // Three styles, three different arrows; the thin one is stroked, not filled.
+  const paths = await page.locator('.step path').evaluateAll(nodes =>
+    nodes.map(n => ({ d: n.getAttribute('d'), fill: n.getAttribute('fill') })));
+  expect(new Set(paths.map(p => p.d)).size).toBe(3);
+  expect(paths[0].fill).not.toBe('none');
+  expect(paths[2].fill).toBe('none');
+
+  // Selecting one adopts its style, so the picker always describes the next edit.
+  const second = at(200, 380);
+  await page.mouse.click(second.x, second.y);
+  await expect(page.locator('.chosen')).toHaveText('Step selected');
+  await expect(page.locator('.style[data-style="straight"]')).toHaveAttribute('aria-checked', 'true');
+
+  // And restyling the selection restyles the step's arrow.
+  const before = await page.locator('.step path').nth(1).getAttribute('d');
+  await page.locator('.style[data-style="line"]').click();
+  await expect(page.locator('.step path').nth(1)).toHaveAttribute('fill', 'none');
+  expect(await page.locator('.step path').nth(1).getAttribute('d')).not.toBe(before);
+});

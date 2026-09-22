@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
-  ARROW_STYLES, COLORS, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
+  ARROW_STYLES, COLORS, arrowPaint, arrowStrokeWidth, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
   noteAt, offsetBy, penPath, polygonPath, stepArrow, stepList, stepNumbers, stepRadius, styleOf, textSize, thin,
   type Arrow, type Note, type Point, type Shape, type Step,
 } from './annotations';
@@ -350,6 +350,18 @@ describe('numbered steps', () => {
     // The tail sits outside the disc, so the badge stays a disc.
     expect(arrowOf.x1).toBeGreaterThan(100 + stepRadius(10));
     expect(arrowPolygon(arrowOf)[3]).toEqual([300, 100]);
+  });
+
+  it('points with whichever arrow style it was given, stroked or filled', () => {
+    // The step's arrow used to be hardcoded solid, so a thin one came out filled.
+    expect(arrowPaint(stepArrow(step({ to: [300, 100], style: 'line' }))!).stroked).toBe(true);
+    for (const style of ['taper', 'straight'] as const) {
+      expect(arrowPaint(stepArrow(step({ to: [300, 100], style }))!).stroked).toBe(false);
+    }
+    const { ctx, calls } = recorder();
+    drawAnnotations(ctx, [step({ to: [300, 100], style: 'line' })]);
+    expect(calls).toContain('stroke!');
+    expect(calls).toContain(`width:${arrowStrokeWidth(10 * 0.72)}`);
   });
 
   it('draws no arrow for a badge that was clicked, or dragged barely at all', () => {
