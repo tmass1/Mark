@@ -103,9 +103,12 @@ notarization; an Apple Development certificate is only good for this Mac.
 
      The rail is slots rather than tools: a slot holds one tool, or a few that
      are the same tool done differently, and wears whichever was last chosen
-     from it. A corner marker says a slot has more than one; press and hold it,
-     right-click it, or press the right arrow with it focused, and the slot's
-     menu opens beside the rail.
+     from it. A corner marker says a slot has more than one; rest on it and the
+     slot's menu opens beside the rail, after long enough that running the
+     pointer down to the crop opens nothing. Right-click does it at once, and so
+     does the right arrow with the slot focused, since resting is no use without
+     a pointer. A slot with a menu has no tooltip: the menu names every way it
+     has, including the one it is wearing.
 
      The arrow's other way is **Numbered arrow**: it carries a numbered badge at
      its tail, and a click drops the number on its own — so a screenshot can be

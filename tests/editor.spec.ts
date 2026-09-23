@@ -1784,35 +1784,43 @@ test('a rail slot holds the ways of drawing one thing, and wears the one chosen'
   await expect(page.locator('.badge text')).toHaveText(['1', '2', '3', '4']);
 });
 
-test('a slot menu opens by holding, and by the keyboard, and closes again', async ({ page }) => {
+test('a slot menu opens by resting on it, and gets out of the way again', async ({ page }) => {
   await page.goto('/');
   const arrow = page.locator('.tool[data-slot="0"]');
   const menu = page.locator('.tool-menu');
+  const tip = page.locator('.tip');
 
-  // Press and hold, as a tool group has always been opened.
-  const box = (await arrow.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
+  // Resting opens it, but not at once: running the pointer down the rail to
+  // reach the crop should not spray menus.
+  await arrow.hover();
+  await page.waitForTimeout(150);
+  await expect(menu).toBeHidden();
   await expect(menu).toBeVisible({ timeout: 2000 });
-  await page.mouse.up();
-  await expect(menu).toBeVisible();                            // the hold's release does not pick
+  // And no tooltip with it: the menu names every way including the one worn.
+  await expect(tip).toBeHidden();
 
-  // Escape closes it and gives the slot back the focus.
+  // The gap between the rail and the menu is bridged, so crossing it holds.
+  const box = (await menu.boundingBox())!;
+  await page.mouse.move(box.x + 40, box.y + 30);
+  await page.waitForTimeout(300);
+  await expect(menu).toBeVisible();
+
+  // Away from both and it goes.
+  await page.mouse.move(600, 400);
+  await expect(menu).toBeHidden();
+
+  // The keyboard opens it too, since resting is no use without a pointer.
+  await arrow.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('button').first()).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   await expect(arrow).toBeFocused();
 
-  // The keyboard opens it too, since the corner marker is no target of its own.
-  await page.keyboard.press('ArrowRight');
-  await expect(menu).toBeVisible();
-  await expect(menu.locator('button').first()).toBeFocused();
-
-  // Pressing anything else puts it away.
-  await page.mouse.click(box.x + 400, box.y + 200);
-  await expect(menu).toBeHidden();
-
-  // A slot with only one way of drawing has no menu and no marker.
+  // A slot with one way has no menu, no marker, and keeps its tooltip.
   await expect(page.locator('.tool[data-slot="1"] .tool-more')).toHaveCount(0);
-  await page.locator('.tool[data-slot="1"]').click({ button: 'right' });
+  await page.locator('.tool[data-slot="1"]').hover();
+  await expect(tip).toHaveText('Line');
   await expect(menu).toBeHidden();
 });

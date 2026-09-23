@@ -159,8 +159,10 @@ const SLOTS: Choice[][] = [
 const worn = SLOTS.map(() => 0);
 const slotButton = (slot: Choice[], index: number) => {
   const choice = slot[worn[index]];
+  // No tooltip on a slot with a menu: resting on it opens the menu, which names
+  // every way it has including the one it is wearing.
   return `<button class="tool" type="button" role="radio" data-slot="${index}" aria-checked="${index === 0}"
-        ${slot.length > 1 ? 'aria-haspopup="menu" aria-expanded="false"' : ''} title="${choice.name}">`
+        ${slot.length > 1 ? 'aria-haspopup="menu" aria-expanded="false"' : `title="${choice.name}"`}>`
     + `<svg viewBox="0 0 20 20" aria-hidden="true">${choice.art}</svg>`
     + (slot.length > 1 ? '<span class="tool-more" aria-hidden="true"></span>' : '')
     + `<span class="sr">${choice.name}</span></button>`;
@@ -1010,7 +1012,7 @@ function wear(slot: number, variant: number, andApply = true) {
   const button = rail.querySelector<HTMLButtonElement>(`.tool[data-slot="${slot}"]`)!;
   button.querySelector('svg')!.innerHTML = choice.art;
   button.querySelector('.sr')!.textContent = choice.name;
-  button.dataset.tip = choice.name;
+  if (button.dataset.tip !== undefined) button.dataset.tip = choice.name;
   layer.tool = choice.id;
   if (layer.style.numbered !== !!choice.numbered) {
     layer.style.numbered = !!choice.numbered;
@@ -1054,16 +1056,31 @@ function openToolMenu(button: HTMLButtonElement) {
   toolMenu.querySelector('button')?.focus();
 }
 
-let holding: number | undefined;
-on(rail, 'pointerdown', event => {
-  const button = (event.target as Element).closest<HTMLButtonElement>('.tool');
-  if (!button) return;
-  window.clearTimeout(holding);
-  holding = window.setTimeout(() => openToolMenu(button), 420);
-});
-for (const end of ['pointerup', 'pointerleave', 'pointercancel'] as const) {
-  rail.addEventListener(end, () => window.clearTimeout(holding));
+/** Resting on a slot opens it. Long enough not to spray menus at someone
+ *  running the pointer down the rail to reach the crop; short once one is open,
+ *  since by then the menus are what is being read. */
+const SLOT_WAIT = 380, SLOT_WAIT_WARM = 90, SLOT_LINGER = 180;
+let slotTimer: number | undefined;
+function wantToolMenu(button: HTMLButtonElement | null) {
+  window.clearTimeout(slotTimer);
+  if (!button || button === menuFor) return;
+  if (!button.hasAttribute('aria-haspopup')) { if (menuFor) slotTimer = window.setTimeout(closeToolMenu, SLOT_LINGER); return; }
+  slotTimer = window.setTimeout(() => openToolMenu(button), menuFor ? SLOT_WAIT_WARM : SLOT_WAIT);
 }
+/** Leaving does not close at once: the menu sits a few pixels off the rail, and
+ *  the pointer is over neither while it crosses. */
+function letToolMenuGo() {
+  window.clearTimeout(slotTimer);
+  slotTimer = window.setTimeout(closeToolMenu, SLOT_LINGER);
+}
+on(rail, 'pointerover', event => {
+  if ((event as PointerEvent).pointerType === 'touch') return;
+  wantToolMenu((event.target as Element).closest<HTMLButtonElement>('.tool'));
+});
+rail.addEventListener('pointerleave', letToolMenuGo);
+toolMenu.addEventListener('pointerenter', () => window.clearTimeout(slotTimer));
+toolMenu.addEventListener('pointerleave', letToolMenuGo);
+
 rail.addEventListener('contextmenu', event => {
   const button = (event.target as Element).closest<HTMLButtonElement>('.tool');
   if (!button || Number.isNaN(Number(button.dataset.slot))) return;
@@ -1080,9 +1097,9 @@ document.addEventListener('pointerdown', event => {
 
 on(rail, 'click', event => {
   const button = (event.target as Element).closest<HTMLButtonElement>('.tool');
-  if (!button || holding === undefined) return;
-  window.clearTimeout(holding);
-  if (menuFor) return;                      // the hold already opened it
+  if (!button) return;
+  // Clicking takes the slot as it stands; its menu, open or not, is for
+  // changing which way that is.
   wear(Number(button.dataset.slot), worn[Number(button.dataset.slot)]);
   layer.deselect();
 });
