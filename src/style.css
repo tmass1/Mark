@@ -252,9 +252,12 @@ footer > * { flex: none; }
 .subtle:hover, .settings:hover { background: var(--sunken); color: var(--ink); }
 
 /* A tool pane is a column of plain buttons; the lens beneath does the lifting. */
-.tool-group { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px; border-radius: 22px; }
-.tool { position: relative; z-index: 1; border: none; border-radius: 999px; padding: 7px; background: transparent; color: var(--muted); transition: color .15s; }
-.tool svg { display: block; width: 18px; height: 18px; }
+/* 36px buttons in a 44px rail: the padding gives back what the button takes, so
+   the rail's width is unchanged and only its height grows. The group's radius
+   less its padding is the button's, which is what keeps the two concentric. */
+.tool-group { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px; border-radius: 22px; }
+.tool { position: relative; z-index: 1; border: none; border-radius: 999px; padding: 8px; background: transparent; color: var(--muted); transition: color .15s; }
+.tool svg { display: block; width: 20px; height: 20px; }
 .tool:hover, .tool.active { color: var(--ink); }
 
 /* The capture control stands alone on the ground, so it is a small pane of its own. */
@@ -413,6 +416,21 @@ footer > * { flex: none; }
 .steps-toggle .steps-count { color: var(--muted); }
 .steps-toggle svg { display: block; width: 16px; height: 16px; }
 .steps-toggle.active { background: var(--control-hover); }
+
+/* Mark's own tooltip: the same glass the menus are made of, arriving from the
+   side it is anchored to. Quick, because a tooltip that is slow to go is worse
+   than none -- it sits over the next thing you reached for. */
+.tip {
+  position: absolute; z-index: 60; pointer-events: none; max-width: 230px;
+  padding: 5px 9px; border-radius: 9px; background: var(--glass); color: var(--ink);
+  font-size: 11.5px; line-height: 1.4; text-align: center;
+  -webkit-backdrop-filter: blur(20px) saturate(170%); backdrop-filter: blur(20px) saturate(170%);
+  box-shadow: 0 8px 22px var(--shadow), 0 0 0 .5px var(--control-line);
+  opacity: 0; transform: scale(.94); transform-origin: var(--tip-from, 50% 0);
+  transition: opacity .11s ease, transform .11s cubic-bezier(.22, 1, .36, 1);
+}
+.tip.on { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .tip { transition: opacity .11s ease; transform: none; } }
 
 .crop-bar {
   position: absolute; left: 50%; bottom: 82px; transform: translateX(-50%); z-index: 5;

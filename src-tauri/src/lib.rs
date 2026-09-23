@@ -34,7 +34,7 @@ const RAIL: f64 = 44.0;
 const SIDES: f64 = 12.0 + 10.0 + 12.0;
 /// The rail's two panes, in points: ten tools less crop, then crop alone.
 const RAIL_TOP: f64 = 46.0 + 48.0 + 10.0;
-const TOOLS_HEIGHT: f64 = 6.0 + 9.0 * 32.0 + 8.0 * 2.0 + 6.0;
+const TOOLS_HEIGHT: f64 = 4.0 + 9.0 * 36.0 + 8.0 * 2.0 + 4.0;
 const CROP_TOP: f64 = RAIL_TOP + TOOLS_HEIGHT + 8.0;
 /// The least canvas height at which all ten tools on the rail are on screen,
 /// with a little air under the crop pane. The window never goes shorter: a tool

@@ -352,6 +352,9 @@ const ZOOMS = [0.25, 0.5, 1, 2, 4];
 function pixelRatio(at: number): number { return at / (capture?.scale || 1); }
 const crops: { capture: CapturePreview; dx: number; dy: number; depth: number }[] = [];
 
+// Before anything is hovered: every title in the markup becomes one of Mark's.
+adoptTitles();
+
 const layer = new AnnotationLayer(overlay, stage, () => syncTools());
 layer.onNumbered = id => offerNote(id);
 // Redaction samples the capture, so the layer needs the decoded image, and any
@@ -381,6 +384,102 @@ function showMessage(text: string | null) {
  *  been: the first placement after the group appears is a snap, because a
  *  group that is not rendered reports every offset as zero, and a transition
  *  from there would be a slide in from the corner. */
+// ---- tooltips ---------------------------------------------------------------
+/** Mark's own, because the system's cannot be styled and do not appear on any
+ *  schedule worth having: a long wait for the first, none at all for the rest,
+ *  and a box that belongs to no app in particular.
+ *
+ *  Every title inside the editor becomes one of these. A title is also what the
+ *  browser would show, so it has to go: the two would appear together. */
+const tip = Object.assign(document.createElement('div'), { className: 'tip' });
+tip.setAttribute('role', 'tooltip');
+tip.hidden = true;
+app.append(tip);
+
+/** Long enough not to interrupt someone who knows where they are going. */
+const TIP_WAIT = 420;
+/** Once one has been shown, the next is all but immediate: hesitating again
+ *  between neighbouring buttons is the thing that makes tooltips feel slow. */
+const TIP_WAIT_WARM = 60;
+/** How long after one hides that still counts as warm. */
+const TIP_WARMTH = 500;
+let tipTimer: number | undefined, tipWarmUntil = 0, tipFor: Element | null = null;
+
+function adoptTitles(within: ParentNode = app) {
+  for (const el of within.querySelectorAll<HTMLElement>('[title]')) {
+    el.dataset.tip = el.title;
+    el.removeAttribute('title');
+  }
+}
+
+function placeTip(target: Element) {
+  const frame = app.getBoundingClientRect(), at = target.getBoundingClientRect();
+  const box = tip.getBoundingClientRect();
+  const gap = 8, margin = 6;
+  // Beside anything in the rail, where there is no room above or below; under
+  // everything else, and over it when that would fall off the bottom.
+  const beside = at.left - frame.left < 70;
+  let left: number, top: number;
+  if (beside) {
+    left = at.right - frame.left + gap;
+    top = at.top - frame.top + (at.height - box.height) / 2;
+    tip.style.setProperty('--tip-from', '0 50%');
+  } else {
+    left = at.left - frame.left + (at.width - box.width) / 2;
+    const under = at.bottom - frame.top + gap;
+    const over = at.top - frame.top - box.height - gap;
+    top = under + box.height + margin <= frame.height || over < margin ? under : over;
+    tip.style.setProperty('--tip-from', top > at.top - frame.top ? '50% 0' : '50% 100%');
+  }
+  tip.style.left = `${Math.min(Math.max(left, margin), Math.max(margin, frame.width - box.width - margin))}px`;
+  tip.style.top = `${Math.min(Math.max(top, margin), Math.max(margin, frame.height - box.height - margin))}px`;
+}
+
+function showTip(target: HTMLElement) {
+  tipFor = target;
+  tip.textContent = target.dataset.tip ?? '';
+  tip.hidden = false;
+  tip.classList.remove('on');
+  placeTip(target);
+  void tip.offsetWidth;
+  tip.classList.add('on');
+}
+
+function hideTip() {
+  window.clearTimeout(tipTimer);
+  tipTimer = undefined;
+  if (!tipFor) return;
+  tipFor = null;
+  tipWarmUntil = performance.now() + TIP_WARMTH;
+  tip.classList.remove('on');
+  // Out of the way once it has faded, so it cannot be measured or hovered.
+  window.setTimeout(() => { if (!tipFor) tip.hidden = true; }, 140);
+}
+
+function wantTip(target: HTMLElement | null, now = false) {
+  if (!target || target === tipFor) return;
+  window.clearTimeout(tipTimer);
+  const wait = now ? 0 : performance.now() < tipWarmUntil || tipFor ? TIP_WAIT_WARM : TIP_WAIT;
+  const showing = !!tipFor;
+  tipTimer = window.setTimeout(() => showTip(target), wait);
+  // Swapping between neighbours should not leave the old one sitting there.
+  if (showing) { tipFor = null; tip.classList.remove('on'); }
+}
+
+app.addEventListener('pointerover', event => {
+  if ((event as PointerEvent).pointerType === 'touch') return;
+  const found = (event.target as Element).closest<HTMLElement>('[data-tip]');
+  if (found) wantTip(found); else hideTip();
+});
+app.addEventListener('pointerleave', hideTip);
+app.addEventListener('pointerdown', hideTip, true);
+app.addEventListener('focusin', event => {
+  const found = (event.target as Element).closest<HTMLElement>('[data-tip]');
+  if (found?.matches(':focus-visible')) wantTip(found, true);
+});
+app.addEventListener('focusout', hideTip);
+window.addEventListener('blur', hideTip);
+
 function placeLens(group: HTMLElement) {
   let lens = group.querySelector<HTMLElement>(':scope > .lens');
   if (!lens) { lens = document.createElement('span'); lens.className = 'lens'; group.prepend(lens); }

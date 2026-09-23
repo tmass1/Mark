@@ -190,6 +190,14 @@ notarization; an Apple Development certificate is only good for this Mac.
    pressing one selects it rather than drawing over it. Cropping is the
    exception, where a press really does start a crop.
 
+   Tooltips are Mark's own rather than the system's, which cannot be styled and
+   appear on no schedule worth having — a long wait for the first and none at
+   all for the rest. These wait about four tenths of a second, and once one is
+   up the next is all but immediate, since hesitating again between neighbouring
+   buttons is what makes tooltips feel slow. They sit beside a rail tool, where
+   there is no room above or below, and under everything else unless that would
+   fall off the bottom.
+
    Color and size come from the toolbar and drive every tool. Selecting an
    annotation adopts its style, so the toolbar always describes the next edit.
    ⌘Z undoes, ⌫ deletes the selection, and Escape backs out one level: first

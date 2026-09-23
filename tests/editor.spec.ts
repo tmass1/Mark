@@ -1573,3 +1573,70 @@ test('anything already drawn says it can be taken hold of', async ({ page }) => 
     expect(await cursorOf(kind), kind).toBe('crosshair');
   }
 });
+
+test('Mark’s own tooltips: none of the system’s, quick once one is up, and placed to suit', async ({ page }) => {
+  await page.goto('/');
+  // A title would be the browser's tooltip as well, so there are none left.
+  expect(await page.locator('#app [title]').count()).toBe(0);
+  expect(await page.locator('#app [data-tip]').count()).toBeGreaterThan(20);
+
+  const tip = page.locator('.tip');
+  await expect(tip).toBeHidden();
+
+  // The first waits; a tooltip that appears the instant you cross a button is
+  // a tooltip in the way.
+  await page.getByRole('radio', { name: 'Crop', exact: true }).hover();
+  await page.waitForTimeout(120);
+  await expect(tip).toBeHidden();
+  await expect(tip).toHaveText('Crop');
+  await expect(tip).toHaveClass(/\bon\b/);
+
+  // Beside a rail tool, where there is no room above or below.
+  const rail = (await page.getByRole('radio', { name: 'Crop', exact: true }).boundingBox())!;
+  const beside = (await tip.boundingBox())!;
+  expect(beside.x).toBeGreaterThanOrEqual(rail.x + rail.width);
+  expect(Math.abs((beside.y + beside.height / 2) - (rail.y + rail.height / 2))).toBeLessThan(3);
+
+  // The next is all but immediate: hesitating again between neighbours is what
+  // makes tooltips feel slow.
+  await page.getByRole('radio', { name: 'Text', exact: true }).hover();
+  await page.waitForTimeout(150);
+  await expect(tip).toHaveText('Text');
+
+  // Under a toolbar button, and flipped above one near the foot.
+  await page.locator('.undo').hover();
+  await expect(tip).toHaveText('Undo (⌘Z)');
+  const undo = (await page.locator('.undo').boundingBox())!;
+  expect((await tip.boundingBox())!.y).toBeGreaterThan(undo.y + undo.height - 1);
+  await page.locator('.copy-only').hover();
+  await expect(tip).toHaveText('Copy the image and keep working');
+  const copy = (await page.locator('.copy-only').boundingBox())!;
+  const above = (await tip.boundingBox())!;
+  expect(above.y + above.height).toBeLessThanOrEqual(copy.y + 2);
+
+  // Away from anything, it goes.
+  await page.mouse.move(600, 400);
+  await expect(tip).toBeHidden();
+});
+
+test('the rail’s tools are 36 across in a 44 rail, and all ten still fit the smallest window', async ({ page }) => {
+  await page.setViewportSize({ width: 380, height: 580 });
+  await page.goto('/');
+  const sizes = await page.evaluate(() => {
+    const tool = document.querySelector<HTMLElement>('.tool')!;
+    const group = document.querySelector<HTMLElement>('.tool-group')!;
+    const rail = document.querySelector<HTMLElement>('.rail')!;
+    const railBox = rail.getBoundingClientRect();
+    const inside = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return r.top >= railBox.top - 1 && r.bottom <= railBox.bottom + 1;
+    };
+    return {
+      button: tool.offsetWidth, glyph: tool.querySelector('svg')!.getBoundingClientRect().width,
+      group: group.offsetWidth, rail: rail.offsetWidth,
+      shown: [...document.querySelectorAll('.tool')].filter(inside).length,
+      overflowY: document.documentElement.scrollHeight - innerHeight,
+    };
+  });
+  expect(sizes).toMatchObject({ button: 36, glyph: 20, group: 44, rail: 44, shown: 10, overflowY: 0 });
+});
