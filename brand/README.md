@@ -10,15 +10,15 @@ from it by `scripts/build-icon.mjs`:
 
 - the app icon at every size and the `.icns`, cut to Apple's continuous-corner
   squircle on the system's 824-of-1024 grid, so macOS's own margin is kept;
-- `../public/site/mark.png`, the same shape filling its square, which the site
-  shows in its bar, its footer, beside the download and as its favicon.
+- `../public/brand/mark.png`, the same shape filling its square, which the
+  editor's empty state shows on launch and the site shows in its bar, its
+  footer, beside the download and as its favicon.
 
-Two places need a shape rather than a picture, and come from `mark-dark.svg`,
+One place needs a shape rather than a picture, and comes from `mark-dark.svg`,
 the vector drawing of the same arrow: the menu bar glyph, which has to be flat
-alpha for macOS to tint it for light, dark and highlighted bars, and
-`../src/mark.ts`, the arrow's and the corners' paths, which the editor's empty
-state draws in the brand red. `mark-light.svg` is the porcelain version, for
-light contexts; nothing derives from it yet.
+alpha for macOS to tint it for light, dark and highlighted bars.
+`mark-light.svg` is the porcelain version, for light contexts; nothing derives
+from it yet.
 
 Replace the artwork, run the script, and everything follows. `mark.png` is
 currently 400 x 400, which the largest icon sizes are interpolated up from -- a

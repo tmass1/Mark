@@ -487,7 +487,7 @@ footer > * { flex: none; }
   background: var(--sheen), var(--panel);
   box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 18px 40px -18px var(--shadow);
 }
-.viewfinder { width: 72px; height: 72px; margin-bottom: -4px; color: var(--muted); }
+.viewfinder { width: 72px; height: 72px; margin-bottom: -4px; filter: drop-shadow(0 8px 16px #00000038); }
 h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35px; }
 .empty-hint { margin: 0 0 26px; color: var(--muted); line-height: 1.5; }
 .start { padding: 9px 18px; font-size: 13px; }

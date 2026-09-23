@@ -1,8 +1,6 @@
 import './style.css';
 import { command, isTauri, watchCapture, watchSettings, type CapturePreview, type Snapshot } from './platform';
 import { DEFAULT_SHORTCUT, prettyShortcut } from './shortcut';
-// The icon's own arrow and corners, so what greets you on launch is what sits in the Dock.
-import { MARK_ARROW, MARK_CORNERS } from './mark';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
@@ -219,10 +217,10 @@ app.innerHTML = `
       <svg class="overlay" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Arrow annotations"></svg>
     </div>
     <section class="empty" hidden>
-      <svg class="viewfinder" viewBox="0 0 1024 1024" aria-hidden="true">
-        <path d="${MARK_CORNERS}" fill="none" stroke="currentColor" stroke-width="50" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/>
-        <path d="${MARK_ARROW}" fill="var(--brand)"/>
-      </svg>
+      <!-- The icon itself, so what greets you on launch is exactly what sits in
+           the Dock. It used to be redrawn from paths, which is how the two came
+           to be different pictures. -->
+      <img class="viewfinder" src="./brand/mark.png" alt="" width="72" height="72" />
       <h1>Capture a region</h1><p class="empty-hint">A little less between seeing and sharing.</p>
       <button class="start primary" type="button">Capture Region <kbd>${prettyShortcut(DEFAULT_SHORTCUT)}</kbd></button>
       <section class="recents" hidden aria-label="Recent captures">
