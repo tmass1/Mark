@@ -39,7 +39,7 @@
   --control-line: #00000018;
   --sunken: #0000000d;
   --glass: #fbfbfdf2;         /* menus and popovers */
-  --sheet: #fbfbfdd6;         /* the steps panel: over the capture, so more of it shows through */
+  --sheet: #fbfbfdb0;         /* the steps panel: over the capture, so much of it shows through */
   --blue: #007aff;
   --hover: #0069dc;
   --shadow: #0000002e;
@@ -69,7 +69,7 @@
     --control-line: #f3f3f340; /* Fritter's control border, 25% */
     --sunken: #0000004a;
     --glass: #222832f2;       /* menus and popovers: Fritter's surface */
-    --sheet: #222832d6;       /* the steps panel, over the capture */
+    --sheet: #222832b0;       /* the steps panel, over the capture */
     --blue: #0a84ff;
     --hover: #359aff;
     --shadow: #00000080;
@@ -102,7 +102,7 @@
     --control-line: #f3f3f340; /* Fritter's control border, 25% */
     --sunken: #0000004a;
     --glass: #222832f2;       /* menus and popovers: Fritter's surface */
-    --sheet: #222832d6;       /* the steps panel, over the capture */
+    --sheet: #222832b0;       /* the steps panel, over the capture */
     --blue: #0a84ff;
     --hover: #359aff;
     --shadow: #00000080;
