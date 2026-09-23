@@ -4,7 +4,7 @@ import { DEFAULT_SHORTCUT, prettyShortcut } from './shortcut';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
-         FONT, arrowPaint, badgeAt, describe, drawAnnotations, fillOf, fillable, inkOn, numbered, polygonPath,
+         FONT, arrowPaint, badgeAt, describe, drawAnnotations, fillOf, fillable, inkOn, isShape, numbered, polygonPath,
          stepArrow, stepList, strokePath, styleOf, textSize,
          type Annotation, type ArrowStyle, type Point, type ShapeFill, type Tool } from './annotations';
 
@@ -44,9 +44,9 @@ function fillPreview(fill: ShapeFill): string {
  *  Everything gets a white understroke: a cursor passes over whatever the
  *  screenshot happens to be, and a white arrow on white would otherwise be no
  *  arrow at all. */
-function toolCursor(tool: Tool, style: ArrowStyle, color: string, next: number): string {
+function toolCursor(tool: Tool, numbering: boolean, style: ArrowStyle, color: string, next: number): string {
   let glyph: (halo: boolean) => string;
-  if (tool === 'arrow') {
+  if (tool === 'arrow' && !numbering) {
     const sample = { kind: 'arrow', id: 0, x1: 16, y1: 30, x2: 29.5, y2: 16.5, color: '', weight: 3.6, style } as const;
     glyph = style === 'line'
       ? halo => `<path d="${strokePath(arrowStrokes(sample))}" fill="none"
@@ -54,7 +54,7 @@ function toolCursor(tool: Tool, style: ArrowStyle, color: string, next: number):
           stroke-linecap="round" stroke-linejoin="round"/>`
       : halo => `<path d="${polygonPath(arrowPolygon(sample))}" fill="${halo ? '#fff' : color}"
           ${halo ? 'stroke="#fff" stroke-width="2.2" stroke-linejoin="round"' : ''}/>`;
-  } else if (tool === 'step') {
+  } else if (tool === 'arrow') {
     // The badge with its arrow leaving it, which is what a drag makes: the
     // number and the arrow style are both what the pointer is being asked
     // about. Built from stepArrow, so the tail clears the disc here for the
@@ -120,16 +120,6 @@ const TOOLS: { id: Tool; name: string; art: string }[] = [
   { id: 'pen', name: 'Pen', art:
     `<path d="M4.2 13.8c1.9-4.6 3.2 2.3 5.1-1.1s2.9 3 4.4-1.2 1.4 2 2.1.9" ${STROKE}/>` },
   { id: 'text', name: 'Text', art: `<path d="M5 6h10M10 6v8.5M7.8 14.5h4.4" ${STROKE}/>` },
-  // A filled badge with the numeral knocked out of it, which is what the tool
-  // draws. An outlined circle with a hairline 1 in it reads as a plain circle at
-  // this size, two icons above the ellipse that really is one.
-  { id: 'step', name: 'Step', art:
-    `<mask id="step-glyph">`
-    + `<circle cx="10" cy="10" r="7.2" fill="#fff"/>`
-    + `<path d="M8.4 8.4 10.4 6.8v6.4M8.6 13.2h3.6" fill="none" stroke="#000"`
-    + ` stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>`
-    + `</mask>`
-    + `<circle cx="10" cy="10" r="7.2" fill="currentColor" mask="url(#step-glyph)"/>` },
   { id: 'box', name: 'Box', art: `<rect x="4.6" y="5.8" width="10.8" height="8.4" rx="1.4" ${STROKE}/>` },
   { id: 'ellipse', name: 'Ellipse', art: `<ellipse cx="10" cy="10" rx="5.6" ry="4.4" ${STROKE}/>` },
   { id: 'highlight', name: 'Highlighter', art:
@@ -180,7 +170,7 @@ app.innerHTML = `
         aria-hidden="true">${fillPreview(fill)}</svg><span class="sr">${FILL_NAMES[fill]}</span></button>`).join('')}
     </div>
     <button class="numbering style" type="button" role="switch" aria-checked="false" hidden
-      title="Number the shapes you draw, so you can say &quot;1. do this, 2. do that&quot;">
+      title="Number what you draw — an arrow, a box or a circle — so you can say &quot;1. do this, 2. do that&quot;. With it on, a click leaves the number on its own.">
       <svg viewBox="0 0 20 20" aria-hidden="true">
         <mask id="numbering-glyph"><circle cx="10" cy="10" r="7.2" fill="#fff"/><path d="M8.4 8.4 10.4 6.8v6.4M8.6 13.2h3.6" fill="none" stroke="#000" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></mask>
         <circle cx="10" cy="10" r="7.2" fill="currentColor" mask="url(#numbering-glyph)"/>
@@ -762,8 +752,7 @@ function syncTools() {
   // Only worth showing when it would change something. A step points with an
   // arrow of its own, so the picker is its business too.
   const arrows = picked.filter(item => item.kind === 'arrow' || item.kind === 'step');
-  const pointing = layer.tool === 'arrow' || layer.tool === 'step';
-  styles.hidden = !pointing && arrows.length === 0;
+  styles.hidden = layer.tool !== 'arrow' && arrows.length === 0;
   if (arrows.length) layer.style.arrow = styleOf(arrows[arrows.length - 1]);
   for (const button of app.querySelectorAll<HTMLButtonElement>('.style[data-style]')) {
     const active = button.dataset.style === layer.style.arrow;
@@ -773,10 +762,14 @@ function syncTools() {
   const shapes = picked.filter(fillable);
   const shaping = layer.tool === 'box' || layer.tool === 'ellipse';
   fills.hidden = !shaping && shapes.length === 0;
-  numbering.hidden = fills.hidden;
-  if (shapes.length) {
-    layer.style.fill = fillOf(shapes[shapes.length - 1]);
-    layer.style.numbered = shapes[shapes.length - 1].numbered === true;
+  // Numbering belongs to everything it can apply to: the arrow, the box and the
+  // ellipse. It is a property of a mark rather than a tool of its own.
+  const numberable = picked.filter(item => fillable(item) || item.kind === 'arrow' || item.kind === 'step');
+  numbering.hidden = !shaping && layer.tool !== 'arrow' && numberable.length === 0;
+  if (shapes.length) layer.style.fill = fillOf(shapes[shapes.length - 1]);
+  if (numberable.length) {
+    const last = numberable[numberable.length - 1];
+    layer.style.numbered = last.kind === 'step' || (isShape(last) && last.numbered === true);
   }
   numbering.setAttribute('aria-checked', String(layer.style.numbered));
   numbering.classList.toggle('active', layer.style.numbered);
@@ -809,11 +802,12 @@ function syncTools() {
   // Rebuilt only when it would differ: this runs on every change to the drawing,
   // and the step's number changes with every mark.
   const next = numbered(layer.annotations).length + 1;
-  const wantsCursor = layer.tool === 'arrow' ? `arrow|${layer.style.arrow}|${layer.style.color}`
-    : layer.tool === 'step' ? `step|${next}|${layer.style.arrow}|${layer.style.color}` : '';
+  const wantsCursor = layer.tool !== 'arrow' ? ''
+    : `${layer.style.numbered ? `step|${next}` : 'arrow'}|${layer.style.arrow}|${layer.style.color}`;
   if (overlay.dataset.cursor !== wantsCursor) {
     overlay.dataset.cursor = wantsCursor;
-    overlay.style.cursor = wantsCursor ? toolCursor(layer.tool, layer.style.arrow, layer.style.color, next) : '';
+    overlay.style.cursor = wantsCursor
+      ? toolCursor(layer.tool, layer.style.numbered, layer.style.arrow, layer.style.color, next) : '';
   }
   overlay.classList.toggle('text-tool', layer.tool === 'text');
   overlay.classList.toggle('draw-tool', layer.tool !== 'arrow' && layer.tool !== 'text' && layer.tool !== 'pen');
@@ -1005,9 +999,9 @@ on(weight, 'input', () => { layer.style.scale = Number(weight.value); layer.appl
 on(numbering, 'click', () => {
   layer.style.numbered = !layer.style.numbered;
   layer.applyStyle();
-  // Turning it on with a circle already selected numbers that circle, which is
-  // the point; the panel then offers somewhere to say what it is for.
-  const picked = layer.selection.filter(fillable);
+  // Turning it on with a mark already selected numbers that mark, which is the
+  // point; the panel then offers somewhere to say what it is for.
+  const picked = layer.selection;
   if (layer.style.numbered && picked.length) offerNote(picked[picked.length - 1].id);
 });
 on(undoButton, 'click', () => { stepBack(); });

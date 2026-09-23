@@ -3,8 +3,8 @@
 Mark is a fast, small macOS screenshot utility built with Tauri v2. Press a
 global shortcut, drag across a region, mark it up, then copy and close.
 
-Annotation is arrows, lines, freehand, text, numbered steps, boxes, ellipses,
-a highlighter, redaction, and a crop. Finished work goes to the clipboard, to a file, or to macOS's share
+Annotation is arrows, lines, freehand, text, boxes, ellipses, a highlighter,
+redaction, and a crop, any of which can carry a number. Finished work goes to the clipboard, to a file, or to macOS's share
 sheet. There are no accounts, cloud features, or screen recording. The UI uses
 the system WKWebView; the native shell is Rust. There is no Xcode project and
 no Swift source.
@@ -100,6 +100,55 @@ notarization; an Apple Development certificate is only good for this Mac.
      small copy of the arrow in the colour in hand, since that is the question
      the toolbar cannot answer while you are looking at the image. The
      crosshair stays, because the tail lands exactly where you press.
+
+     **Number them**, beside those styles, is the other half: with it on, the
+     arrow you draw carries a numbered badge at its tail, and a click drops the
+     number on its own — so a screenshot can be talked about rather than
+     described: "1. do this, 2. do that" instead of "the circle in the middle
+     just below the nav". Numbering is a property of a mark rather than a tool
+     of its own, so the same switch numbers a box or an ellipse, and turning it
+     on or off with something selected changes what that mark is.
+
+     A badge's number is its place in the sequence rather than something written
+     on it, so deleting one closes the gap and the numbers are always 1 to n
+     with nothing missing. The order is the order they were drawn, which makes
+     ⌘[ and ⌘] — already how everything is reordered — the way to renumber a
+     sequence built out of order. The numeral is white, or dark on the paler
+     colours where white would not carry. A badge dropped with a click still
+     offers a grip beside it, so it can be given an arrow afterwards; pulling
+     that head back onto the badge takes the arrow off again.
+
+     Every numbered mark gets a row in a panel over the capture, opened on the
+     one just made, where you type what it means. **Copy list** (⌘⇧L) puts
+     `1. make the nav sticky` and the rest on the clipboard as plain text.
+
+     Left alone the words are not drawn on the image, which is the point: text
+     in a picture has to be read back out of it, while text in a message is
+     read as it stands. So the image carries cheap numerals and the message
+     carries the words, and Mark renumbers the list when a mark is deleted
+     rather than you doing it. The image and the list are two copies because
+     they have to be — one clipboard write cannot be pasted as the picture and
+     then as the words, since the second paste would only repeat the first.
+
+     **Write on the image**, in that panel, draws each note beside its badge in
+     the Text tool's own size and the mark's colour — for a screenshot going to
+     a person rather than a prompt. On or off, what is copied is what is on
+     screen.
+
+     A note field owns the keys that edit text — ⌘A, ⌘C, ⌘V, ⌘X and Escape — so
+     they do not reach the drawing underneath. ⌘Z is the exception: an empty
+     field has no typing to undo, and one Mark focused itself the instant a mark
+     was made is where the reflex to take that mark back arrives, so there it
+     undoes the mark. With something typed in it, it undoes the typing.
+
+     The panel is a popover: pressing anything else puts it away, and **Steps**
+     in the footer, which keeps the count, brings it back. Its title row is the
+     handle — drag it off whatever it is covering, and near a side of the
+     capture it clings to that side; moved by hand it stays where it was put,
+     since the flip between above and below the mark is Mark guessing and a
+     guess should not overrule a decision. The chevron folds it to its title
+     and the × closes it, its sides take hold of its width, and it is
+     translucent, so what it covers still shows through.
    - **Line**: drag. The same two ends as an arrow, without the head, so it
      moves and reshapes the same way.
 
@@ -115,66 +164,10 @@ notarization; an Apple Development certificate is only good for this Mac.
      shape as you make it.
    - **Text**: click, then type. Enter starts a new line and Escape finishes.
      Click a note to move it; click it again to edit it.
-   - **Step**: click to drop the next number in a filled badge — 1, then 2,
-     then 3 — so a screenshot can be talked about rather than described: "1. do
-     this, 2. do that" instead of "the circle in the middle just below the nav".
-     Drag instead of clicking and the badge stays where you pressed with an
-     arrow to where you let go, which is one gesture for a numbered arrow. That
-     arrow is an arrow like any other: the three styles beside the colours
-     apply to it, and selecting a step adopts its style the way selecting an
-     arrow does.
-
-     A badge's number is its place in the sequence rather than something written
-     on it, so deleting one closes the gap and the numbers are always 1 to n
-     with nothing missing. The order is the order they were drawn, which makes
-     ⌘[ and ⌘] — already how everything is reordered — the way to renumber a
-     sequence built out of order. The numeral is white, or dark on the paler
-     colours where white would not carry.
-
-     The pointer is a miniature of what a drag makes: the badge with its arrow
-     leaving it, in the colour and the arrow style in hand, bearing the number
-     coming next — all three answered where you are looking rather than up in
-     the toolbar.
-
-     A badge dropped with a click still offers a grip beside it, so it can be
-     given an arrow afterwards rather than the gesture deciding for good;
-     pulling that head back onto the badge takes the arrow off again.
-
-     Every numbered mark gets a row in a panel over the capture, opened on the
-     one just made, where you type what it means. **Copy list** (⌘⇧L) puts
-     `1. make the nav sticky` and the rest on the clipboard as plain text. The
-     A note field owns the keys that edit text — ⌘A, ⌘C, ⌘V, ⌘X and Escape — so
-     they do not reach the drawing underneath. ⌘Z is the exception: an empty
-     field has no typing to undo, and one Mark focused itself the instant a mark
-     was made is where the reflex to take that mark back arrives, so there it
-     undoes the mark. With something typed in it, it undoes the typing.
-
-     The panel is a popover: pressing anything else puts it away, and **Steps**
-     in the footer, which keeps the count, brings it back. Its title row is the
-     handle — drag it off whatever it is covering, and near a side of the
-     capture it clings to that side; moved by hand it stays where it was put,
-     since the flip between above and below the mark is Mark guessing and a
-     guess should not overrule a decision. The chevron folds it to its title
-     and the × closes it, its sides take hold of its width, and it is
-     translucent, so what it covers still shows through.
-
-     **Write on the image**, in that panel, draws each note beside its badge in
-     the Text tool's own size and the mark's colour — for a screenshot going to
-     a person rather than a prompt. On or off, what is copied is what is on
-     screen.
-
-     Left alone the words are not drawn on the image, which is the point: text
-     in a picture has to be read back out of it, while text in a message is
-     read as it stands. So the image carries cheap numerals and the message carries
-     the words, and Mark renumbers the list when a mark is deleted rather than
-     you doing it. The image and the list are two copies because they have to
-     be — one clipboard write cannot be pasted as the picture and then as the
-     words, since the second paste would only repeat the first.
    - **Box** and **Ellipse**: drag out an outline. Grab the outline to move it,
-     or a corner to resize. **Number them**, beside the fill picker, gives each
-     one a badge at its corner, in the same sequence the Step tool uses — so
-     circling four things numbers them 1 to 4 whether they are circles, badges
-     or numbered arrows.
+     or a corner to resize. **Number them** gives each one a badge at its
+     corner, in the same sequence the arrows use — so circling four things
+     numbers them 1 to 4 whether they are circles, badges or numbered arrows.
    - **Highlighter**: drag a band of translucent ink over what matters.
    - **Crop**: drag out what to keep. Everything else dims, corners adjust the
      region, and Enter or the Crop button trims to it. The drawing comes along,

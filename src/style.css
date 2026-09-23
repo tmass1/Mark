@@ -515,11 +515,15 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
    minimum. Every threshold is measured with the widest state -- an arrow
    selected, so its three-button picker and the label both show -- and the
    clipping test checks each one. */
-@media (max-width: 760px) {
+/* The numbering switch rides with the arrow now, where the style picker
+   already was, so the bar carries one control more than it used to at these
+   widths. The slider gives up the room: it is the one control that works just
+   as well narrow. */
+@media (max-width: 800px) {
   .weight { width: 62px; }
   .toolbar { gap: 10px; }
 }
-@media (max-width: 740px) { .chosen { display: none; } }
+@media (max-width: 770px) { .chosen { display: none; } }
 /* .choose only exists in the browser preview; the app's footer is narrower. */
 @media (max-width: 700px) { .choose { display: none; } }
 @media (max-width: 560px) {
@@ -549,11 +553,24 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 
 /* After .subtle.icon, and as specific: that rule sets display and would
    otherwise win, leaving these buttons visible where the bar cannot hold them. */
-@media (max-width: 640px) { .toolbar .back, .toolbar .front { display: none; } }
+/* Send backward and bring forward go first of the four, since ⌘[ and ⌘] do the
+   same job and the bar now carries the numbering switch as well. */
+@media (max-width: 680px) { .toolbar .back, .toolbar .front { display: none; } }
 @media (max-width: 480px) { .size-word { display: none; } } /* the slider keeps its aria-label */
-/* Undo and Delete go before the numbering switch does: ⌘Z and ⌫ do the same
-   job from the keyboard, and nothing but this switch turns numbering on. */
-@media (max-width: 480px) { .toolbar .undo, .toolbar .remove { display: none; } }
+/* At the narrowest the bar carries eight colours, three arrow styles, the
+   numbering switch and the slider, and they only fit if everything gives a
+   little. Tightening them all beats dropping one: a control that is not there
+   is not reachable at all, while a control two pixels narrower still is. */
+@media (max-width: 440px) {
+  .weight { width: 46px; }
+  .toolbar { gap: 6px; padding: 0 10px; }
+  .swatch { width: 14px; height: 14px; }
+  .swatches { gap: 3px; }
+  .style { padding: 4px 5px; }
+}
+/* Then Undo and Delete, for the same reason: ⌘Z and ⌫ do their job from the
+   keyboard, and nothing but the numbering switch turns numbering on. */
+@media (max-width: 600px) { .toolbar .undo, .toolbar .remove { display: none; } }
 
 /* ---- settings ------------------------------------------------------------- */
 

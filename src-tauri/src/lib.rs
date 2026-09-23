@@ -32,15 +32,15 @@ const CHROME: f64 = 46.0 + 48.0 + 10.0 + 10.0 + 60.0;
 /// margin on the far side.
 const RAIL: f64 = 44.0;
 const SIDES: f64 = 12.0 + 10.0 + 12.0;
-/// The rail's two panes, in points: ten tools less crop, then crop alone.
+/// The rail's two panes, in points: nine tools less crop, then crop alone.
 const RAIL_TOP: f64 = 46.0 + 48.0 + 10.0;
-const TOOLS_HEIGHT: f64 = 4.0 + 9.0 * 36.0 + 8.0 * 2.0 + 4.0;
+const TOOLS_HEIGHT: f64 = 4.0 + 8.0 * 36.0 + 7.0 * 2.0 + 4.0;
 const CROP_TOP: f64 = RAIL_TOP + TOOLS_HEIGHT + 8.0;
-/// The least canvas height at which all ten tools on the rail are on screen,
+/// The least canvas height at which all nine tools on the rail are on screen,
 /// with a little air under the crop pane. The window never goes shorter: a tool
 /// that has slipped below the edge with no scrollbar is a tool that does not
 /// exist. Derived from the panes above rather than written out again, so adding
-/// a tool cannot leave the two disagreeing.
+/// or removing a tool cannot leave the two disagreeing.
 const RAIL_HEIGHT: f64 = TOOLS_HEIGHT + 8.0 + RAIL + 6.0;
 /// Enough for the empty state and a row of recents. Its height is the window's
 /// minimum, which the rail sets rather than the empty state; the empty state

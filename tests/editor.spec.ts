@@ -230,6 +230,13 @@ async function pick(page: import('@playwright/test').Page, tool: string) {
   await page.getByRole('radio', { name: tool, exact: true }).click();
 }
 
+/** The arrow tool with numbering on, which is what used to be a tool of its own. */
+async function numbering(page: import('@playwright/test').Page) {
+  await pick(page, 'Arrow');
+  const on = page.getByRole('switch', { name: 'Number them' });
+  if (await on.getAttribute('aria-checked') !== 'true') await on.click();
+}
+
 test('draws a box and an ellipse, and resizes one by its corner', async ({ page }) => {
   await page.goto('/');
   await pick(page, 'Box');
@@ -310,7 +317,7 @@ test('no tool, colour or control is ever clipped out of reach, at any width', as
         picker: shown(bar.querySelector('.fills')!) || shown(bar.querySelector('.styles')!),
       };
     });
-    expect(report, `${width}px, ${tool}`).toMatchObject({ barOverflow: 0, pageOverflow: 0, clippedInBar: [], tools: 10, swatches: 8, size: true, picker: true });
+    expect(report, `${width}px, ${tool}`).toMatchObject({ barOverflow: 0, pageOverflow: 0, clippedInBar: [], tools: 9, swatches: 8, size: true, picker: true });
   }
 });
 
@@ -1062,7 +1069,7 @@ test('the copied image carries the thin style, stroked not filled', async ({ pag
 
 test('numbered steps count up, renumber when one goes, and a drag points with an arrow', async ({ page }) => {
   await page.goto('/');
-  await pick(page, 'Step');
+  await numbering(page);
   const at = await stage(page);
   const numerals = page.locator('.step text');
 
@@ -1110,7 +1117,7 @@ test('a numbered step travels as one, and reaches the copied image', async ({ pa
     } } });
   });
   await page.goto('/');
-  await pick(page, 'Step');
+  await numbering(page);
   await drawArrow(page, [300, 200], [700, 420]);
   const before = await page.locator('.step path').getAttribute('d');
 
@@ -1163,7 +1170,7 @@ test('a circle can be numbered, and the panel offers somewhere to say what it is
   // aimed through it would land on the panel.
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
-  await pick(page, 'Step');
+  await numbering(page);
   const at = await stage(page);
   const spot = at(800, 560);
   await page.mouse.click(spot.x, spot.y);
@@ -1225,7 +1232,7 @@ test('the list copies as text, and the words never reach the image', async ({ pa
 
 test('a badge placed with a click can still be given an arrow afterwards', async ({ page }) => {
   await page.goto('/');
-  await pick(page, 'Step');
+  await numbering(page);
   const at = await stage(page);
   const spot = at(300, 400);
   await page.mouse.click(spot.x, spot.y);
@@ -1270,7 +1277,7 @@ test('the notes can be written on the image, and then they are in the copy too',
     } });
   });
   await page.goto('/');
-  await pick(page, 'Step');
+  await numbering(page);
   const at = await stage(page);
   const spot = at(300, 400);
   await page.mouse.click(spot.x, spot.y);
@@ -1304,7 +1311,7 @@ test('the notes can be written on the image, and then they are in the copy too',
 
 test('the steps panel can be dragged out of the way, and cannot be dragged off the edge', async ({ page }) => {
   await page.goto('/');
-  await pick(page, 'Step');
+  await numbering(page);
   const at = await stage(page);
   const spot = at(300, 400);
   await page.mouse.click(spot.x, spot.y);
@@ -1397,7 +1404,7 @@ test('the step tool’s pointer carries the badge, its colour and the number com
     const css = await page.locator('.canvas .overlay').evaluate(el => getComputedStyle(el).cursor);
     return decodeURIComponent(css.match(/data:image\/svg\+xml,([^"]+)/)![1]);
   };
-  await pick(page, 'Step');
+  await numbering(page);
   const first = await cursor();
   expect(first).toContain('fill="#ff3b30"');
   expect(first).toContain('>1</text>');
@@ -1430,7 +1437,7 @@ test('the step tool’s pointer carries the badge, its colour and the number com
 
 test('a step points with whichever arrow the picker holds, and the picker follows the one selected', async ({ page }) => {
   await page.goto('/');
-  await pick(page, 'Step');
+  await numbering(page);
   const styles = page.locator('.styles');
   await expect(styles).toBeVisible();                        // the step points, so the picker is its business
 
@@ -1472,7 +1479,7 @@ test('a step points with whichever arrow the picker holds, and the picker follow
 
 test('the steps panel says what it is, folds, resizes and clings to a side', async ({ page }) => {
   await page.goto('/');
-  await pick(page, 'Step');
+  await numbering(page);
   const at = await stage(page);
   for (const [x, y, words] of [[250, 200, 'make the headline sticky'], [250, 340, 'this line can go']] as const) {
     const spot = at(x, y);
@@ -1556,7 +1563,7 @@ test('anything already drawn says it can be taken hold of', async ({ page }) => 
   await page.mouse.click(where.x, where.y);
   await page.keyboard.type('note');
   await page.keyboard.press('Escape');
-  await pick(page, 'Step');
+  await numbering(page);
   const badge = at(900, 500);
   await page.mouse.click(badge.x, badge.y);
   await page.keyboard.press('Escape');
@@ -1619,8 +1626,8 @@ test('Mark’s own tooltips: none of the system’s, quick once one is up, and p
   await expect(tip).toBeHidden();
 });
 
-test('the rail’s tools are 36 across in a 44 rail, and all ten still fit the smallest window', async ({ page }) => {
-  await page.setViewportSize({ width: 380, height: 580 });
+test('the rail’s tools are 36 across in a 44 rail, and all nine still fit the smallest window', async ({ page }) => {
+  await page.setViewportSize({ width: 380, height: 542 });
   await page.goto('/');
   const sizes = await page.evaluate(() => {
     const tool = document.querySelector<HTMLElement>('.tool')!;
@@ -1638,7 +1645,7 @@ test('the rail’s tools are 36 across in a 44 rail, and all ten still fit the s
       overflowY: document.documentElement.scrollHeight - innerHeight,
     };
   });
-  expect(sizes).toMatchObject({ button: 36, glyph: 20, group: 44, rail: 44, shown: 10, overflowY: 0 });
+  expect(sizes).toMatchObject({ button: 36, glyph: 20, group: 44, rail: 44, shown: 9, overflowY: 0 });
 });
 
 test('a steps field owns the keys that edit text', async ({ page, context }) => {
@@ -1653,7 +1660,7 @@ test('a steps field owns the keys that edit text', async ({ page, context }) => 
   await page.goto('/');
   // An arrow as well as the badge, so a stray ⌘A would say "2 selected".
   await drawArrow(page, [200, 500], [700, 600]);
-  await pick(page, 'Step');
+  await numbering(page);
   const at = await stage(page);
   const spot = at(300, 300);
   await page.mouse.click(spot.x, spot.y);
@@ -1718,4 +1725,54 @@ test('holding shift keeps a line straight', async ({ page }) => {
   const free = (await page.locator('.arrow').first().getAttribute('d'))!
     .match(/-?\d+(\.\d+)?/g)!.map(Number);
   expect(free[3]).not.toBeCloseTo(free[1], 1);
+});
+
+test('numbering is a switch on the arrow rather than a tool of its own', async ({ page }) => {
+  await page.goto('/');
+  // The rail has no Step tool; numbering lives with the arrow.
+  await expect(page.getByRole('radio', { name: 'Step', exact: true })).toHaveCount(0);
+  await pick(page, 'Arrow');
+  const on = page.getByRole('switch', { name: 'Number them' });
+  await expect(on).toBeVisible();
+  await expect(on).toHaveAttribute('aria-checked', 'false');
+
+  // Off, the arrow tool is the arrow tool: a drag draws one, a click leaves nothing.
+  await drawArrow(page, [200, 200], [600, 280]);
+  await page.keyboard.press('Escape');
+  const at = await stage(page);
+  const empty = at(900, 200);
+  await page.mouse.click(empty.x, empty.y);
+  await expect(page.locator('.arrow')).toHaveCount(1);
+  await expect(page.locator('.badge')).toHaveCount(0);
+
+  // On, the same drag is numbered, and a click leaves the number on its own.
+  await on.click();
+  await drawArrow(page, [200, 400], [600, 480]);
+  await page.keyboard.press('Escape');
+  const spot = at(900, 400);
+  await page.mouse.click(spot.x, spot.y);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.badge text')).toHaveText(['1', '2']);
+  await expect(page.locator('.step path')).toHaveCount(1);     // one of them points
+
+  // It is a property, so it converts what is selected rather than only what is next.
+  const drawn = at(400, 240);
+  await page.mouse.click(drawn.x, drawn.y);
+  await expect(page.locator('.chosen')).toHaveText('Arrow selected');
+  await expect(on).toHaveAttribute('aria-checked', 'false');   // adopted from the selection
+  await on.click();
+  await expect(page.locator('.chosen')).toHaveText('Step selected');
+  await expect(page.locator('.badge text')).toHaveText(['1', '2', '3']);
+
+  // And back again, with the arrow it was.
+  await on.click();
+  await expect(page.locator('.chosen')).toHaveText('Arrow selected');
+  await expect(page.locator('.badge text')).toHaveText(['1', '2']);
+
+  // The same switch still numbers a circle.
+  await pick(page, 'Ellipse');
+  await expect(on).toBeVisible();
+  await on.click();
+  await drawArrow(page, [700, 550], [1000, 680]);
+  await expect(page.locator('.badge text')).toHaveText(['1', '2', '3']);
 });

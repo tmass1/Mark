@@ -16,7 +16,7 @@ import type { DemoFrame, DemoHost } from './bridge';
 const CHROME = 46 + 48 + 10 + 10 + 60;
 const SIDES = 12 + 10 + 12;
 const RAIL = 44;
-const RAIL_HEIGHT = 348 + 8 + RAIL + 6;   // the tool pane, the gap, the crop pane, and air beneath
+const RAIL_HEIGHT = 310 + 8 + RAIL + 6;   // the tool pane, the gap, the crop pane, and air beneath
 const COMPACT: [number, number] = [560, CHROME + RAIL_HEIGHT];
 /** The app's own shortcut. Browsers use ⌘-digit for their tabs, but it is not
  *  among the keys they refuse to hand a page, so the demo takes it and stops it

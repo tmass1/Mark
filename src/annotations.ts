@@ -60,7 +60,7 @@ export interface Step {
   color: string; weight: number;
 }
 export type Annotation = Segment | Stroke | Note | Shape | Step;
-export type Tool = 'arrow' | 'line' | 'pen' | 'text' | ShapeKind | 'step' | 'crop';
+export type Tool = 'arrow' | 'line' | 'pen' | 'text' | ShapeKind | 'crop';
 export function isSegment(item: Annotation): item is Segment { return item.kind === 'arrow' || item.kind === 'line'; }
 
 export const SHAPES: readonly ShapeKind[] = ['box', 'ellipse', 'highlight', 'redact'];
@@ -840,6 +840,23 @@ export class AnnotationLayer {
     return this.copySelection().length ? this.paste() : [];
   }
 
+  /** An arrow with a number is a step, and a step with an arrow is an arrow, so
+   *  turning numbering on or off changes what a selected mark is rather than
+   *  only how it looks. A badge with nothing attached is left alone: without its
+   *  number there would be nothing there at all. */
+  private renumbered(item: Annotation, on: boolean): Annotation {
+    if (isShape(item)) return fillable(item) ? { ...item, numbered: on } : item;
+    if (on && item.kind === 'arrow') {
+      return { kind: 'step', id: item.id, x: item.x1, y: item.y1, to: [item.x2, item.y2],
+               color: item.color, weight: item.weight, style: styleOf(item) };
+    }
+    if (!on && item.kind === 'step' && item.to) {
+      return { kind: 'arrow', id: item.id, x1: item.x, y1: item.y, x2: item.to[0], y2: item.to[1],
+               color: item.color, weight: item.weight, style: styleOf(item) };
+    }
+    return item;
+  }
+
   /** Restyle the selection, or set the style for the next annotation. */
   applyStyle(): void {
     const picked = this.selection;
@@ -850,10 +867,14 @@ export class AnnotationLayer {
         if (item.kind === 'text') item.size = textSize(this.weight);
         else item.weight = this.weight;
         if (item.kind === 'arrow' || item.kind === 'step') item.style = this.style.arrow;
-        if (fillable(item)) { item.fill = this.style.fill; item.numbered = this.style.numbered; }
+        if (fillable(item)) item.fill = this.style.fill;
         // Coarseness follows the size control, so the patch must be rebuilt.
         this.settle(item);
       }
+    }
+    if (picked.length) {
+      this.items = this.items.map(item =>
+        this.chosen.has(item.id) ? this.renumbered(item, this.style.numbered) : item);
     }
     if (this.editing !== null) this.placeEditor();
     this.render(); this.onChange();
@@ -1008,9 +1029,10 @@ export class AnnotationLayer {
       this.svg.releasePointerCapture(event.pointerId);
       this.edit(note, true);
       return;
-    } else if (this.tool === 'step') {
-      // A click is the whole gesture here, so unlike every other tool the badge
-      // stays put when the pointer never moves; a drag adds an arrow to it.
+    } else if (this.tool === 'arrow' && this.style.numbered) {
+      // A numbered arrow is the arrow tool with numbering on, and a click is the
+      // whole gesture: unlike every other tool the badge stays put when the
+      // pointer never moves, since a number on its own is a thing worth making.
       this.commitHistory();
       const step: Step = { kind: 'step', id: this.nextId++, x, y,
                            color: this.style.color, weight: this.weight, style: this.style.arrow };
