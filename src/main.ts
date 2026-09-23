@@ -114,24 +114,57 @@ const CAPTURE_MODES: { mode: string; name: string; hint: string; art: string }[]
     + `<path d="M10 8.4v3l2.1 1.3M8.1 3.4h3.8M10 3.4v2.6" ${STROKE}/>` },
 ];
 
-const TOOLS: { id: Tool; name: string; art: string }[] = [
-  { id: 'arrow', name: 'Arrow', art: `<path d="M5.5 14.5 14 6M5.5 14.5h5.2M5.5 14.5V9.3" ${STROKE}/>` },
-  { id: 'line', name: 'Line', art: `<path d="M5.4 14.6 14.6 5.4" ${STROKE}/>` },
-  { id: 'pen', name: 'Pen', art:
-    `<path d="M4.2 13.8c1.9-4.6 3.2 2.3 5.1-1.1s2.9 3 4.4-1.2 1.4 2 2.1.9" ${STROKE}/>` },
-  { id: 'text', name: 'Text', art: `<path d="M5 6h10M10 6v8.5M7.8 14.5h4.4" ${STROKE}/>` },
-  { id: 'box', name: 'Box', art: `<rect x="4.6" y="5.8" width="10.8" height="8.4" rx="1.4" ${STROKE}/>` },
-  { id: 'ellipse', name: 'Ellipse', art: `<ellipse cx="10" cy="10" rx="5.6" ry="4.4" ${STROKE}/>` },
-  { id: 'highlight', name: 'Highlighter', art:
+/** A numbered mark's badge, small enough to sit in a 20-unit glyph. */
+const BADGE = (cx: number, cy: number, r: number) =>
+  `<mask id="badge-${cx}-${cy}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff"/>`
+  + `<path d="M${cx - 1.1} ${cy - 1.2} ${cx + 0.3} ${cy - 2.3}v4.6M${cx - 0.9} ${cy + 2.3}h2.5" fill="none" stroke="#000"`
+  + ` stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></mask>`
+  + `<circle cx="${cx}" cy="${cy}" r="${r}" fill="currentColor" mask="url(#badge-${cx}-${cy})"/>`;
+
+/** The rail is slots rather than tools: a slot holds one tool, or a few that are
+ *  the same tool done differently, and shows whichever was last chosen from it.
+ *  Numbering is one of those differences -- a switch in the toolbar was there to
+ *  be missed, where a slot wears what it will draw. Photoshop's arrangement, and
+ *  for the same reason. */
+interface Choice { id: Tool; numbered?: boolean; name: string; art: string }
+const SLOTS: Choice[][] = [
+  [
+    { id: 'arrow', name: 'Arrow', art: `<path d="M5.5 14.5 14 6M5.5 14.5h5.2M5.5 14.5V9.3" ${STROKE}/>` },
+    { id: 'arrow', numbered: true, name: 'Numbered arrow', art:
+      `<path d="M9.4 11.2 15 5.6M15 5.6h-3.6M15 5.6v3.6" ${STROKE}/>` + BADGE(6.4, 13.6, 4.3) },
+  ],
+  [{ id: 'line', name: 'Line', art: `<path d="M5.4 14.6 14.6 5.4" ${STROKE}/>` }],
+  [{ id: 'pen', name: 'Pen', art:
+    `<path d="M4.2 13.8c1.9-4.6 3.2 2.3 5.1-1.1s2.9 3 4.4-1.2 1.4 2 2.1.9" ${STROKE}/>` }],
+  [{ id: 'text', name: 'Text', art: `<path d="M5 6h10M10 6v8.5M7.8 14.5h4.4" ${STROKE}/>` }],
+  [
+    { id: 'box', name: 'Box', art: `<rect x="4.6" y="5.8" width="10.8" height="8.4" rx="1.4" ${STROKE}/>` },
+    { id: 'box', numbered: true, name: 'Numbered box', art:
+      `<rect x="6.4" y="7.4" width="9" height="7.4" rx="1.4" ${STROKE}/>` + BADGE(5.6, 6.2, 4.1) },
+  ],
+  [
+    { id: 'ellipse', name: 'Ellipse', art: `<ellipse cx="10" cy="10" rx="5.6" ry="4.4" ${STROKE}/>` },
+    { id: 'ellipse', numbered: true, name: 'Numbered ellipse', art:
+      `<ellipse cx="11" cy="11.2" rx="4.6" ry="3.7" ${STROKE}/>` + BADGE(5.6, 6.2, 4.1) },
+  ],
+  [{ id: 'highlight', name: 'Highlighter', art:
     `<path d="M4.6 15.6h10.8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" opacity=".45"/>` +
-    `<path d="M6.9 12.4 12.4 6.9l2 2-5.5 5.5z" ${STROKE}/>` },
-  { id: 'redact', name: 'Redact', art:
-    `<path d="M4.8 5.2h4.1v4.1H4.8zM11.1 5.2h4.1v4.1h-4.1zM4.8 10.7h4.1v4.1H4.8zM11.1 10.7h4.1v4.1h-4.1z" fill="currentColor"/>` },
-  { id: 'crop', name: 'Crop', art:
-    `<path d="M6.6 2.8v10.6h10.6M2.8 6.6h10.6v10.6" ${STROKE}/>` },
+    `<path d="M6.9 12.4 12.4 6.9l2 2-5.5 5.5z" ${STROKE}/>` }],
+  [{ id: 'redact', name: 'Redact', art:
+    `<path d="M4.8 5.2h4.1v4.1H4.8zM11.1 5.2h4.1v4.1h-4.1zM4.8 10.7h4.1v4.1H4.8zM11.1 10.7h4.1v4.1h-4.1z" fill="currentColor"/>` }],
+  [{ id: 'crop', name: 'Crop', art:
+    `<path d="M6.6 2.8v10.6h10.6M2.8 6.6h10.6v10.6" ${STROKE}/>` }],
 ];
-const toolButton = (tool: typeof TOOLS[number]) => `<button class="tool" type="button" role="radio" data-tool="${tool.id}"
-        aria-checked="${tool.id === 'arrow'}" title="${tool.name}"><svg viewBox="0 0 20 20" aria-hidden="true">${tool.art}</svg><span class="sr">${tool.name}</span></button>`;
+/** Which variant each slot is wearing. */
+const worn = SLOTS.map(() => 0);
+const slotButton = (slot: Choice[], index: number) => {
+  const choice = slot[worn[index]];
+  return `<button class="tool" type="button" role="radio" data-slot="${index}" aria-checked="${index === 0}"
+        ${slot.length > 1 ? 'aria-haspopup="menu" aria-expanded="false"' : ''} title="${choice.name}">`
+    + `<svg viewBox="0 0 20 20" aria-hidden="true">${choice.art}</svg>`
+    + (slot.length > 1 ? '<span class="tool-more" aria-hidden="true"></span>' : '')
+    + `<span class="sr">${choice.name}</span></button>`;
+};
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
@@ -169,13 +202,6 @@ app.innerHTML = `
         aria-checked="${fill === 'outline'}" title="${FILL_NAMES[fill]} shape"><svg viewBox="0 0 20 20"
         aria-hidden="true">${fillPreview(fill)}</svg><span class="sr">${FILL_NAMES[fill]}</span></button>`).join('')}
     </div>
-    <button class="numbering style" type="button" role="switch" aria-checked="false" hidden
-      title="Number what you draw — an arrow, a box or a circle — so you can say &quot;1. do this, 2. do that&quot;. With it on, a click leaves the number on its own.">
-      <svg viewBox="0 0 20 20" aria-hidden="true">
-        <mask id="numbering-glyph"><circle cx="10" cy="10" r="7.2" fill="#fff"/><path d="M8.4 8.4 10.4 6.8v6.4M8.6 13.2h3.6" fill="none" stroke="#000" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></mask>
-        <circle cx="10" cy="10" r="7.2" fill="currentColor" mask="url(#numbering-glyph)"/>
-      </svg><span class="sr">Number them</span>
-    </button>
     <label class="size"><span class="size-word">Size</span>
       <input class="weight" type="range" min="0.1" max="2.5" step="0.05" value="1" aria-label="Size" />
     </label>
@@ -197,9 +223,10 @@ app.innerHTML = `
   <div class="workspace">
     <nav class="rail" aria-label="Tools" hidden>
       <div class="tools" role="radiogroup" aria-label="Tool">
-        <div class="tool-group">${TOOLS.filter(tool => tool.id !== 'crop').map(toolButton).join('')}</div>
-        <div class="tool-group">${TOOLS.filter(tool => tool.id === 'crop').map(toolButton).join('')}</div>
+        <div class="tool-group">${SLOTS.slice(0, -1).map(slotButton).join('')}</div>
+        <div class="tool-group">${SLOTS.slice(-1).map((slot, i) => slotButton(slot, SLOTS.length - 1 + i)).join('')}</div>
       </div>
+      <div class="tool-menu" role="menu" hidden></div>
     </nav>
   <main class="canvas" aria-label="Screenshot editor">
     <div class="stage" hidden>
@@ -288,7 +315,6 @@ const overlay = app.querySelector<SVGSVGElement>('.overlay')!;
 const toolbar = app.querySelector<HTMLElement>('.toolbar')!;
 const rail = app.querySelector<HTMLElement>('.rail')!;
 const tools = app.querySelector<HTMLElement>('.tools')!;
-const numbering = app.querySelector<HTMLButtonElement>('.numbering')!;
 const stepsPanel = app.querySelector<HTMLElement>('.steps')!;
 const stepRows = app.querySelector<HTMLElement>('.step-rows')!;
 const stepsToggle = app.querySelector<HTMLButtonElement>('.steps-toggle')!;
@@ -762,17 +788,16 @@ function syncTools() {
   const shapes = picked.filter(fillable);
   const shaping = layer.tool === 'box' || layer.tool === 'ellipse';
   fills.hidden = !shaping && shapes.length === 0;
-  // Numbering belongs to everything it can apply to: the arrow, the box and the
-  // ellipse. It is a property of a mark rather than a tool of its own.
-  const numberable = picked.filter(item => fillable(item) || item.kind === 'arrow' || item.kind === 'step');
-  numbering.hidden = !shaping && layer.tool !== 'arrow' && numberable.length === 0;
   if (shapes.length) layer.style.fill = fillOf(shapes[shapes.length - 1]);
+  // Selecting a numbered mark puts its slot on the numbered variant, so the rail
+  // goes on describing the next edit the way the toolbar's pickers do.
+  const numberable = picked.filter(item => fillable(item) || item.kind === 'arrow' || item.kind === 'step');
   if (numberable.length) {
     const last = numberable[numberable.length - 1];
-    layer.style.numbered = last.kind === 'step' || (isShape(last) && last.numbered === true);
+    const on = last.kind === 'step' || (isShape(last) && last.numbered === true);
+    const slot = SLOTS.findIndex(choices => choices[0].id === (last.kind === 'step' ? 'arrow' : last.kind));
+    if (slot >= 0 && SLOTS[slot].length > 1 && worn[slot] !== (on ? 1 : 0)) wear(slot, on ? 1 : 0, false);
   }
-  numbering.setAttribute('aria-checked', String(layer.style.numbered));
-  numbering.classList.toggle('active', layer.style.numbered);
   // Preview the shape in hand: the selection's if there is one, else the tool's.
   fills.dataset.shape = shapes.length ? shapes[shapes.length - 1].kind : layer.tool === 'ellipse' ? 'ellipse' : 'box';
   for (const button of app.querySelectorAll<HTMLButtonElement>('.style[data-fill]')) {
@@ -795,7 +820,9 @@ function syncTools() {
     swatch.classList.toggle('active', active);
   }
   for (const button of app.querySelectorAll<HTMLButtonElement>('.tool')) {
-    const active = button.dataset.tool === layer.tool;
+    const slot = Number(button.dataset.slot);
+    const choice = SLOTS[slot][worn[slot]];
+    const active = choice.id === layer.tool && !!choice.numbered === layer.style.numbered;
     button.setAttribute('aria-checked', String(active));
     button.classList.toggle('active', active);
   }
@@ -973,9 +1000,91 @@ on(zoomSelect, 'change', () => setZoom(zoomSelect.value === 'fit' ? 'fit' : Numb
 on(choose, 'click', () => input.click());
 on(settings, 'click', () => { void command('open_screen_settings').catch(report); });
 on(input, 'change', () => { void loadFile().catch(report); });
+/** Take up a slot's variant: the tool it is, and whether what it draws carries a
+ *  number. Numbering is still a property of a mark, so choosing a numbered
+ *  variant with something selected numbers that -- the slot is a nicer face on
+ *  the switch, not a different mechanism. */
+function wear(slot: number, variant: number, andApply = true) {
+  worn[slot] = variant;
+  const choice = SLOTS[slot][variant];
+  const button = rail.querySelector<HTMLButtonElement>(`.tool[data-slot="${slot}"]`)!;
+  button.querySelector('svg')!.innerHTML = choice.art;
+  button.querySelector('.sr')!.textContent = choice.name;
+  button.dataset.tip = choice.name;
+  layer.tool = choice.id;
+  if (layer.style.numbered !== !!choice.numbered) {
+    layer.style.numbered = !!choice.numbered;
+    if (andApply) layer.applyStyle();
+  }
+  syncTools();
+}
+
+// ---- the slot menu ------------------------------------------------------------
+/** Press and hold, or right-click, or the right arrow from the keyboard: the
+ *  ways a tool group has always been opened, since the marker in the corner is
+ *  too small to be a target of its own. */
+const toolMenu = app.querySelector<HTMLElement>('.tool-menu')!;
+let menuFor: HTMLButtonElement | null = null;
+function closeToolMenu() {
+  if (!menuFor) return;
+  menuFor.setAttribute('aria-expanded', 'false');
+  menuFor = null;
+  toolMenu.hidden = true;
+  toolMenu.replaceChildren();
+}
+function openToolMenu(button: HTMLButtonElement) {
+  const slot = Number(button.dataset.slot);
+  if (SLOTS[slot].length < 2) return;
+  closeToolMenu();
+  menuFor = button;
+  button.setAttribute('aria-expanded', 'true');
+  toolMenu.replaceChildren(...SLOTS[slot].map((choice, variant) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.setAttribute('role', 'menuitemradio');
+    item.setAttribute('aria-checked', String(variant === worn[slot]));
+    item.innerHTML = `<svg viewBox="0 0 20 20" aria-hidden="true">${choice.art}</svg><span>${choice.name}</span>`;
+    item.addEventListener('click', () => { wear(slot, variant); layer.deselect(); closeToolMenu(); });
+    return item;
+  }));
+  toolMenu.hidden = false;
+  const at = button.getBoundingClientRect(), frame = app.getBoundingClientRect();
+  toolMenu.style.left = `${at.right - frame.left + 8}px`;
+  toolMenu.style.top = `${Math.min(at.top - frame.top, frame.height - toolMenu.offsetHeight - 8)}px`;
+  toolMenu.querySelector('button')?.focus();
+}
+
+let holding: number | undefined;
+on(rail, 'pointerdown', event => {
+  const button = (event.target as Element).closest<HTMLButtonElement>('.tool');
+  if (!button) return;
+  window.clearTimeout(holding);
+  holding = window.setTimeout(() => openToolMenu(button), 420);
+});
+for (const end of ['pointerup', 'pointerleave', 'pointercancel'] as const) {
+  rail.addEventListener(end, () => window.clearTimeout(holding));
+}
+rail.addEventListener('contextmenu', event => {
+  const button = (event.target as Element).closest<HTMLButtonElement>('.tool');
+  if (!button || Number.isNaN(Number(button.dataset.slot))) return;
+  event.preventDefault();
+  openToolMenu(button);
+});
+on(rail, 'keydown', event => {
+  const button = (event.target as Element).closest<HTMLButtonElement>('.tool');
+  if (button && (event as KeyboardEvent).key === 'ArrowRight') { event.preventDefault(); openToolMenu(button); }
+});
+document.addEventListener('pointerdown', event => {
+  if (menuFor && !(event.target as Element).closest('.tool-menu, .tool')) closeToolMenu();
+}, true);
+
 on(rail, 'click', event => {
-  const tool = (event.target as Element).closest<HTMLButtonElement>('.tool');
-  if (tool?.dataset.tool) { layer.tool = tool.dataset.tool as Tool; layer.deselect(); syncTools(); }
+  const button = (event.target as Element).closest<HTMLButtonElement>('.tool');
+  if (!button || holding === undefined) return;
+  window.clearTimeout(holding);
+  if (menuFor) return;                      // the hold already opened it
+  wear(Number(button.dataset.slot), worn[Number(button.dataset.slot)]);
+  layer.deselect();
 });
 on(toolbar, 'click', event => {
   const element = event.target as Element;
@@ -996,14 +1105,6 @@ on(toolbar, 'click', event => {
   layer.applyStyle();
 });
 on(weight, 'input', () => { layer.style.scale = Number(weight.value); layer.applyStyle(); });
-on(numbering, 'click', () => {
-  layer.style.numbered = !layer.style.numbered;
-  layer.applyStyle();
-  // Turning it on with a mark already selected numbers that mark, which is the
-  // point; the panel then offers somewhere to say what it is for.
-  const picked = layer.selection;
-  if (layer.style.numbered && picked.length) offerNote(picked[picked.length - 1].id);
-});
 on(undoButton, 'click', () => { stepBack(); });
 on(app.querySelector<HTMLButtonElement>('.crop-apply')!, 'click', () => { void applyCrop().catch(report); });
 on(app.querySelector<HTMLButtonElement>('.crop-cancel')!, 'click', () => layer.clearCrop());
@@ -1198,6 +1299,15 @@ document.addEventListener('keydown', event => {
   const typing = target instanceof HTMLTextAreaElement || target?.isContentEditable === true ||
     (target instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'file', 'button'].includes(target.type));
   if (layer.isEditing) return;
+  // An open slot menu owns Escape entirely: it is a popover, and the editor's
+  // own Escape would back out of the capture behind it.
+  if (key === 'escape' && menuFor) {
+    event.preventDefault();
+    const button = menuFor;
+    closeToolMenu();
+    button.focus();
+    return;
+  }
   // A text field owns the keys that edit text. Without this, typing a note in
   // the steps panel meant ⌘C copied the screenshot, ⌘V pasted an annotation
   // rather than the clipboard's text -- and having been prevented, never

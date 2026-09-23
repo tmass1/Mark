@@ -230,11 +230,14 @@ async function pick(page: import('@playwright/test').Page, tool: string) {
   await page.getByRole('radio', { name: tool, exact: true }).click();
 }
 
-/** The arrow tool with numbering on, which is what used to be a tool of its own. */
+/** Take a variant out of a rail slot's menu, the way a tool group is used. */
+async function variant(page: import('@playwright/test').Page, slot: number, name: string) {
+  await page.locator(`.tool[data-slot="${slot}"]`).click({ button: 'right' });
+  await page.locator('.tool-menu button', { hasText: name }).click();
+}
+/** The arrow slot wearing its numbered variant, which is what used to be a tool. */
 async function numbering(page: import('@playwright/test').Page) {
-  await pick(page, 'Arrow');
-  const on = page.getByRole('switch', { name: 'Number them' });
-  if (await on.getAttribute('aria-checked') !== 'true') await on.click();
+  await variant(page, 0, 'Numbered arrow');
 }
 
 test('draws a box and an ellipse, and resizes one by its corner', async ({ page }) => {
@@ -1145,11 +1148,9 @@ test('a numbered step travels as one, and reaches the copied image', async ({ pa
 
 test('a circle can be numbered, and the panel offers somewhere to say what it is for', async ({ page }) => {
   await page.goto('/');
-  await pick(page, 'Ellipse');
-  const toggle = page.getByRole('switch', { name: 'Number them' });
-  await expect(toggle).toBeVisible();
-  await expect(toggle).toHaveAttribute('aria-checked', 'false');
-  await toggle.click();
+  // The ellipse slot's numbered variant, out of its menu.
+  await expect(page.locator('.tool[data-slot="5"]')).toHaveAccessibleName('Ellipse');
+  await variant(page, 5, 'Numbered ellipse');
 
   // Circling something numbers it and opens the panel focused on that row.
   await drawArrow(page, [150, 180], [520, 300]);
@@ -1212,8 +1213,7 @@ test('the list copies as text, and the words never reach the image', async ({ pa
     });
   });
   await page.goto('/');
-  await pick(page, 'Ellipse');
-  await page.getByRole('switch', { name: 'Number them' }).click();
+  await variant(page, 5, 'Numbered ellipse');
   await drawArrow(page, [150, 180], [520, 300]);
   await page.keyboard.type('make the headline sticky');
   await drawArrow(page, [620, 180], [980, 300]);
@@ -1659,7 +1659,10 @@ test('a steps field owns the keys that edit text', async ({ page, context }) => 
   });
   await page.goto('/');
   // An arrow as well as the badge, so a stray ⌘A would say "2 selected".
+  // Deselected first: choosing the numbered variant would otherwise convert it,
+  // which is what the variant is for.
   await drawArrow(page, [200, 500], [700, 600]);
+  await page.keyboard.press('Escape');
   await numbering(page);
   const at = await stage(page);
   const spot = at(300, 300);
@@ -1727,16 +1730,18 @@ test('holding shift keeps a line straight', async ({ page }) => {
   expect(free[3]).not.toBeCloseTo(free[1], 1);
 });
 
-test('numbering is a switch on the arrow rather than a tool of its own', async ({ page }) => {
+test('a rail slot holds the ways of drawing one thing, and wears the one chosen', async ({ page }) => {
   await page.goto('/');
-  // The rail has no Step tool; numbering lives with the arrow.
+  // No switch in the toolbar and no Step tool: the slot carries both.
+  await expect(page.getByRole('switch', { name: 'Number them' })).toHaveCount(0);
   await expect(page.getByRole('radio', { name: 'Step', exact: true })).toHaveCount(0);
-  await pick(page, 'Arrow');
-  const on = page.getByRole('switch', { name: 'Number them' });
-  await expect(on).toBeVisible();
-  await expect(on).toHaveAttribute('aria-checked', 'false');
+  // Three slots draw something that can be numbered, and say so in the corner.
+  await expect(page.locator('.tool-more')).toHaveCount(3);
 
-  // Off, the arrow tool is the arrow tool: a drag draws one, a click leaves nothing.
+  const arrow = page.locator('.tool[data-slot="0"]');
+  await expect(arrow).toHaveAccessibleName('Arrow');
+
+  // Plain: a drag draws an arrow, a click leaves nothing.
   await drawArrow(page, [200, 200], [600, 280]);
   await page.keyboard.press('Escape');
   const at = await stage(page);
@@ -1745,8 +1750,17 @@ test('numbering is a switch on the arrow rather than a tool of its own', async (
   await expect(page.locator('.arrow')).toHaveCount(1);
   await expect(page.locator('.badge')).toHaveCount(0);
 
-  // On, the same drag is numbered, and a click leaves the number on its own.
-  await on.click();
+  // Right-click opens the slot; the menu says what is in it and which is worn.
+  await arrow.click({ button: 'right' });
+  const menu = page.locator('.tool-menu');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('button span')).toHaveText(['Arrow', 'Numbered arrow']);
+  await expect(menu.locator('button').first()).toHaveAttribute('aria-checked', 'true');
+  await menu.locator('button').nth(1).click();
+  await expect(menu).toBeHidden();
+
+  // The slot wears it, so the rail says what it will draw.
+  await expect(arrow).toHaveAccessibleName('Numbered arrow');
   await drawArrow(page, [200, 400], [600, 480]);
   await page.keyboard.press('Escape');
   const spot = at(900, 400);
@@ -1755,24 +1769,50 @@ test('numbering is a switch on the arrow rather than a tool of its own', async (
   await expect(page.locator('.badge text')).toHaveText(['1', '2']);
   await expect(page.locator('.step path')).toHaveCount(1);     // one of them points
 
-  // It is a property, so it converts what is selected rather than only what is next.
+  // Numbering is still a property, so the variant converts what is selected,
+  // and selecting a plain arrow puts the slot back on the plain variant.
   const drawn = at(400, 240);
   await page.mouse.click(drawn.x, drawn.y);
   await expect(page.locator('.chosen')).toHaveText('Arrow selected');
-  await expect(on).toHaveAttribute('aria-checked', 'false');   // adopted from the selection
-  await on.click();
-  await expect(page.locator('.chosen')).toHaveText('Step selected');
+  await expect(arrow).toHaveAccessibleName('Arrow');
+  await variant(page, 0, 'Numbered arrow');
   await expect(page.locator('.badge text')).toHaveText(['1', '2', '3']);
 
-  // And back again, with the arrow it was.
-  await on.click();
-  await expect(page.locator('.chosen')).toHaveText('Arrow selected');
-  await expect(page.locator('.badge text')).toHaveText(['1', '2']);
-
-  // The same switch still numbers a circle.
-  await pick(page, 'Ellipse');
-  await expect(on).toBeVisible();
-  await on.click();
+  // Every slot that can be numbered has the pair, and the numbers are one run.
+  await variant(page, 5, 'Numbered ellipse');
   await drawArrow(page, [700, 550], [1000, 680]);
-  await expect(page.locator('.badge text')).toHaveText(['1', '2', '3']);
+  await expect(page.locator('.badge text')).toHaveText(['1', '2', '3', '4']);
+});
+
+test('a slot menu opens by holding, and by the keyboard, and closes again', async ({ page }) => {
+  await page.goto('/');
+  const arrow = page.locator('.tool[data-slot="0"]');
+  const menu = page.locator('.tool-menu');
+
+  // Press and hold, as a tool group has always been opened.
+  const box = (await arrow.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(menu).toBeVisible({ timeout: 2000 });
+  await page.mouse.up();
+  await expect(menu).toBeVisible();                            // the hold's release does not pick
+
+  // Escape closes it and gives the slot back the focus.
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(arrow).toBeFocused();
+
+  // The keyboard opens it too, since the corner marker is no target of its own.
+  await page.keyboard.press('ArrowRight');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('button').first()).toBeFocused();
+
+  // Pressing anything else puts it away.
+  await page.mouse.click(box.x + 400, box.y + 200);
+  await expect(menu).toBeHidden();
+
+  // A slot with only one way of drawing has no menu and no marker.
+  await expect(page.locator('.tool[data-slot="1"] .tool-more')).toHaveCount(0);
+  await page.locator('.tool[data-slot="1"]').click({ button: 'right' });
+  await expect(menu).toBeHidden();
 });

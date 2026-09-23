@@ -259,6 +259,31 @@ footer > * { flex: none; }
 .tool { position: relative; z-index: 1; border: none; border-radius: 999px; padding: 8px; background: transparent; color: var(--muted); transition: color .15s; }
 .tool svg { display: block; width: 20px; height: 20px; }
 .tool:hover, .tool.active { color: var(--ink); }
+/* The corner marker: a slot with more than one way of drawing says so, the way
+   a tool group always has. Not a target of its own -- press and hold, or
+   right-click, as everywhere else that has one. */
+.tool-more {
+  position: absolute; right: 3.5px; bottom: 3.5px; width: 0; height: 0;
+  border-left: 5px solid transparent; border-bottom: 5px solid currentColor; opacity: .75;
+}
+.tool:hover .tool-more, .tool.active .tool-more { opacity: 1; }
+
+/* The slot's menu, beside the rail: the capture menu's manners, at the rail's size. */
+.tool-menu {
+  position: absolute; z-index: 30; display: flex; flex-direction: column; min-width: 184px; padding: 5px;
+  border-radius: 12px; background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: 0 12px 34px var(--shadow), 0 0 0 .5px var(--control-line);
+}
+.tool-menu button {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: none; border-radius: 8px;
+  background: transparent; color: var(--ink); font-size: 12px; text-align: left;
+}
+.tool-menu svg { flex: none; width: 20px; height: 20px; opacity: .8; }
+.tool-menu span { flex: 1; }
+.tool-menu button[aria-checked="true"] { background: var(--sunken); font-weight: 600; }
+.tool-menu button:hover { background: var(--blue); color: #fff; }
+.tool-menu button:hover svg { opacity: 1; }
 
 /* The capture control stands alone on the ground, so it is a small pane of its own. */
 .capture-control {
@@ -542,10 +567,7 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 .glassy.icon { padding: 0 11px; }
 .glassy.icon svg { display: block; width: 17px; height: 17px; }
 .styles, .fills { position: relative; display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); box-shadow: inset 0 1px 1px #0000000f; }
-/* A switch, not one of a set: it carries its own well so it does not read as a
-   third fill. */
-.numbering { z-index: 1; padding: 4px 7px; border-radius: 999px; background: var(--sunken); box-shadow: inset 0 1px 1px #0000000f; }
-.numbering.active { background: var(--lens); color: var(--ink); box-shadow: inset 0 1px 0 #ffffffb8, 0 1px 3px #00000021, 0 0 0 .5px var(--edge); }
+
 .style { position: relative; z-index: 1; display: flex; border: none; border-radius: 999px; padding: 4px 7px; background: transparent; color: var(--muted); transition: color .15s; }
 .style svg { display: block; width: 17px; height: 17px; }
 .style:hover, .style.active { color: var(--ink); }

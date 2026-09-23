@@ -101,13 +101,19 @@ notarization; an Apple Development certificate is only good for this Mac.
      the toolbar cannot answer while you are looking at the image. The
      crosshair stays, because the tail lands exactly where you press.
 
-     **Number them**, beside those styles, is the other half: with it on, the
-     arrow you draw carries a numbered badge at its tail, and a click drops the
-     number on its own — so a screenshot can be talked about rather than
-     described: "1. do this, 2. do that" instead of "the circle in the middle
-     just below the nav". Numbering is a property of a mark rather than a tool
-     of its own, so the same switch numbers a box or an ellipse, and turning it
-     on or off with something selected changes what that mark is.
+     The rail is slots rather than tools: a slot holds one tool, or a few that
+     are the same tool done differently, and wears whichever was last chosen
+     from it. A corner marker says a slot has more than one; press and hold it,
+     right-click it, or press the right arrow with it focused, and the slot's
+     menu opens beside the rail.
+
+     The arrow's other way is **Numbered arrow**: it carries a numbered badge at
+     its tail, and a click drops the number on its own — so a screenshot can be
+     talked about rather than described: "1. do this, 2. do that" instead of
+     "the circle in the middle just below the nav". Numbering is a property of a
+     mark rather than a kind of mark, so the box and the ellipse have numbered
+     ways of their own in the same run of numbers, and choosing one with
+     something selected changes what that mark is.
 
      A badge's number is its place in the sequence rather than something written
      on it, so deleting one closes the gap and the numbers are always 1 to n
@@ -165,9 +171,10 @@ notarization; an Apple Development certificate is only good for this Mac.
    - **Text**: click, then type. Enter starts a new line and Escape finishes.
      Click a note to move it; click it again to edit it.
    - **Box** and **Ellipse**: drag out an outline. Grab the outline to move it,
-     or a corner to resize. **Number them** gives each one a badge at its
-     corner, in the same sequence the arrows use — so circling four things
-     numbers them 1 to 4 whether they are circles, badges or numbered arrows.
+     or a corner to resize. Each has a numbered way in its slot, which gives it
+     a badge at its corner in the same sequence the arrows use — so circling
+     four things numbers them 1 to 4 whether they are circles, badges or
+     numbered arrows.
    - **Highlighter**: drag a band of translucent ink over what matters.
    - **Crop**: drag out what to keep. Everything else dims, corners adjust the
      region, and Enter or the Crop button trims to it. The drawing comes along,
