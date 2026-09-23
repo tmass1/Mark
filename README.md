@@ -102,6 +102,13 @@ notarization; an Apple Development certificate is only good for this Mac.
      crosshair stays, because the tail lands exactly where you press.
    - **Line**: drag. The same two ends as an arrow, without the head, so it
      moves and reshapes the same way.
+
+     Hold **shift** while drawing or reshaping either, or a step's arrow, and
+     the end snaps to the nearest eighth of a turn — exactly horizontal,
+     vertical or square to the corner, in the numbers and not only to the eye.
+     The pointer is projected onto that line rather than the length being kept
+     and swung round, so locked horizontal, moving the pointer down does not
+     quietly lengthen what you are drawing.
    - **Pen**: drag to scribble. The stroke is smoothed through the midpoints of
      what the pointer reported, and thinned once on release rather than while
      you draw — a stroke that simplifies under the pointer visibly changes
@@ -136,8 +143,14 @@ notarization; an Apple Development certificate is only good for this Mac.
      Every numbered mark gets a row in a panel over the capture, opened on the
      one just made, where you type what it means. **Copy list** (⌘⇧L) puts
      `1. make the nav sticky` and the rest on the clipboard as plain text. The
-     panel is a popover: pressing anything else puts it away, and **Steps** in
-     the footer, which keeps the count, brings it back. Its title row is the
+     A note field owns the keys that edit text — ⌘A, ⌘C, ⌘V, ⌘X and Escape — so
+     they do not reach the drawing underneath. ⌘Z is the exception: an empty
+     field has no typing to undo, and one Mark focused itself the instant a mark
+     was made is where the reflex to take that mark back arrives, so there it
+     undoes the mark. With something typed in it, it undoes the typing.
+
+     The panel is a popover: pressing anything else puts it away, and **Steps**
+     in the footer, which keeps the count, brings it back. Its title row is the
      handle — drag it off whatever it is covering, and near a side of the
      capture it clings to that side; moved by hand it stays where it was put,
      since the flip between above and below the mark is Mark guessing and a

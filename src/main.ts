@@ -509,20 +509,37 @@ function syncSteps(focusId?: number) {
   stepsToggle.setAttribute('aria-expanded', String(!stepsPanel.hidden));
   app.querySelector<HTMLInputElement>('.steps-show-box')!.checked = layer.showNotes;
   stepsToggle.classList.toggle('active', !stepsPanel.hidden);
-  if (stepsPanel.hidden) { stepRows.replaceChildren(); return; }
-  const active = document.activeElement as HTMLInputElement | null;
-  const keep = active?.classList.contains('step-note')
-    ? { id: Number(active.dataset.item), start: active.selectionStart, end: active.selectionEnd } : null;
-  stepRows.replaceChildren(...marks.map((mark, i) => {
-    const row = document.createElement('label');
-    row.className = 'step-row';
-    row.innerHTML = `<span class="step-chip" style="--chip:${mark.color};--chip-ink:${inkOn(mark.color)}">${i + 1}</span>`
-      + `<input class="step-note" type="text" data-item="${mark.id}" placeholder="Say what to do here" />`;
-    row.querySelector<HTMLInputElement>('.step-note')!.value = mark.note ?? '';
-    return row;
-  }));
-  const wanted = focusId ?? keep?.id;
-  if (wanted === undefined) return;
+  // The signature goes with the rows, or reopening would find it unchanged and
+  // skip the rebuild that has to happen.
+  if (stepsPanel.hidden) { stepRows.replaceChildren(); delete stepRows.dataset.shape; return; }
+  // Only when the rows would actually differ. Rebuilding them on every
+  // keystroke -- which is what a note being typed causes -- throws away the
+  // field under the caret, and with it the browser's own undo for what was
+  // typed and anything a paste was in the middle of.
+  const shape = marks.map((mark, i) => `${mark.id}:${i + 1}:${mark.color}`).join('|');
+  if (stepRows.dataset.shape !== shape) {
+    stepRows.dataset.shape = shape;
+    const active = document.activeElement as HTMLInputElement | null;
+    const keep = active?.classList.contains('step-note')
+      ? { id: Number(active.dataset.item), start: active.selectionStart, end: active.selectionEnd } : null;
+    stepRows.replaceChildren(...marks.map((mark, i) => {
+      const row = document.createElement('label');
+      row.className = 'step-row';
+      row.innerHTML = `<span class="step-chip" style="--chip:${mark.color};--chip-ink:${inkOn(mark.color)}">${i + 1}</span>`
+        + `<input class="step-note" type="text" data-item="${mark.id}" placeholder="Say what to do here" />`;
+      row.querySelector<HTMLInputElement>('.step-note')!.value = mark.note ?? '';
+      return row;
+    }));
+    if (keep && focusId === undefined) restoreCaret(keep);
+  }
+  // The text itself follows the layer, except in the field being typed into,
+  // which is already saying it.
+  for (const mark of marks) {
+    const field = stepRows.querySelector<HTMLInputElement>(`.step-note[data-item="${mark.id}"]`);
+    if (field && field !== document.activeElement) field.value = mark.note ?? '';
+  }
+  if (focusId === undefined) return;
+  const wanted = focusId;
   // Stay off the mark being talked about: a panel sitting over the thing you
   // just circled is the one place it must not be.
   const mark = marks.find(item => item.id === wanted);
@@ -533,8 +550,15 @@ function syncSteps(focusId?: number) {
   const field = stepRows.querySelector<HTMLInputElement>(`.step-note[data-item="${wanted}"]`);
   if (!field) return;
   field.focus();
-  if (keep && keep.id === wanted && keep.start !== null) field.setSelectionRange(keep.start, keep.end);
-  else field.setSelectionRange(field.value.length, field.value.length);
+  field.setSelectionRange(field.value.length, field.value.length);
+}
+
+/** Put the caret back where it was, when a rebuild has taken its field away. */
+function restoreCaret(keep: { id: number; start: number | null; end: number | null }) {
+  const field = stepRows.querySelector<HTMLInputElement>(`.step-note[data-item="${keep.id}"]`);
+  if (!field) return;
+  field.focus();
+  if (keep.start !== null) field.setSelectionRange(keep.start, keep.end);
 }
 
 /** Drag the panel out of the way by its grab bar. Once it has been moved it
@@ -662,7 +686,14 @@ on(stepRows, 'keydown', event => {
   const fields = [...stepRows.querySelectorAll<HTMLInputElement>('.step-note')];
   const next = fields[fields.indexOf(event.target as HTMLInputElement) + 1];
   if (key === 'Enter' && next) next.focus();
-  else { (event.target as HTMLInputElement).blur(); panelWanted = false; syncSteps(); }
+  else {
+    // Escape backs out of the mark, not only its row: leaving it selected would
+    // send the next colour or style change to it from across the window.
+    (event.target as HTMLInputElement).blur();
+    panelWanted = false;
+    layer.deselect();
+    syncSteps();
+  }
 });
 app.querySelector<HTMLButtonElement>('.steps-copy')!.addEventListener('click', () => void copyList());
 // The panel is a popover over the canvas, so pressing anything else puts it
@@ -1173,6 +1204,23 @@ document.addEventListener('keydown', event => {
   const typing = target instanceof HTMLTextAreaElement || target?.isContentEditable === true ||
     (target instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'file', 'button'].includes(target.type));
   if (layer.isEditing) return;
+  // A text field owns the keys that edit text. Without this, typing a note in
+  // the steps panel meant ⌘C copied the screenshot, ⌘V pasted an annotation
+  // rather than the clipboard's text -- and having been prevented, never
+  // pasted it at all -- ⌘A selected every mark, ⌘Z undid a drawing, and Escape
+  // closed the capture. The text tool never had this because its own editing
+  // short-circuits above; this is the same courtesy for every other field.
+  // ⇧⌘C stays the app's: copying the image is not a text shortcut.
+  //
+  // ⌘Z is the one with a condition: an empty field has no typing to undo, and
+  // a field Mark focused itself the instant a mark was made is exactly where
+  // the reflex to take that mark back arrives. With something typed in it, ⌘Z
+  // is the typing's again.
+  const emptyField = target instanceof HTMLInputElement && target.value === '';
+  const fieldKey = key === 'escape'
+    || ((event.metaKey || event.ctrlKey)
+        && ((key === 'z' && !emptyField) || (!event.shiftKey && ['a', 'c', 'v', 'x'].includes(key))));
+  if (typing && fieldKey) return;
   if (key === 'escape') {
     // Escape backs out one level: the crop, then the selection, then the editor.
     event.preventDefault();

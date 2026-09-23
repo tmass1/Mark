@@ -1640,3 +1640,82 @@ test('the rail’s tools are 36 across in a 44 rail, and all ten still fit the s
   });
   expect(sizes).toMatchObject({ button: 36, glyph: 20, group: 44, rail: 44, shown: 10, overflowY: 0 });
 });
+
+test('a steps field owns the keys that edit text', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.addInitScript(() => {
+    (window as any).__text = null;
+    Object.defineProperty(navigator, 'clipboard', { value: {
+      writeText: async (t: string) => { (window as any).__text = t; },
+      write: async () => { (window as any).__wroteImage = true; },
+    } });
+  });
+  await page.goto('/');
+  // An arrow as well as the badge, so a stray ⌘A would say "2 selected".
+  await drawArrow(page, [200, 500], [700, 600]);
+  await pick(page, 'Step');
+  const at = await stage(page);
+  const spot = at(300, 300);
+  await page.mouse.click(spot.x, spot.y);
+  await page.keyboard.type('make the headline sticky');
+  const field = page.locator('.step-note').first();
+
+  // ⌘A and ⌘C take the text, not every mark and not the screenshot.
+  await page.keyboard.press('Meta+a');
+  await page.keyboard.press('Meta+c');
+  expect(await page.evaluate(() => (window as any).__wroteImage)).toBeFalsy();
+  await expect(page.locator('.chosen')).toHaveText('Step selected');   // not "2 selected"
+
+  // ⌘V pastes the clipboard's text. It used to paste an annotation, and having
+  // been prevented, never pasted the text at all.
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.type(' / ');
+  await page.keyboard.press('Meta+v');
+  await expect(field).toHaveValue('make the headline sticky / make the headline sticky');
+  await expect(page.locator('.badge')).toHaveCount(1);      // no annotation was pasted
+
+  // What is typed reaches the list, however it got there.
+  await page.keyboard.press('Meta+Shift+l');
+  expect(await page.evaluate(() => (window as any).__text))
+    .toContain('make the headline sticky / make the headline sticky');
+
+  // ⌘Z undoes the typing rather than the drawing.
+  await field.focus();
+  await page.keyboard.press('Meta+z');
+  expect(await field.inputValue()).not.toBe('make the headline sticky / make the headline sticky');
+  await expect(page.locator('.badge')).toHaveCount(1);
+
+  // Escape puts the panel away and leaves the capture alone.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.steps')).toBeHidden();
+  await expect(page.locator('.stage')).toBeVisible();
+});
+
+test('holding shift keeps a line straight', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Line');
+  const at = await stage(page);
+  const from = at(200, 300), to = at(800, 340);          // a little off horizontal
+
+  await page.keyboard.down('Shift');
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+
+  const [x1, y1, x2, y2] = (await page.locator('.arrow').first().getAttribute('d'))!
+    .match(/-?\d+(\.\d+)?/g)!.map(Number);
+  expect(y2).toBeCloseTo(y1, 6);                          // perfectly level, in the numbers too
+  expect(x2).toBeGreaterThan(x1 + 100);                   // and still as long as it was drawn
+
+  // Without shift it goes where the pointer went.
+  await page.keyboard.press('Meta+z');
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+  const free = (await page.locator('.arrow').first().getAttribute('d'))!
+    .match(/-?\d+(\.\d+)?/g)!.map(Number);
+  expect(free[3]).not.toBeCloseTo(free[1], 1);
+});

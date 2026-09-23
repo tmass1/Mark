@@ -226,6 +226,27 @@ export function stepList(items: readonly Annotation[]): string {
   return numbered(items).map((item, i) => `${i + 1}. ${item.note ?? ''}`.trimEnd()).join('\n');
 }
 
+/** Where an end goes with shift held: onto the nearest eighth of a turn from
+ *  where the drag began, so a line drawn by hand can be exactly horizontal,
+ *  vertical or square to the corner.
+ *
+ *  The pointer is projected onto that ray rather than the length being kept and
+ *  the vector rotated: locked horizontal, moving the pointer down should not
+ *  quietly lengthen the line. */
+export function snapAngle(fromX: number, fromY: number, x: number, y: number): Point {
+  const dx = x - fromX, dy = y - fromY;
+  if (!dx && !dy) return [x, y];
+  const eighth = Math.PI / 4;
+  const angle = Math.round(Math.atan2(dy, dx) / eighth) * eighth;
+  // cos(π/2) is 6e-17 rather than 0, which would leave a horizontal line a
+  // hair off horizontal. Perfectly straight should be perfectly straight in the
+  // numbers too, not just to the eye.
+  const exact = (n: number) => Math.abs(n) < 1e-12 ? 0 : n;
+  const ux = exact(Math.cos(angle)), uy = exact(Math.sin(angle));
+  const along = dx * ux + dy * uy;      // never negative: the ray is within an eighth of the drag
+  return [fromX + ux * along, fromY + uy * along];
+}
+
 /** The axis of an arrow: along it, across it, and how long it is. */
 function axis(a: Arrow) {
   const dx = a.x2 - a.x1, dy = a.y2 - a.y1;
@@ -1065,12 +1086,16 @@ export class AnnotationLayer {
       const anchorY = corner === 'nw' || corner === 'ne' ? from.y + from.height : from.y;
       Object.assign(item, span(anchorX, anchorY, x, y));
     } else if (isSegment(item)) {
-      if (this.drag.kind === 'create') { item.x2 = x; item.y2 = y; }
+      // Shift holds the angle, measured from whichever end is staying put.
+      const held = (fromX: number, fromY: number): Point =>
+        event.shiftKey ? snapAngle(fromX, fromY, x, y) : [x, y];
+      if (this.drag.kind === 'create') { [item.x2, item.y2] = held(item.x1, item.y1); }
       else if (this.drag.kind === 'reshape') {
-        if (this.drag.end === 1) { item.x1 = x; item.y1 = y; } else { item.x2 = x; item.y2 = y; }
+        if (this.drag.end === 1) [item.x1, item.y1] = held(item.x2, item.y2);
+        else [item.x2, item.y2] = held(item.x1, item.y1);
       }
     } else if (item.kind === 'step' && (this.drag.kind === 'create' || this.drag.kind === 'reshape')) {
-      item.to = [x, y];
+      item.to = event.shiftKey ? snapAngle(item.x, item.y, x, y) : [x, y];
     } else if (this.drag.kind === 'create' && item.kind === 'pen') {
       // Every sample is kept while drawing and thinned once, on release: a
       // stroke that simplifies as you draw it visibly changes shape behind the

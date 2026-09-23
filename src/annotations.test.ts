@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
   ARROW_STYLES, COLORS, arrowPaint, arrowStrokeWidth, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
-  noteAt, offsetBy, penPath, polygonPath, stepArrow, stepList, stepNumbers, stepRadius, styleOf, textSize, thin,
+  noteAt, offsetBy, penPath, polygonPath, snapAngle, stepArrow, stepList, stepNumbers, stepRadius, styleOf,
+  textSize, thin,
   type Arrow, type Note, type Point, type Shape, type Step,
 } from './annotations';
 
@@ -474,5 +475,32 @@ describe('notes written on the image', () => {
     drawAnnotations(loud.ctx, [step({ note: 'say this' })], undefined, true);
     expect(loud.calls).toContain('text!:1@100,100');
     expect(loud.calls.some(call => call.startsWith('text!:say this@'))).toBe(true);
+  });
+});
+
+
+describe('holding the angle', () => {
+  it('locks to the nearest eighth of a turn', () => {
+    // A touch off horizontal comes back to horizontal, keeping how far along it went.
+    expect(snapAngle(0, 0, 100, 9)).toEqual([100, 0]);
+    expect(snapAngle(0, 0, 9, 100)).toEqual([0, 100]);
+    const [x, y] = snapAngle(0, 0, 100, 90);
+    expect(x).toBeCloseTo(95);
+    expect(y).toBeCloseTo(95);            // the diagonal, and square
+    expect(x).toBeCloseTo(y);
+  });
+
+  it('projects onto the ray rather than swinging the whole length round', () => {
+    // Locked horizontal, dragging further down must not lengthen the line: the
+    // end follows how far along the ray the pointer is, not how far it is away.
+    expect(snapAngle(0, 0, 100, 3)[0]).toBeCloseTo(100);
+    expect(snapAngle(0, 0, 100, 30)[0]).toBeCloseTo(100);
+    // And it works from any anchor, in any direction.
+    expect(snapAngle(50, 60, -40, 57)).toEqual([-40, 60]);
+    expect(snapAngle(50, 60, 47, -20)).toEqual([50, -20]);
+  });
+
+  it('leaves a pointer that has not moved alone', () => {
+    expect(snapAngle(12, 34, 12, 34)).toEqual([12, 34]);
   });
 });
