@@ -61,7 +61,9 @@ await page.waitForTimeout(300);
 const image = await boxOf(editor.locator('.overlay'));
 const k = image.width / REGION.w;                      // screen px per scene point
 const on = (x, y) => ({ x: image.x + (x - REGION.x) * k, y: image.y + (y - REGION.y) * k });
-const tool = name => editor.locator(`.tool[data-tool="${name}"]`).click();
+// The rail is slots now, each wearing one of its ways, so a tool is asked for
+// by the name it is wearing rather than by an id.
+const tool = name => editor.getByRole('radio', { name, exact: true }).click();
 // The size slider is a range input; Playwright cannot fill one, so set it the way a drag would.
 const size = value => editor.locator('.weight').evaluate((el, v) => {
   el.value = v; el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -72,12 +74,12 @@ const size = value => editor.locator('.weight').evaluate((el, v) => {
 // the editor, hence the check.
 async function deselect() { if (await editor.locator('.handle, .note-outline').count()) await page.keyboard.press('Escape'); }
 
-await size(0.55); await tool('box');    await drag(on(1046, 184), on(1254, 288)); await deselect();
-await size(1);    await tool('arrow');  await drag(on(790, 500), on(934, 380));   await deselect();
-await size(0.8);  await tool('text');   await page.mouse.click(on(944, 404).x, on(944, 404).y);
+await size(0.55); await tool('Box');    await drag(on(1046, 184), on(1254, 288)); await deselect();
+await size(1);    await tool('Arrow');  await drag(on(790, 500), on(934, 380));   await deselect();
+await size(0.8);  await tool('Text');   await page.mouse.click(on(944, 404).x, on(944, 404).y);
 await page.keyboard.type('Launch day'); await page.keyboard.press('Escape');    await deselect();
-await size(1);    await tool('redact'); await drag(on(424, 220), on(538, 256));  await deselect();
-await tool('arrow');                                   // the tool the picture should show chosen
+await size(1);    await tool('Redact'); await drag(on(424, 220), on(538, 256));  await deselect();
+await tool('Arrow');                                   // the tool the picture should show chosen
 await page.mouse.move(stage.x + 20, stage.y + 880);    // and nothing hovered
 await page.waitForTimeout(400);
 const winBox = await boxOf(win);
