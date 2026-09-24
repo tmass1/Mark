@@ -273,9 +273,11 @@ The artwork is `brand/mark.png`, square and edge to edge, and
 `scripts/build-icon.mjs` derives everything else from it: the app icon at every
 size and the `.icns`, cut to Apple's continuous-corner squircle on the system's
 824-of-1024 grid, so the margin macOS expects for shadow and alignment is kept;
-and `public/brand/mark.png`, the same shape filling its square, which the
-editor's empty state shows on launch and the site shows in its bar, its footer,
-beside the download and as its favicon.
+and `src/mark-icon.png`, the same shape filling its square, which the editor's
+empty state shows on launch and the site shows in its bar, its footer, beside
+the download and as its favicon. A source asset rather than a public one: the
+editor is loaded both at the root and from `demo/`, and only an imported asset
+gets a path that is right from either.
 
 One place needs a shape rather than a picture, and comes from
 `brand/mark-dark.svg`, the vector drawing of the same arrow: the menu bar glyph,

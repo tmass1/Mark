@@ -43,3 +43,36 @@ test('the bar’s links reach their sections', async ({ page }) => {
   await expect(page).toHaveURL(/#try$/);
   await expect(page.getByRole('heading', { name: 'Try it here.' })).toBeInViewport();
 });
+
+test('every page finds everything it asks for', async ({ page }) => {
+  // The editor is loaded at the root and again from demo/, so a path that is
+  // right from one is not automatically right from the other. This is the check
+  // that caught the icon missing from the site and broken in the demo's frame.
+  for (const at of ['/', '/demo.html', '/site.html']) {
+    const missing: string[] = [];
+    page.on('response', response => {
+      // Only what was fetched over the wire: a data: or blob: URL has no status
+      // worth reading, and the demo makes both.
+      const url = new URL(response.url());
+      if (url.protocol.startsWith('http') && response.status() >= 400) missing.push(url.pathname);
+    });
+    await page.goto(at, { waitUntil: 'networkidle' });
+    expect(missing, at).toEqual([]);
+    const broken = await page.evaluate(() =>
+      // One that has been asked for and did not arrive. An img with no src yet
+      // is waiting for one -- the demo's clipboard card holds one of those.
+      [...document.images]
+        .filter(img => img.getAttribute('src') && img.complete && !img.naturalWidth)
+        .map(img => img.src));
+    expect(broken, at).toEqual([]);
+    page.removeAllListeners('response');
+  }
+});
+
+test('the demo’s editor shows the icon on its empty state, from its own depth', async ({ page }) => {
+  await page.goto('/demo.html');
+  const editor = page.frameLocator('.win.editor iframe');
+  await expect(editor.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  expect(await editor.locator('.viewfinder').evaluate(
+    el => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0)).toBe(true);
+});

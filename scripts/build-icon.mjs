@@ -77,10 +77,11 @@ async function render(file, px, target) {
 }
 for (const px of sizes) await render(path.join(work, `icon-${px}.svg`), px, path.join(work, `icon-${px}.png`));
 await render(path.join(work, 'tray.svg'), 44, path.join(icons, 'tray.png'));
+await render(path.join(work, 'web.svg'), 512, path.join(root, 'src/mark-icon.png'));
 // The one the editor's empty state and the site both show: the same shape,
-// filling its square, served from public/.
-mkdirSync(path.join(root, 'public/brand'), { recursive: true });
-await render(path.join(work, 'web.svg'), 512, path.join(root, 'public/brand/mark.png'));
+// filling its square. A source asset rather than a public one, because the
+// editor is loaded both at the root and from demo/, and only an imported asset
+// gets a path that is right from either.
 await browser.close();
 
 // What tauri.conf.json names, and what macOS's iconset wants.
@@ -90,5 +91,5 @@ const iconset = { 16: ['icon_16x16.png'], 32: ['icon_16x16@2x.png', 'icon_32x32.
   128: ['icon_128x128.png'], 256: ['icon_128x128@2x.png', 'icon_256x256.png'], 512: ['icon_256x256@2x.png', 'icon_512x512.png'], 1024: ['icon_512x512@2x.png'] };
 for (const [px, names] of Object.entries(iconset)) for (const name of names) copyFileSync(path.join(work, `icon-${px}.png`), path.join(work, 'Mark.iconset', name));
 execFileSync('iconutil', ['--convert', 'icns', '--output', path.join(icons, 'icon.icns'), path.join(work, 'Mark.iconset')]);
-console.log(`icons: ${Object.keys(named).join(', ')}, icon.icns, tray.png; and public/brand/mark.png`);
+console.log(`icons: ${Object.keys(named).join(', ')}, icon.icns, tray.png; and src/mark-icon.png`);
 if (picture.length < 700_000) console.warn('note: brand/mark.png is small for a 1024 icon; a larger export would sharpen the big sizes.');

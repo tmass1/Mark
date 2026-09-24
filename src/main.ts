@@ -1,6 +1,9 @@
 import './style.css';
 import { command, isTauri, watchCapture, watchSettings, type CapturePreview, type Snapshot } from './platform';
 import { DEFAULT_SHORTCUT, prettyShortcut } from './shortcut';
+// The icon as an import, so its path is right whether this page is the app's
+// own or the copy the web demo runs in a frame.
+import markIcon from './mark-icon.png';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
@@ -239,7 +242,7 @@ app.innerHTML = `
       <!-- The icon itself, so what greets you on launch is exactly what sits in
            the Dock. It used to be redrawn from paths, which is how the two came
            to be different pictures. -->
-      <img class="viewfinder" src="./brand/mark.png" alt="" width="72" height="72" />
+      <img class="viewfinder" src="${markIcon}" alt="" width="72" height="72" />
       <h1>Capture a region</h1><p class="empty-hint">A little less between seeing and sharing.</p>
       <button class="start primary" type="button">Capture Region <kbd>${prettyShortcut(DEFAULT_SHORTCUT)}</kbd></button>
       <section class="recents" hidden aria-label="Recent captures">

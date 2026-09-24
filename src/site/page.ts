@@ -4,10 +4,18 @@
  *  is the artwork in brand/, shown as it is. */
 import './page.css';
 import pkg from '../../package.json';
+import markIcon from '../mark-icon.png';
 import { arrowPolygon, arrowStrokes, arrowStrokeWidth, polygonPath, strokePath, type Arrow, type ArrowStyle } from '../annotations';
 import { DEFAULT_SHORTCUT, prettyShortcut } from '../shortcut';
 
 const all = <T extends Element>(selector: string) => Array.from(document.querySelectorAll<T>(selector));
+
+// The mark, from the same import the editor uses, so the page and the app show
+// one file and the build gives it a path that is right from anywhere.
+for (const img of all<HTMLImageElement>('img[data-mark]')) img.src = markIcon;
+for (const rel of ['icon', 'apple-touch-icon']) {
+  document.head.append(Object.assign(document.createElement('link'), { rel, href: markIcon }));
+}
 
 // ---- what the app knows -------------------------------------------------------
 for (const el of all('[data-version]')) el.textContent = pkg.version;

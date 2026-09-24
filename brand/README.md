@@ -10,9 +10,11 @@ from it by `scripts/build-icon.mjs`:
 
 - the app icon at every size and the `.icns`, cut to Apple's continuous-corner
   squircle on the system's 824-of-1024 grid, so macOS's own margin is kept;
-- `../public/brand/mark.png`, the same shape filling its square, which the
-  editor's empty state shows on launch and the site shows in its bar, its
-  footer, beside the download and as its favicon.
+- `../src/mark-icon.png`, the same shape filling its square, which the editor's
+  empty state shows on launch and the site shows in its bar, its footer, beside
+  the download and as its favicon. Imported rather than served from public/, so
+  its path is right whether the editor is the app's own page or the copy the web
+  demo runs in a frame.
 
 One place needs a shape rather than a picture, and comes from `mark-dark.svg`,
 the vector drawing of the same arrow: the menu bar glyph, which has to be flat
