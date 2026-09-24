@@ -1,11 +1,40 @@
+# A page names its assets by a hash of their contents, so a page held back by a
+# cache asks for files a deploy has already replaced -- a broken page rather
+# than an old one. The pages revalidate; what they name never changes under its
+# name, and is kept for a year.
+#
+# Named one by one rather than by a glob: these rules add up rather than
+# override, so a /* rule would put no-cache on the assets as well and throw the
+# year away. The extensionless forms are here because the host serves them too.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/demo
+  Cache-Control: no-cache
+/demo.html
+  Cache-Control: no-cache
+/demo/editor
+  Cache-Control: no-cache
+/demo/editor.html
+  Cache-Control: no-cache
+/demo/selector
+  Cache-Control: no-cache
+/demo/selector.html
+  Cache-Control: no-cache
+/demo/settings
+  Cache-Control: no-cache
+/demo/settings.html
+  Cache-Control: no-cache
+
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
 /site/*
   Cache-Control: public, max-age=86400
 
-/demo/*
-  Cache-Control: public, max-age=3600
+/demo/scene.jpg
+  Cache-Control: public, max-age=86400
 
 /*.dmg
   Content-Type: application/x-apple-diskimage
