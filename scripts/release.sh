@@ -14,6 +14,19 @@ PROFILE="${MARK_NOTARY_PROFILE:-Mark}"
 step() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 fail() { printf '\n\033[31m%s\033[0m\n' "$1" >&2; }
 
+# Tauri's bundle_dmg.sh fails outright if a half-made image from a previous run
+# is still attached -- which is exactly what it leaves behind when it fails. It
+# has cost two releases now, so the next one starts by clearing up after the
+# last one. Only images built from this folder are touched.
+BUILD=src-tauri/target/universal-apple-darwin/release/bundle/macos
+for stale in $(hdiutil info 2>/dev/null | awk -v dir="$PWD/$BUILD/rw." '
+    $1 == "image-path" && index($3, dir) == 1 { found = 1 }
+    found && $1 ~ /^\/dev\/disk/ && $NF ~ /^\/Volumes\// { print $1; found = 0 }'); do
+  printf 'Detaching a disk image left attached by an earlier run: %s\n' "$stale"
+  hdiutil detach "$stale" -force >/dev/null 2>&1 || true
+done
+rm -f "$BUILD"/rw.*.dmg
+
 step "Looking for a Developer ID certificate"
 # Chosen by fingerprint, never by name. Two certificates can carry the same
 # name -- through a renewal you hold the old one and the new one at once -- and
