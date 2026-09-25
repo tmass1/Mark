@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 test('browser preview has no native dependency and renders in light and dark', async ({ page }) => {
   const errors: string[] = [];
@@ -486,40 +486,56 @@ test('the redaction shown on screen is of the region it covers', async ({ page }
   expect(middle.g).toBeLessThan(200);
 });
 
-test('copies and pastes an annotation, and duplicates one directly', async ({ page }) => {
+test('duplicates an annotation, and pastes further copies of it', async ({ page }) => {
   await page.goto('/');
   await drawArrow(page, [200, 200], [600, 300]);
   await expect(page.locator('.arrow')).toHaveCount(1);
 
-  // The arrow is still selected, so Command-C takes it rather than the image,
-  // and says so instead of quietly changing meaning.
-  await page.keyboard.press('Meta+c');
-  await expect(page.getByRole('status')).toContainText('Arrow copied');
+  // ⌘D is what takes a mark now; ⌘C belongs to the button that closes.
+  await page.keyboard.press('Meta+d');
+  await expect(page.locator('.arrow')).toHaveCount(2);
   await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
 
   await page.keyboard.press('Meta+v');
-  await expect(page.locator('.arrow')).toHaveCount(2);
+  await expect(page.locator('.arrow')).toHaveCount(3);
   // Pasting again cascades rather than stacking in one spot.
   await page.keyboard.press('Meta+v');
-  await expect(page.locator('.arrow')).toHaveCount(3);
-  const paths = await page.locator('.arrow').evaluateAll(nodes => nodes.map(n => n.getAttribute('d')));
-  expect(new Set(paths).size).toBe(3);
-
-  await page.keyboard.press('Meta+d');
   await expect(page.locator('.arrow')).toHaveCount(4);
+  const paths = await page.locator('.arrow').evaluateAll(nodes => nodes.map(n => n.getAttribute('d')));
+  expect(new Set(paths).size).toBe(4);
 });
 
-test('with nothing selected Command-C still copies the image and closes', async ({ page }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'clipboard', { value: { write: async () => {} } });
-  });
+test('nothing to paste says which key would have filled the clipboard', async ({ page }) => {
   await page.goto('/');
-  await drawArrow(page, [200, 200], [600, 300]);
-  await page.keyboard.press('Escape');                 // clears the selection
-  await expect(page.locator('.handle')).toHaveCount(0);
-  await page.keyboard.press('Meta+c');
-  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await page.keyboard.press('Meta+v');
+  await expect(page.getByRole('status')).toContainText('⌘D');
 });
+
+// The footer button promises "Copy and Close ⌘C". A fresh mark arrives
+// selected, so a ⌘C that took the selection instead broke that promise at the
+// one moment it was most likely to be believed.
+for (const [what, prepare] of [
+  ['with the mark just drawn still selected', async (page: Page) => {
+    await expect(page.locator('.handle')).not.toHaveCount(0);
+  }],
+  ['with nothing selected', async (page: Page) => {
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.handle')).toHaveCount(0);
+  }],
+] as const) {
+  test(`Command-C copies the image and closes, ${what}`, async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', { value: { write: async () => {} } });
+    });
+    await page.goto('/');
+    await drawArrow(page, [200, 200], [600, 300]);
+    await prepare(page);
+    await page.keyboard.press('Meta+c');
+    await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+    // What it closed is not lost -- it is waiting in Recent, drawing and all.
+    await expect(page.locator('.recent')).toHaveCount(1);
+  });
+}
 
 test('Copy keeps the capture open so you can carry on', async ({ page }) => {
   await page.addInitScript(() => {
@@ -900,17 +916,19 @@ test('a shifted bracket goes straight to the front or the back', async ({ page }
   expect(await drawOrder(page)).toEqual([first, second, third]);
 });
 
-test('copying a multiple selection pastes all of it', async ({ page }) => {
+test('duplicating a multiple selection takes all of it', async ({ page }) => {
   await page.goto('/');
   await drawArrow(page, [200, 200], [500, 200]);
   await drawArrow(page, [200, 400], [500, 400]);
   const at = await stage(page);
   await clickAt(page, at(480, 200), true);
-  await page.keyboard.press('Meta+c');
-  await expect(page.getByRole('status')).toContainText('2 annotations copied');
-  await page.keyboard.press('Meta+v');
+  await expect(page.locator('.chosen')).toHaveText('2 selected');
+  await page.keyboard.press('Meta+d');
   await expect(page.locator('.arrow')).toHaveCount(4);
   await expect(page.locator('.chosen')).toHaveText('2 selected');
+  // And the pair stays on the clipboard, so ⌘V lays down another two.
+  await page.keyboard.press('Meta+v');
+  await expect(page.locator('.arrow')).toHaveCount(6);
 });
 
 test('the empty state has no footer to act on', async ({ page }) => {
