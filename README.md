@@ -1,13 +1,27 @@
 # Mark
 
-Mark is a fast, small macOS screenshot utility built with Tauri v2. Press a
-global shortcut, drag across a region, mark it up, then copy and close.
+A fast, small screenshot tool for the Mac. Press ⌘4, drag across part of the
+screen, point at what matters, and it's on your clipboard.
+
+![Mark's editor, with an arrow, a box, a label and a redaction on a screenshot of a dashboard](public/site/hero.png)
+
+**Number what you're talking about.** Numbered arrows, boxes and ellipses put
+1, 2, 3 on the picture, and each number gets a note as you go. ⌘⇧L copies the
+notes as a list, so a message to a person or an AI can say "1. do this, 2. do
+that" instead of describing where things are: the picture carries the numbers,
+and the words stay text.
+
+![Three numbered steps pointing at a dashboard, with the Steps panel listing what each one is for](docs/numbered-steps.png)
+
+**[Download Mark](https://github.com/tmass1/Mark/releases/latest)**, signed and
+notarized for Apple silicon and Intel, for macOS 13 or later.
 
 Annotation is arrows, lines, freehand, text, boxes, ellipses, a highlighter,
-redaction, and a crop, any of which can carry a number. Finished work goes to the clipboard, to a file, or to macOS's share
-sheet. There are no accounts, cloud features, or screen recording. The UI uses
-the system WKWebView; the native shell is Rust. There is no Xcode project and
-no Swift source.
+redaction, and a crop, any of which can carry a number. Finished work goes to
+the clipboard, to a file, or to macOS's share sheet. There are no accounts,
+cloud features, or screen recording. Mark is built with Tauri v2: the interface
+is TypeScript in the system WKWebView and the native shell is Rust, with no
+Xcode project, no Swift source, and 200+ automated tests.
 
 ## Requirements
 
