@@ -302,7 +302,7 @@ footer > * { flex: none; }
 /* Nothing in the bar scrolls or shrinks: a control that does not fit must be
    hidden by a breakpoint below, so it is never silently clipped out of reach. */
 .swatches { display: flex; gap: 7px; }
-.tool, .swatch, .styles, .fills, .exports { flex: none; }
+.tool, .swatch, .styles, .looks, .fills, .exports { flex: none; }
 /* Each swatch is a bead of colour: lit from above, resting on a shadow. */
 .swatch { width: 20px; height: 20px; padding: 0; border: 1px solid #00000029; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 1.5px 1px #ffffff66, inset 0 -1px 1px #0000001a, 0 1px 2px #0000001f; }
 .swatch.active { box-shadow: inset 0 1.5px 1px #ffffff66, 0 0 0 2px var(--glass), 0 0 0 3.5px var(--blue); }
@@ -431,12 +431,23 @@ footer > * { flex: none; }
    competing for a line and the explanation wrapped to three of them. What it
    said now sits on the checkbox, where it is read once and then not again. */
 .steps-foot {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px;
   margin-top: 12px; padding: 12px 4px 2px; border-top: 1px solid var(--hairline);
 }
-.steps-show { flex: none; display: flex; align-items: center; gap: 7px; color: var(--muted); }
-.steps-show:hover { color: var(--ink); }
-.steps-show input { margin: 0; accent-color: var(--blue); }
+/* Three ways a note can go on the image, in the pickers' own sunken pill with
+   their sliding highlight. The foot wraps rather than clipping when the panel
+   is drawn in narrow: Copy list drops to a line of its own, and at the
+   narrowest the switch's label goes above its three choices. */
+.steps-show { flex: 0 1 auto; max-width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; color: var(--muted); }
+.steps-show .segments {
+  position: relative; display: flex; gap: 2px; padding: 2px; border-radius: 999px;
+  background: var(--sunken); box-shadow: inset 0 1px 1px #0000000f;
+}
+.segment {
+  position: relative; z-index: 1; border: none; border-radius: 999px; padding: 3px 9px;
+  background: transparent; color: var(--muted); font-size: 11.5px; transition: color .15s;
+}
+.segment:hover, .segment[aria-checked="true"] { color: var(--ink); }
 .steps-copy { flex: none; height: 28px; padding: 0 14px; font-size: 12px; }
 /* Named, not just a glyph and a number: it is the only way back to a closed
    panel, and a badge with a 3 beside it did not say so. */
@@ -488,11 +499,11 @@ footer > * { flex: none; }
 /* Anything already drawn says it can be taken hold of, whatever tool is in
    hand: pressing one selects it rather than drawing, so the pointer should not
    go on promising a new mark over the top of an old one. */
-.arrow, .note, .shape, .step { cursor: move; }
+.arrow, .note, .shape, .step, .border { cursor: move; }
 /* Except while cropping, where pressing really does start a crop and not a
    selection. The pointer tells the truth about what the press will do. */
 .overlay.crop-tool .arrow, .overlay.crop-tool .note,
-.overlay.crop-tool .shape, .overlay.crop-tool .step { cursor: crosshair; }
+.overlay.crop-tool .shape, .overlay.crop-tool .step, .overlay.crop-tool .border { cursor: crosshair; }
 .handle { fill: #fff; stroke: var(--blue); cursor: grab; }
 .note-outline { fill: none; stroke: var(--blue); pointer-events: none; }
 .highlight { mix-blend-mode: multiply; opacity: .3; }
@@ -539,19 +550,19 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 /* The bar sheds controls as the window narrows, in order of what has a
    keyboard shortcut to fall back on: the selection label first, then the
    reorder pair (⌘[ ⌘]), then the word beside the Size slider, and Undo and
-   Delete (⌘Z ⌫) last. Colour, style, fill and the slider stay to the 380
-   minimum. Every threshold is measured with the widest state -- an arrow
-   selected, so its three-button picker and the label both show -- and the
-   clipping test checks each one. */
-/* The numbering switch rides with the arrow now, where the style picker
-   already was, so the bar carries one control more than it used to at these
-   widths. The slider gives up the room: it is the one control that works just
-   as well narrow. */
-@media (max-width: 800px) {
+   Delete (⌘Z ⌫) last. Colour, style, looks, fill and the slider stay to the
+   380 minimum. Every threshold is measured with the widest state -- an arrow
+   selected, so its three-button picker, the looks button and the label all
+   show -- and the clipping test checks each one. */
+/* The looks button rides with the arrow picker, so the bar carries one control
+   more than it did at these widths. The slider gives up the room first -- it is
+   the one control that works just as well narrow -- and the label goes a little
+   sooner than it used to. */
+@media (max-width: 860px) {
   .weight { width: 62px; }
   .toolbar { gap: 10px; }
 }
-@media (max-width: 770px) { .chosen { display: none; } }
+@media (max-width: 790px) { .chosen { display: none; } }
 /* .choose only exists in the browser preview; the app's footer is narrower. */
 @media (max-width: 700px) { .choose { display: none; } }
 @media (max-width: 560px) {
@@ -576,25 +587,59 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 .style:hover, .style.active { color: var(--ink); }
 .fills[data-shape="ellipse"] .as-box, .fills:not([data-shape="ellipse"]) .as-ellipse { display: none; }
 
+/* Shadow and border: one button beside the arrow picker, in its sunken pill,
+   lit the way the picker's own highlight is once either look is on -- so the
+   bar says the arrows are wearing something without opening the menu. */
+.looks { position: relative; display: flex; }
+.looks-button {
+  display: flex; border: none; border-radius: 999px; padding: 6px 7px;
+  background: var(--sunken); box-shadow: inset 0 1px 1px #0000000f;
+  color: var(--muted); transition: color .15s, background .15s;
+}
+.looks-button svg { display: block; width: 17px; height: 17px; }
+.looks-button:hover, .looks-button[aria-expanded="true"] { color: var(--ink); }
+.looks-button.active {
+  color: var(--ink); background: var(--lens);
+  box-shadow: inset 0 1px 0 #ffffffb8, 0 1px 3px #00000021, 0 0 0 .5px var(--edge);
+}
+/* Hung from the button's right edge: the button sits well left of centre, and
+   hung from its left the menu would run off a narrow window. */
+.looks-menu {
+  position: absolute; top: 100%; right: 0; margin-top: 8px; z-index: 10;
+  display: flex; flex-direction: column; min-width: 164px; padding: 5px;
+  border-radius: 12px; background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: 0 12px 34px var(--shadow), 0 0 0 .5px var(--control-line);
+}
+.looks-menu[hidden] { display: none; }
+.looks-menu button { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: none; border-radius: 8px; background: transparent; font-size: 12px; text-align: left; }
+.looks-menu button span { flex: 1; }
+.looks-menu svg { flex: none; width: 18px; height: 18px; opacity: .7; }
+.looks-menu .tick { width: 16px; height: 16px; opacity: 1; color: var(--blue); visibility: hidden; }
+.looks-menu [aria-checked="true"] .tick { visibility: visible; }
+.looks-menu button:hover, .looks-menu button:focus-visible { background: var(--blue); color: #fff; outline: none; }
+.looks-menu button:hover svg, .looks-menu button:focus-visible svg { opacity: 1; color: #fff; }
+
 /* After .subtle.icon, and as specific: that rule sets display and would
    otherwise win, leaving these buttons visible where the bar cannot hold them. */
 /* Send backward and bring forward go first of the four, since ⌘[ and ⌘] do the
-   same job and the bar now carries the numbering switch as well. */
+   same job. */
 @media (max-width: 680px) { .toolbar .back, .toolbar .front { display: none; } }
 @media (max-width: 480px) { .size-word { display: none; } } /* the slider keeps its aria-label */
 /* At the narrowest the bar carries eight colours, three arrow styles, the
-   numbering switch and the slider, and they only fit if everything gives a
-   little. Tightening them all beats dropping one: a control that is not there
-   is not reachable at all, while a control two pixels narrower still is. */
+   looks button and the slider, and they only fit if everything gives a little.
+   Tightening them all beats dropping one: a control that is not there is not
+   reachable at all, while a control two pixels narrower still is. */
 @media (max-width: 440px) {
   .weight { width: 46px; }
   .toolbar { gap: 6px; padding: 0 10px; }
   .swatch { width: 14px; height: 14px; }
   .swatches { gap: 3px; }
   .style { padding: 4px 5px; }
+  .looks-button { padding: 6px 5px; }
 }
 /* Then Undo and Delete, for the same reason: ⌘Z and ⌫ do their job from the
-   keyboard, and nothing but the numbering switch turns numbering on. */
+   keyboard. */
 @media (max-width: 600px) { .toolbar .undo, .toolbar .remove { display: none; } }
 
 /* ---- settings ------------------------------------------------------------- */

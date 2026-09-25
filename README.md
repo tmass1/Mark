@@ -115,6 +115,16 @@ notarization; an Apple Development certificate is only good for this Mac.
      the toolbar cannot answer while you are looking at the image. The
      crosshair stays, because the tail lands exactly where you press.
 
+     Beside the styles, **Shadow and border** opens two finishing touches an
+     arrow can wear: a soft **shadow** lifting it off the screenshot, and a
+     **border** setting it apart from whatever is underneath — white, or dark
+     round a white arrow, where white would be no border at all. They belong to
+     the mark, like its colour: the menu puts them on the selection and on the
+     next arrow, stays open while you try them, and they stay on until turned
+     off. A numbered arrow's badge wears them too. The border is one shape under
+     the whole mark, so a badge's rim never cuts into its own arrow, and with a
+     border on it is the border that casts the mark's shadow.
+
      The rail is slots rather than tools: a slot holds one tool, or a few that
      are the same tool done differently, and wears whichever was last chosen
      from it. A corner marker says a slot has more than one; rest on it and the
@@ -129,8 +139,11 @@ notarization; an Apple Development certificate is only good for this Mac.
      talked about rather than described: "1. do this, 2. do that" instead of
      "the circle in the middle just below the nav". Numbering is a property of a
      mark rather than a kind of mark, so the box and the ellipse have numbered
-     ways of their own in the same run of numbers, and choosing one with
-     something selected changes what that mark is.
+     ways of their own in the same run of numbers. Choosing one from a slot's
+     menu with something selected changes what that mark is — but only a mark
+     that slot draws: numbering arrows leaves a selected box alone. Clicking a
+     slot only picks up its tool and never changes what is already drawn, so a
+     numbered arrow keeps its number when you reach for the Box next.
 
      A badge's number is its place in the sequence rather than something written
      on it, so deleting one closes the gap and the numbers are always 1 to n
@@ -153,10 +166,16 @@ notarization; an Apple Development certificate is only good for this Mac.
      they have to be — one clipboard write cannot be pasted as the picture and
      then as the words, since the second paste would only repeat the first.
 
-     **Write on the image**, in that panel, draws each note beside its badge in
-     the Text tool's own size and the mark's colour — for a screenshot going to
-     a person rather than a prompt. On or off, what is copied is what is on
-     screen.
+     **On the image**, in that panel, is how the notes are drawn there, if at
+     all: **Off**, the default; **Beside**, each note next to its badge in the
+     Text tool's own size and the mark's colour; or **Framed**, the note in with
+     its number in one pill — "1 make the nav sticky" — in the numeral's ink on
+     the mark's colour, with the arrow leaving from the pill's edge. A mark with
+     nothing typed keeps its round badge, and a pill near an edge slides back
+     inside the image rather than turning round, so it always reads number
+     first. One setting for the whole capture, for a screenshot going to a
+     person rather than a prompt; whichever way it is set, what is copied is
+     what is on screen, and the words follow the typing as it happens.
 
      A note field owns the keys that edit text — ⌘A, ⌘C, ⌘V, ⌘X and Escape — so
      they do not reach the drawing underneath. ⌘Z is the exception: an empty
@@ -230,6 +249,11 @@ notarization; an Apple Development certificate is only good for this Mac.
 
    Color and size come from the toolbar and drive every tool. Selecting an
    annotation adopts its style, so the toolbar always describes the next edit.
+   The pickers follow the selection when there is one — its last mark, which
+   is where colour and size are read from — and the tool in hand when there is
+   not, so one set shows at a time. A picker changes only what it picks: a
+   colour change never touches a mark's size, its arrow, or whether it is
+   numbered.
    ⌘Z undoes, ⌫ deletes the selection, and Escape backs out one level: first
    the text caret, then the selection, then the editor. ⌘W hides Mark and ⌘Q
    quits it, since an accessory app has no menu bar to quit from.
@@ -330,7 +354,11 @@ default anyway.
   covered by a solid block in the meantime. Coordinates are image pixels, never screen pixels, so a drawing
   survives a resize and composites at full resolution. One routine paints each
   shape to SVG for display and to a canvas for export, so the copied image
-  matches the screen.
+  matches the screen. Shadows, borders and framed notes are geometry the two
+  share: a border is one path under the whole mark, and a pill is sized from
+  text measured by a canvas on both sides. Every shape that casts a shadow is
+  one canvas call and one SVG element with a filter of its own, since a canvas
+  casts a shadow per call — which is what keeps the copy and the screen alike.
 - `src/platform.ts` is the only frontend boundary for native commands.
 - `src-tauri/src/capture.rs` owns region capture, PNG validation, cancellation,
   and temporary-file cleanup.
@@ -474,7 +502,14 @@ cut from. Cropping is covered for the trim itself, for carrying the drawing
 along, for undo ordering against drawing, and for re-sampling a redaction into
 the cropped image's coordinates. Selecting several at once is covered for
 gathering, ungathering, moving, restyling and deleting together, and reordering
-for both the buttons and the shortcuts. Recent captures are covered for round-tripping a
+for both the buttons and the shortcuts. Shadow, border and framed notes are
+covered for reaching the selection and the next arrow, for undo, for surviving
+duplication and numbering, for a dark border on a white arrow, and in the copied
+image itself: a white rim, a shade underneath, and a pill that is the mark's red
+with its words in it. Unit tests pin their geometry — outlines pushed out with
+rounded corners, the pill's layout, and where an arrow leaves it — and the order
+the export paints in. The numbering tests hold that picking up a tool, changing
+a colour, or choosing another slot's way never changes what a mark is. Recent captures are covered for round-tripping a
 drawing through a close, for ordering, and for copying something restored after
 Rust has forgotten it. Zoom is covered for scaling, for the keyboard, for
 resetting on a new capture, and for drawing landing on the same image pixels
