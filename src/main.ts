@@ -6,10 +6,10 @@ import { DEFAULT_SHORTCUT, prettyShortcut } from './shortcut';
 import markIcon from './mark-icon.png';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
-import { ARROW_STYLES, AnnotationLayer, COLORS, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
-         FONT, arrowPaint, badgeAt, describe, drawAnnotations, fillOf, fillable, inkOn, isShape, numbered, polygonPath,
-         stepArrow, stepList, strokePath, styleOf, textSize,
-         type Annotation, type ArrowStyle, type Point, type ShapeFill, type Tool } from './annotations';
+import { ARROW_STYLES, AnnotationLayer, COLORS, LOOKS, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
+         FONT, arrowPaint, badgeAt, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isShape, numbered,
+         outsetOps, pathData, polygonPath, stepArrow, stepList, strokePath, styleOf, takesLooks, textSize,
+         type Annotation, type ArrowStyle, type Look, type NoteMode, type Point, type ShapeFill, type Tool } from './annotations';
 
 /** Each style's button previews itself, drawn from the geometry it will draw
  *  with, so a picker cannot come to misrepresent what it picks. */
@@ -34,6 +34,25 @@ function fillPreview(fill: ShapeFill): string {
        <ellipse class="as-ellipse" cx="10" cy="10" rx="6.5" ry="4.5" fill="none" stroke="currentColor" stroke-width="2"/>`;
 }
 
+
+/** The looks are drawn from the geometry they draw with, too: a sample arrow,
+ *  its border pushed out by the same function the image uses, and its shadow
+ *  as the same shape dropped below it. In the toolbar's own ink, though, and
+ *  the drop exaggerated -- a white border on a light bar, or a shadow a third
+ *  of a pixel deep, would be no picture at all. */
+const LOOK_NAMES: Record<Look, string> = { shadow: 'Shadow', border: 'Border' };
+function lookPreview(looks: readonly Look[]): string {
+  const sample = { kind: 'arrow', id: 0, x1: 4.4, y1: 14.6, x2: 15, y2: 4.6, color: '', weight: 2.2, style: 'taper' } as const;
+  const polygon = arrowPolygon(sample);
+  const shadow = looks.includes('shadow')
+    ? `<path d="${polygonPath(polygon.map(([x, y]) => [x + 0.5, y + 1.9] as Point))}" fill="currentColor" opacity=".3"/>` : '';
+  const border = looks.includes('border')
+    ? `<path d="${pathData(outsetOps(polygon, 1.5))}" fill="none" stroke="currentColor" stroke-width="1"/>` : '';
+  return shadow + border + `<path d="${polygonPath(polygon)}" fill="currentColor"/>`;
+}
+
+/** How the notes go on the image, named as the three ways they look. */
+const NOTE_NAMES: Record<NoteMode, string> = { off: 'Off', beside: 'Beside', framed: 'Framed' };
 
 /** The pointer for a tool that has something to say about what it will draw: a
  *  crosshair, because the mark lands exactly where you press, with a small copy
@@ -202,6 +221,17 @@ app.innerHTML = `
         aria-checked="${style === 'taper'}" title="${STYLE_NAMES[style]} arrow"><svg viewBox="0 0 20 20"
         aria-hidden="true">${stylePreview(style)}</svg><span class="sr">${STYLE_NAMES[style]}</span></button>`).join('')}
     </div>
+    <div class="looks" hidden>
+      <button class="looks-button" type="button" aria-haspopup="menu" aria-expanded="false"
+        aria-label="Shadow and border" title="Shadow and border"><svg viewBox="0 0 20 20"
+        aria-hidden="true">${lookPreview(LOOKS)}</svg></button>
+      <div class="looks-menu" role="menu" aria-label="Shadow and border" hidden>
+        ${LOOKS.map(look => `<button type="button" role="menuitemcheckbox" aria-checked="false" data-look="${look}">
+          <svg viewBox="0 0 20 20" aria-hidden="true">${lookPreview([look])}</svg><span>${LOOK_NAMES[look]}</span>
+          <svg class="tick" viewBox="0 0 20 20" aria-hidden="true"><path d="M5.2 10.4 8.6 13.6 14.8 6.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>`).join('')}
+      </div>
+    </div>
     <div class="fills" role="radiogroup" aria-label="Shape fill" hidden>
       ${SHAPE_FILLS.map(fill => `<button class="style" type="button" role="radio" data-fill="${fill}"
         aria-checked="${fill === 'outline'}" title="${FILL_NAMES[fill]} shape"><svg viewBox="0 0 20 20"
@@ -270,10 +300,12 @@ app.innerHTML = `
     <div class="steps-edge" data-edge="right" title="Drag to resize"></div>
     <div class="step-rows"></div>
     <div class="steps-foot">
-      <label class="steps-show"
-        title="Off, the image carries only the numbers and the words are copied as text — which is the point, since words in a picture have to be read back out of it. On, they are drawn beside their badges as the Text tool would.">
-        <input class="steps-show-box" type="checkbox" />Write on the image
-      </label>
+      <div class="steps-show" role="radiogroup" aria-label="Notes on the image"
+        title="Off, the image carries only the numbers and the words are copied as text — which is the point, since words in a picture have to be read back out of it. Beside writes each note next to its number, as the Text tool would. Framed puts it in with the number, in one pill.">
+        <span class="steps-show-label">On the image</span>
+        <span class="segments">${NOTE_MODES.map(mode => `<button class="segment" type="button" role="radio"
+          data-notes="${mode}" aria-checked="${mode === 'off'}">${NOTE_NAMES[mode]}</button>`).join('')}</span>
+      </div>
       <button class="steps-copy glassy" type="button">Copy list <kbd>⌘⇧L</kbd></button>
     </div>
   </aside>
@@ -329,6 +361,10 @@ const backButton = app.querySelector<HTMLButtonElement>('.back')!;
 const frontButton = app.querySelector<HTMLButtonElement>('.front')!;
 const chosenCount = app.querySelector<HTMLElement>('.chosen')!;
 const styles = app.querySelector<HTMLElement>('.styles')!;
+const looks = app.querySelector<HTMLElement>('.looks')!;
+const looksButton = app.querySelector<HTMLButtonElement>('.looks-button')!;
+const looksMenu = app.querySelector<HTMLElement>('.looks-menu')!;
+const noteModes = app.querySelector<HTMLElement>('.steps-show .segments')!;
 const fills = app.querySelector<HTMLElement>('.fills')!;
 const removeButton = app.querySelector<HTMLButtonElement>('.remove')!;
 const empty = app.querySelector<HTMLElement>('.empty')!;
@@ -477,6 +513,8 @@ function hideTip() {
 
 function wantTip(target: HTMLElement | null, now = false) {
   if (!target || target === tipFor) return;
+  // A menu that is open already says what its button is for.
+  if (target === looksButton && !looksMenu.hidden) { hideTip(); return; }
   window.clearTimeout(tipTimer);
   const wait = now ? 0 : performance.now() < tipWarmUntil || tipFor ? TIP_WAIT_WARM : TIP_WAIT;
   const showing = !!tipFor;
@@ -528,7 +566,10 @@ function syncSteps(focusId?: number) {
   app.querySelector<HTMLElement>('.steps-tally')!.textContent = String(marks.length);
   stepsPanel.hidden = !capture || !marks.length || !panelWanted;
   stepsToggle.setAttribute('aria-expanded', String(!stepsPanel.hidden));
-  app.querySelector<HTMLInputElement>('.steps-show-box')!.checked = layer.showNotes;
+  for (const segment of noteModes.querySelectorAll<HTMLButtonElement>('[data-notes]')) {
+    segment.setAttribute('aria-checked', String(segment.dataset.notes === layer.notes));
+  }
+  placeLens(noteModes);
   stepsToggle.classList.toggle('active', !stepsPanel.hidden);
   // The signature goes with the rows, or reopening would find it unchanged and
   // skip the rebuild that has to happen.
@@ -737,8 +778,10 @@ document.addEventListener('pointerdown', event => {
   syncSteps();
 }, true);
 
-on(app.querySelector<HTMLInputElement>('.steps-show-box')!, 'change', event => {
-  layer.showNotes = (event.target as HTMLInputElement).checked;
+on(noteModes, 'click', event => {
+  const mode = (event.target as Element).closest<HTMLButtonElement>('[data-notes]')?.dataset.notes as NoteMode | undefined;
+  if (!mode || mode === layer.notes) return;
+  layer.notes = mode;
   // Drawn words are part of the picture, so a plain capture can no longer be
   // copied as its original bytes.
   mustFlatten = true;
@@ -780,20 +823,35 @@ function syncTools() {
   chosenCount.textContent = picked.length === 1
     ? `${describe(picked[0].kind)} selected`
     : `${picked.length} selected`;
-  // Only worth showing when it would change something. A step points with an
-  // arrow of its own, so the picker is its business too.
-  const arrows = picked.filter(item => item.kind === 'arrow' || item.kind === 'step');
-  styles.hidden = layer.tool !== 'arrow' && arrows.length === 0;
-  if (arrows.length) layer.style.arrow = styleOf(arrows[arrows.length - 1]);
+  // The pickers describe what a change will land on: the selection when there
+  // is one -- its last mark, which is where colour and size are read from too --
+  // and the tool in hand when there is not. So at most one group shows, which
+  // is also what keeps the bar inside the window: a mixed selection used to
+  // show both, and pushed Delete off the end. A step points with an arrow of
+  // its own, so the arrow's pickers are its business too.
+  const source = layer.styleSource;
+  const pointing = source ? takesLooks(source) : layer.tool === 'arrow';
+  styles.hidden = !pointing;
+  looks.hidden = !pointing;
+  if (source && takesLooks(source)) {
+    layer.style.arrow = styleOf(source);
+    layer.style.shadow = hasLook(source, 'shadow');
+    layer.style.border = hasLook(source, 'border');
+  }
   for (const button of app.querySelectorAll<HTMLButtonElement>('.style[data-style]')) {
     const active = button.dataset.style === layer.style.arrow;
     button.setAttribute('aria-checked', String(active));
     button.classList.toggle('active', active);
   }
+  looksButton.classList.toggle('active', layer.style.shadow || layer.style.border);
+  for (const row of looksMenu.querySelectorAll<HTMLButtonElement>('[data-look]')) {
+    row.setAttribute('aria-checked', String(layer.style[row.dataset.look as Look]));
+  }
+  if (looks.hidden) closeLooksMenu();
   const shapes = picked.filter(fillable);
-  const shaping = layer.tool === 'box' || layer.tool === 'ellipse';
-  fills.hidden = !shaping && shapes.length === 0;
-  if (shapes.length) layer.style.fill = fillOf(shapes[shapes.length - 1]);
+  const shaping = source ? fillable(source) : layer.tool === 'box' || layer.tool === 'ellipse';
+  fills.hidden = !shaping;
+  if (source && fillable(source)) layer.style.fill = fillOf(source);
   // Selecting a numbered mark puts its slot on the numbered variant, so the rail
   // goes on describing the next edit the way the toolbar's pickers do.
   const numberable = picked.filter(item => fillable(item) || item.kind === 'arrow' || item.kind === 'step');
@@ -801,7 +859,7 @@ function syncTools() {
     const last = numberable[numberable.length - 1];
     const on = last.kind === 'step' || (isShape(last) && last.numbered === true);
     const slot = SLOTS.findIndex(choices => choices[0].id === (last.kind === 'step' ? 'arrow' : last.kind));
-    if (slot >= 0 && SLOTS[slot].length > 1 && worn[slot] !== (on ? 1 : 0)) wear(slot, on ? 1 : 0, false);
+    if (slot >= 0 && SLOTS[slot].length > 1 && worn[slot] !== (on ? 1 : 0)) wear(slot, on ? 1 : 0);
   }
   // Preview the shape in hand: the selection's if there is one, else the tool's.
   fills.dataset.shape = shapes.length ? shapes[shapes.length - 1].kind : layer.tool === 'ellipse' ? 'ellipse' : 'box';
@@ -927,7 +985,7 @@ async function flatten(): Promise<HTMLCanvasElement> {
   canvas.width = capture!.width; canvas.height = capture!.height;
   const context = canvas.getContext('2d')!;
   context.drawImage(source, 0, 0, canvas.width, canvas.height);
-  drawAnnotations(context, layer.annotations, source, layer.showNotes);
+  drawAnnotations(context, layer.annotations, { source, notes: layer.notes });
   return canvas;
 }
 
@@ -1006,10 +1064,11 @@ on(choose, 'click', () => input.click());
 on(settings, 'click', () => { void command('open_screen_settings').catch(report); });
 on(input, 'change', () => { void loadFile().catch(report); });
 /** Take up a slot's variant: the tool it is, and whether what it draws carries a
- *  number. Numbering is still a property of a mark, so choosing a numbered
- *  variant with something selected numbers that -- the slot is a nicer face on
- *  the switch, not a different mechanism. */
-function wear(slot: number, variant: number, andApply = true) {
+ *  number. This chooses the next mark and nothing else -- it used to restyle
+ *  the selection too, so drawing a numbered arrow and then picking up the Box
+ *  tool turned the arrow plain and took its number. Numbering a mark that is
+ *  already drawn is the slot menu's to do, and it says so with setNumbered. */
+function wear(slot: number, variant: number) {
   worn[slot] = variant;
   const choice = SLOTS[slot][variant];
   const button = rail.querySelector<HTMLButtonElement>(`.tool[data-slot="${slot}"]`)!;
@@ -1017,10 +1076,7 @@ function wear(slot: number, variant: number, andApply = true) {
   button.querySelector('.sr')!.textContent = choice.name;
   if (button.dataset.tip !== undefined) button.dataset.tip = choice.name;
   layer.tool = choice.id;
-  if (layer.style.numbered !== !!choice.numbered) {
-    layer.style.numbered = !!choice.numbered;
-    if (andApply) layer.applyStyle();
-  }
+  layer.style.numbered = !!choice.numbered;
   syncTools();
 }
 
@@ -1049,7 +1105,15 @@ function openToolMenu(button: HTMLButtonElement) {
     item.setAttribute('role', 'menuitemradio');
     item.setAttribute('aria-checked', String(variant === worn[slot]));
     item.innerHTML = `<svg viewBox="0 0 20 20" aria-hidden="true">${choice.art}</svg><span>${choice.name}</span>`;
-    item.addEventListener('click', () => { wear(slot, variant); layer.deselect(); closeToolMenu(); });
+    item.addEventListener('click', () => {
+      wear(slot, variant);
+      // Choosing a way of drawing with something selected draws that the new
+      // way -- but only what this slot draws: an arrow's numbering is nothing
+      // to do with a box that happens to be selected alongside it.
+      layer.setNumbered(!!choice.numbered,
+        choice.id === 'arrow' ? ['arrow', 'step'] : [choice.id as Annotation['kind']]);
+      layer.deselect(); closeToolMenu();
+    });
     return item;
   }));
   toolMenu.hidden = false;
@@ -1109,22 +1173,50 @@ on(rail, 'click', event => {
 on(toolbar, 'click', event => {
   const element = event.target as Element;
   const style = element.closest<HTMLButtonElement>('.style');
-  if (style?.dataset.style) {
-    layer.style.arrow = style.dataset.style as ArrowStyle;
-    layer.applyStyle();
-    return;
-  }
-  if (style?.dataset.fill) {
-    layer.style.fill = style.dataset.fill as ShapeFill;
-    layer.applyStyle();
-    return;
-  }
+  if (style?.dataset.style) { layer.restyle({ arrow: style.dataset.style as ArrowStyle }); return; }
+  if (style?.dataset.fill) { layer.restyle({ fill: style.dataset.fill as ShapeFill }); return; }
   const swatch = element.closest<HTMLButtonElement>('.swatch');
   if (!swatch?.dataset.color) return;
-  layer.style.color = swatch.dataset.color;
-  layer.applyStyle();
+  layer.restyle({ color: swatch.dataset.color });
 });
-on(weight, 'input', () => { layer.style.scale = Number(weight.value); layer.applyStyle(); });
+on(weight, 'input', () => layer.restyle({ scale: Number(weight.value) }));
+
+// ---- shadow and border ------------------------------------------------------------
+/** A menu rather than two more buttons: the bar has room for one control here
+ *  at its narrowest, and the two are independent, which a picker's one sliding
+ *  highlight cannot say. It stays open while you try them, since trying them
+ *  is the point, and it restyles the selection like every other picker. */
+function openLooksMenu() {
+  looksMenu.hidden = false;
+  looksButton.setAttribute('aria-expanded', 'true');
+  hideTip();
+  looksMenu.querySelector<HTMLButtonElement>('[data-look]')?.focus();
+}
+function closeLooksMenu(refocus = false) {
+  if (looksMenu.hidden) return;
+  looksMenu.hidden = true;
+  looksButton.setAttribute('aria-expanded', 'false');
+  if (refocus) looksButton.focus();
+}
+on(looksButton, 'click', () => { if (looksMenu.hidden) openLooksMenu(); else closeLooksMenu(); });
+on(looksMenu, 'click', event => {
+  const look = (event.target as Element).closest<HTMLButtonElement>('[data-look]')?.dataset.look as Look | undefined;
+  if (look) layer.restyle({ [look]: !layer.style[look] });
+});
+on(looksMenu, 'keydown', event => {
+  const key = (event as KeyboardEvent).key;
+  if (key !== 'ArrowDown' && key !== 'ArrowUp') return;
+  // Up and down walk the rows, and go no further: arrow keys mean something to
+  // the editor behind the menu as well.
+  event.preventDefault();
+  event.stopPropagation();
+  const rows = [...looksMenu.querySelectorAll<HTMLButtonElement>('[data-look]')];
+  const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+  rows[(at + (key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length]?.focus();
+});
+document.addEventListener('pointerdown', event => {
+  if (!looksMenu.hidden && !looks.contains(event.target as Node)) closeLooksMenu();
+}, { signal: abort.signal });
 on(undoButton, 'click', () => { stepBack(); });
 on(app.querySelector<HTMLButtonElement>('.crop-apply')!, 'click', () => { void applyCrop().catch(report); });
 on(app.querySelector<HTMLButtonElement>('.crop-cancel')!, 'click', () => layer.clearCrop());
@@ -1205,7 +1297,9 @@ function thumbnail(width = 168): string {
   const context = canvas.getContext('2d')!;
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   context.scale(scale, scale);
-  drawAnnotations(context, layer.annotations, image);
+  // The image's own size, which badges are kept inside: the canvas is smaller.
+  drawAnnotations(context, layer.annotations,
+                  { source: image, width: image.naturalWidth, height: image.naturalHeight });
   return canvas.toDataURL('image/png');
 }
 
@@ -1326,6 +1420,11 @@ document.addEventListener('keydown', event => {
     const button = menuFor;
     closeToolMenu();
     button.focus();
+    return;
+  }
+  if (key === 'escape' && !looksMenu.hidden) {
+    event.preventDefault();
+    closeLooksMenu(true);
     return;
   }
   // A text field owns the keys that edit text. Without this, typing a note in
