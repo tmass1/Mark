@@ -223,18 +223,20 @@ notarization; an Apple Development certificate is only good for this Mac.
    ⌘Z takes the most recent thing back, whichever kind it was: a crop counts as
    most recent only while nothing has been drawn since it.
 
-   With something selected, ⌘C takes that annotation and ⌘V drops a copy
-   nearby; pasting again cascades instead of stacking. ⌘D does both at once.
-   A copy carries its colour and size, and a pasted or moved redaction
-   re-samples wherever it lands rather than carrying its old patch with it.
+   With something selected, ⌘D duplicates it a little way off, and ⌘V drops
+   a further copy; pasting again cascades instead of stacking. A copy carries
+   its colour and size, and a pasted or moved redaction re-samples wherever it
+   lands rather than carrying its old patch with it.
 6. **Copy** (⌘⇧C) writes the image to the clipboard and leaves the capture
    open to keep working on. **Copy and Close** (⌘C) writes it and dismisses the
    editor. Both put a PNG and a TIFF compatibility representation on the macOS
    clipboard, and both act on the image whatever is selected.
 
-   ⌘C only reaches the image when nothing is selected, because with a selection
-   it copies that instead. That change of meaning is always announced in the
-   status line, and Escape clears the selection to get the image back.
+   ⌘C means the image whatever is selected, because that is what the button
+   it is printed on says it does. It used to take the selection instead
+   whenever there was one, which is to say from the instant anything was
+   drawn -- a fresh mark arrives selected -- so the button was wrong exactly
+   when it was most likely to be read. Taking a mark is ⌘D.
 
    A capture you did not draw on is copied as the original bytes macOS
    produced; only a drawing is flattened and re-encoded.

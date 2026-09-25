@@ -1385,17 +1385,17 @@ document.addEventListener('keydown', event => {
   } else if (capture && key === 'c' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
     event.preventDefault(); void copyCapture(false);
   } else if (capture && key === 'c' && (event.metaKey || event.ctrlKey)) {
-    // With something selected this copies that, not the screenshot. Say so, so
-    // the change of meaning is never silent.
+    // The footer button reads "Copy and Close ⌘C", so ⌘C copies and closes,
+    // whatever happens to be selected. It used to take the selection instead
+    // whenever there was one -- which is to say from the instant you drew
+    // anything, because a fresh mark arrives selected. The button was wrong
+    // exactly when it was most likely to be read. Duplicating a mark is ⌘D.
     event.preventDefault();
     if (layer.pendingCrop) { flash('Finish or cancel the crop first.'); return; }
-    const taken = layer.copySelection();
-    if (taken.length === 1) flash(`${describe(taken[0].kind)} copied. ⌘V pastes it, Escape deselects.`);
-    else if (taken.length) flash(`${taken.length} annotations copied. ⌘V pastes them.`);
-    else void copyCapture(true);
+    void copyCapture(true);
   } else if (capture && key === 'v' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
-    if (!layer.paste().length) flash('Copy an arrow, note or shape first.');
+    if (!layer.paste().length) flash('Select a mark and duplicate it with ⌘D first.');
   } else if (capture && key === 'd' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
     if (!layer.duplicateSelection().length) flash('Select something to duplicate.');
