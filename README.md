@@ -13,6 +13,13 @@ and the words stay text.
 
 ![Three numbered steps pointing at a dashboard, with the Steps panel listing what each one is for](docs/numbered-steps.png)
 
+**Or put the words on the picture.** The Steps panel's **On the image** switch
+writes each note beside its number, or frames the two together in one pill. From
+the toolbar, a soft **shadow** and a white **border** lift an arrow off a busy
+screenshot.
+
+![Three notes framed with their numbers in red pills, each with a white border and a soft shadow, pointing at a dashboard](docs/framed-steps.png)
+
 **[Download Mark](https://github.com/tmass1/Mark/releases/latest)**, signed and
 notarized for Apple silicon and Intel, for macOS 13 or later.
 
