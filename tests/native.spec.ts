@@ -80,6 +80,64 @@ test('dismissing and quitting go through Rust', async ({ page }) => {
   await waitFor(page, 'quit_app');
 });
 
+test('the footer\'s Close dismisses through Rust and copies nothing', async ({ page }) => {
+  await installBridge(page);
+  await page.goto('/');
+  await clear(page);
+  await page.getByRole('button', { name: 'Close without copying' }).click();
+  await waitFor(page, 'dismiss_editor');
+  expect((await sent(page)).map(call => call.cmd).filter(cmd => cmd.startsWith('copy'))).toEqual([]);
+});
+
+// The app's footer carries Share and Save, which the preview's does not, so it
+// is the row that runs out of room first. At every window width, with and
+// without the Steps button -- a count in two digits, its widest -- nothing is
+// pushed off the edge, and each thing gives way at the width it is meant to.
+test('the footer fits every window width, giving way in order', async ({ page }) => {
+  await installBridge(page);
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto('/');
+  await page.locator('.capture').waitFor();
+  const widths = [...Array.from({ length: 53 }, (_, i) => 900 - i * 10), 681, 641, 561, 501, 461, 441];
+  const walk = async (steps: boolean) => {
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: 800 });
+      const seen = await page.evaluate(() => {
+        const footer = document.querySelector('footer')!, edge = footer.getBoundingClientRect().right;
+        const shown = (selector: string) => {
+          const el = document.querySelector<HTMLElement>(selector);
+          return !!el && el.offsetParent !== null && el.getBoundingClientRect().width > 1;
+        };
+        return {
+          overflow: footer.scrollWidth - footer.clientWidth,
+          copyAndCloseInside: document.querySelector('footer .copy')!.getBoundingClientRect().right <= edge + 0.5,
+          close: shown('.close-capture'), exports: shown('footer .exports'), word: shown('.steps-word'),
+        };
+      });
+      expect(seen, `${width}px, ${steps ? 'with' : 'without'} steps`).toEqual({
+        overflow: 0, copyAndCloseInside: true,
+        close: width > (steps ? 500 : 440),
+        exports: !steps || width > 460,
+        word: steps && width > 680,
+      });
+    }
+  };
+  await walk(false);
+
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.locator('.tool[data-slot="0"]').click({ button: 'right' });
+  await page.locator('.tool-menu button', { hasText: 'Numbered arrow' }).click();
+  const box = (await page.locator('.overlay').boundingBox())!;
+  for (let i = 0; i < 12; i++) {
+    await page.mouse.click(box.x + box.width * (0.1 + 0.16 * (i % 6)), box.y + box.height * (i < 6 ? 0.3 : 0.7));
+    await page.keyboard.press('Escape');
+  }
+  await expect(page.locator('.steps-count')).toHaveText('12');
+  await walk(true);
+  // Narrow, the Steps button shows only its count, but VoiceOver still hears the word.
+  await expect(page.getByRole('button', { name: 'Steps 12' })).toBeVisible();
+});
+
 test('a missing screen grant is reported, and opens the right settings pane', async ({ page }) => {
   await installBridge(page, {
     capture: null,

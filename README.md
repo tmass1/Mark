@@ -274,8 +274,9 @@ notarization; an Apple Development certificate is only good for this Mac.
    lands rather than carrying its old patch with it.
 6. **Copy** (⌘C) writes the image to the clipboard and leaves the capture
    open to keep working on. **Copy and Close** (⌥⌘C) writes it and dismisses
-   the editor. Both put a PNG and a TIFF compatibility representation on the
-   macOS clipboard, and both act on the image whatever is selected.
+   the editor, and the round **×** before them (⌘W) dismisses it without
+   copying. Both copies put a PNG and a TIFF compatibility representation on
+   the macOS clipboard, and both act on the image whatever is selected.
 
    The copy that also puts the capture away is the one a modifier further
    off, so a reflex ⌘C never costs you the capture; ⇧⌘C, which Copy used to

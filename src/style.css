@@ -564,7 +564,7 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 }
 @media (max-width: 790px) { .chosen { display: none; } }
 /* .choose only exists in the browser preview; the app's footer is narrower. */
-@media (max-width: 700px) { .choose { display: none; } }
+@media (max-width: 740px) { .choose { display: none; } }
 @media (max-width: 560px) {
   .browser .titlebar { padding-left: 12px; }
   .toolbar { gap: 8px; padding: 0 12px; }
@@ -573,6 +573,19 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
   .swatches { gap: 4px; }
   .copy kbd, .copy-only kbd, .capture-go kbd { display: none; }
 }
+/* The footer gives way as the window narrows, the least missed first. The
+   size readout shrinks (above); the zoom menu and the key hints go at 560px
+   with the rest of the tightening; and the Close button last, since the
+   window's own close button, ⌘W and Escape all remain. The Steps button is
+   the widest thing in the row, so with it showing the row runs short sooner:
+   its word goes, though VoiceOver still reads it, then the zoom menu and key
+   hints, then Close, and in the narrowest windows Share and Save, which ⌘S
+   and ⇧⌘S still reach. Each width leaves room for a count in two digits. */
+@media (max-width: 680px) { .steps-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } }
+@media (max-width: 640px) { footer:has(.steps-toggle:not([hidden])) :is(.zoom, kbd) { display: none; } }
+@media (max-width: 500px) { footer:has(.steps-toggle:not([hidden])) .close-capture { display: none; } }
+@media (max-width: 460px) { footer:has(.steps-toggle:not([hidden])) .exports { display: none; } }
+@media (max-width: 440px) { .close-capture { display: none; } }
 @media (max-width: 400px) { .toolbar { margin-left: 8px; margin-right: 8px; } }
 @media (prefers-reduced-motion: reduce) { .primary:active { transform: none; } }
 .chosen { color: var(--muted); font-size: 11px; white-space: nowrap; }
@@ -580,6 +593,9 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 .subtle.icon svg { display: block; width: 18px; height: 18px; }
 .glassy.icon { padding: 0 11px; }
 .glassy.icon svg { display: block; width: 17px; height: 17px; }
+/* Close is round, a size down from the buttons with words in them. */
+.close-capture.icon { width: 30px; padding: 0; }
+.close-capture.icon svg { width: 16px; height: 16px; }
 .styles, .fills { position: relative; display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); box-shadow: inset 0 1px 1px #0000000f; }
 
 .style { position: relative; z-index: 1; display: flex; border: none; border-radius: 999px; padding: 4px 7px; background: transparent; color: var(--muted); transition: color .15s; }

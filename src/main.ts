@@ -339,7 +339,10 @@ app.innerHTML = `
       <svg viewBox="0 0 20 20" aria-hidden="true">
         <mask id="steps-toggle-glyph"><circle cx="10" cy="10" r="7.2" fill="#fff"/><path d="M8.4 8.4 10.4 6.8v6.4M8.6 13.2h3.6" fill="none" stroke="#000" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></mask>
         <circle cx="10" cy="10" r="7.2" fill="currentColor" mask="url(#steps-toggle-glyph)"/>
-      </svg>Steps <span class="steps-count"></span>
+      </svg><span class="steps-word">Steps</span> <span class="steps-count"></span>
+    </button>
+    <button class="close-capture glassy icon" type="button" title="Close without copying (⌘W)" aria-label="Close without copying">
+      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6 6l8 8M14 6l-8 8"/></svg>
     </button>
     <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘C</kbd></button>
     <button class="copy primary" type="button">Copy and Close <kbd>⌥⌘C</kbd></button>
@@ -370,6 +373,7 @@ const removeButton = app.querySelector<HTMLButtonElement>('.remove')!;
 const empty = app.querySelector<HTMLElement>('.empty')!;
 const copy = app.querySelector<HTMLButtonElement>('.copy')!;
 const copyOnly = app.querySelector<HTMLButtonElement>('.copy-only')!;
+const closeButton = app.querySelector<HTMLButtonElement>('.close-capture')!;
 const shareButton = app.querySelector<HTMLButtonElement>('.share')!;
 const saveButton = app.querySelector<HTMLButtonElement>('.save')!;
 const start = app.querySelector<HTMLButtonElement>('.start')!;
@@ -944,14 +948,14 @@ function render() {
   // empty band of chrome across the bottom of the empty state.
   app.querySelector<HTMLElement>('footer')!.hidden = !capture;
   copy.hidden = !capture;
-  copyOnly.hidden = !capture;
+  copyOnly.hidden = closeButton.hidden = !capture;
   shareButton.hidden = saveButton.hidden = !capture || !isTauri;
   app.querySelector<HTMLElement>('.exports')!.hidden = !capture || !isTauri;
   shareButton.disabled = saveButton.disabled = busy || copyPending;
   zoomSelect.parentElement!.hidden = !capture;
   applyZoom();
   copy.disabled = busy || copyPending;
-  copyOnly.disabled = busy || copyPending;
+  copyOnly.disabled = closeButton.disabled = busy || copyPending;
   start.disabled = busy;
   start.firstChild!.textContent = isTauri ? (busy ? 'Selecting… ' : 'Capture Region ') : 'Choose image… ';
   start.querySelector('kbd')!.hidden = !isTauri;
@@ -1042,6 +1046,8 @@ function on<K extends keyof HTMLElementEventMap>(element: HTMLElement, name: K, 
 }
 on(copy, 'click', () => { void copyCapture(true); });
 on(copyOnly, 'click', () => { void copyCapture(false); });
+// ⌘W's button: out without copying, and nothing lost, since what closes waits in Recent.
+on(closeButton, 'click', () => { void dismiss().catch(report); });
 on(saveButton, 'click', () => { void exportImage('save_image'); });
 on(shareButton, 'click', () => { void exportImage('share_image'); });
 on(start, 'click', () => startCapture('region'));

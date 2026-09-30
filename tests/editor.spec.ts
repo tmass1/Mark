@@ -572,6 +572,19 @@ for (const [how, press] of [
   });
 }
 
+test('Close puts the capture away without copying it, and keeps it in Recent', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).__writes = 0;
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async () => { (window as any).__writes++; } } });
+  });
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [600, 300]);
+  await page.getByRole('button', { name: 'Close without copying' }).click();
+  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(page.locator('.recent')).toHaveCount(1);
+  expect(await page.evaluate(() => (window as any).__writes)).toBe(0);
+});
+
 test('Command-A with no capture selects nothing, not the window\'s words', async ({ page }) => {
   await page.goto('/');
   await page.keyboard.press('Escape');
