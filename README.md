@@ -268,10 +268,13 @@ notarization; an Apple Development certificate is only good for this Mac.
    ⌘Z takes the most recent thing back, whichever kind it was: a crop counts as
    most recent only while nothing has been drawn since it.
 
-   With something selected, ⌘D duplicates it a little way off, and ⌘V drops
-   a further copy; pasting again cascades instead of stacking. A copy carries
-   its colour and size, and a pasted or moved redaction re-samples wherever it
-   lands rather than carrying its old patch with it.
+   With something selected, ⌘C holds it as well as copying the image, and ⌘V
+   lays down a copy a little way off; pasting again cascades instead of
+   stacking, and ⌘D copies and pastes in one go. What is held stays held into
+   the next capture, and a paste always lands on the image, moved back from
+   any edge it would cross. A copy carries its colour and size, and a pasted
+   or moved redaction re-samples wherever it lands rather than carrying its
+   old patch with it.
 6. **Copy** (⌘C) writes the image to the clipboard and leaves the capture
    open to keep working on. **Copy and Close** (⌥⌘C) writes it and dismisses
    the editor, and the round **×** before them (⌘W) dismisses it without
@@ -282,9 +285,10 @@ notarization; an Apple Development certificate is only good for this Mac.
    off, so a reflex ⌘C never costs you the capture; ⇧⌘C, which Copy used to
    be, still copies. Both keys mean the image whatever is selected, because
    that is what the buttons they are printed on say. A ⌘C that took a
-   selected mark would take one from the instant anything was drawn -- a
-   fresh mark arrives selected -- so the button would be wrong exactly when
-   it was most likely to be read. Taking a mark is ⌘D.
+   selected mark instead would take one from the instant anything was drawn
+   -- a fresh mark arrives selected -- so the button would be wrong exactly
+   when it was most likely to be read. So a copy does both: the image goes to
+   the clipboard, and whatever is selected is held for ⌘V.
 
    Inside a text field ⌘C, ⌘X, ⌘V, ⌘A and ⌘Z edit the text. The page lets
    them through to Mark's Edit menu, which is never shown -- Mark has no menu

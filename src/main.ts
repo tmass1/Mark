@@ -797,6 +797,12 @@ on(stepsToggle, 'click', () => {
   syncSteps(panelWanted ? numbered(layer.annotations)[0]?.id : undefined);
 });
 
+/** Said after a copy that held the selection too, so ⌘V's half of it is no secret. */
+function heldHint(held: readonly Annotation[]): string {
+  if (!held.length) return '';
+  return ` ⌘V pastes the ${held.length === 1 ? describe(held[0].kind).toLowerCase() : `${held.length} marks`}.`;
+}
+
 /** The list as text. Its own action rather than a second flavour on the image
  *  copy: one clipboard write cannot be pasted as the picture and then as the
  *  words -- the second paste would only repeat the first. */
@@ -1017,6 +1023,10 @@ async function exportImage(via: 'save_image' | 'share_image') {
 
 async function copyCapture(close = true) {
   if (!capture || busy || copyPending) return;
+  // The image is what goes to the clipboard, whatever is selected. Anything
+  // selected is held as well, so copying a mark and pasting it works the way
+  // it does everywhere else -- in this capture, or the next.
+  const held = layer.copySelection();
   copyPending = true; render(); showMessage(null);
   try {
     if (isTauri) {
@@ -1024,7 +1034,7 @@ async function copyCapture(close = true) {
       // A crop makes the original bytes wrong, so it forces a re-encode too.
       if (layer.empty && !mustFlatten) await command('copy_capture', { close });
       else await command('copy_edited', { png: (await flatten()).toDataURL('image/png').split(',')[1], close });
-      if (close) capture = null; else flash(`Copied to clipboard.${listHint()}`);
+      if (close) capture = null; else flash(`Copied to clipboard.${heldHint(held)}${listHint()}`);
     } else {
       // Start clipboard.write inside the gesture; Safari accepts a promised Blob.
       const png = layer.empty
@@ -1035,7 +1045,7 @@ async function copyCapture(close = true) {
         if (!navigator.clipboard?.write) throw new Error('Image copying needs clipboard access on localhost or HTTPS.');
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
       }, () => { if (close) capture = null; });
-      flash(`Copied to clipboard.${listHint()}`);
+      flash(`Copied to clipboard.${heldHint(held)}${listHint()}`);
     }
   } catch (error) { report(error); }
   finally { copyPending = false; render(); }
@@ -1501,14 +1511,14 @@ document.addEventListener('keydown', event => {
     void copyCapture(true);
   } else if (capture && key === 'c' && (event.metaKey || event.ctrlKey)) {
     // ⌘C copies the image and leaves the capture open, as the Copy button says,
-    // whatever happens to be selected; ⇧⌘C, which it used to be, still does.
-    // Duplicating a mark is ⌘D.
+    // whatever happens to be selected, and holds the selection for ⌘V besides;
+    // ⇧⌘C, which it used to be, still does. ⌘D copies and pastes in one go.
     event.preventDefault();
     if (layer.pendingCrop) { flash('Finish or cancel the crop first.'); return; }
     void copyCapture(false);
   } else if (capture && key === 'v' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
-    if (!layer.paste().length) flash('Select a mark and duplicate it with ⌘D first.');
+    if (!layer.paste().length) flash('Select a mark and copy it with ⌘C first.');
   } else if (capture && key === 'd' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
     if (!layer.duplicateSelection().length) flash('Select something to duplicate.');

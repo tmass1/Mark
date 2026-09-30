@@ -500,7 +500,7 @@ test('duplicates an annotation, and pastes further copies of it', async ({ page 
   await drawArrow(page, [200, 200], [600, 300]);
   await expect(page.locator('.arrow')).toHaveCount(1);
 
-  // ⌘D is what takes a mark; ⌘C copies the image.
+  // ⌘D copies and pastes in one go.
   await page.keyboard.press('Meta+d');
   await expect(page.locator('.arrow')).toHaveCount(2);
   await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
@@ -517,7 +517,62 @@ test('duplicates an annotation, and pastes further copies of it', async ({ page 
 test('nothing to paste says which key would have filled the clipboard', async ({ page }) => {
   await page.goto('/');
   await page.keyboard.press('Meta+v');
-  await expect(page.getByRole('status')).toContainText('⌘D');
+  await expect(page.getByRole('status')).toContainText('⌘C');
+});
+
+/** A line's two ends, in image pixels: the overlay's own coordinates. */
+async function lineEnds(page: Page) {
+  return page.locator('.arrow').evaluateAll(paths =>
+    paths.map(path => path.getAttribute('d')!.match(/-?[\d.]+/g)!.map(Number)));
+}
+
+// Select a line, ⌘C, ⌘V. The image still goes to the clipboard -- that is what
+// ⌘C promises, whatever is selected -- and the line is held besides, so the
+// paste is a line rather than a "nothing to paste".
+test('Command-C copies a selected line, and Command-V pastes it', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).__writes = 0;
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async () => { (window as any).__writes++; } } });
+  });
+  await page.goto('/');
+  await pick(page, 'Line');
+  await drawArrow(page, [100, 400], [1100, 400]);
+  await page.keyboard.press('Meta+c');
+  await expect(page.getByRole('status')).toContainText('Copied to clipboard. ⌘V pastes the line.');
+  await expect.poll(() => page.evaluate(() => (window as any).__writes)).toBe(1);
+
+  await page.keyboard.press('Meta+v');
+  await page.keyboard.press('Meta+v');
+  const ends = await lineEnds(page);
+  expect(ends).toHaveLength(3);
+  expect(new Set(ends.map(end => end.join())).size).toBe(3);          // each a little way off the last
+  for (const [x1, y1, x2, y2] of ends) {                                // the same line each time
+    expect(x2 - x1).toBeCloseTo(ends[0][2] - ends[0][0], 6);
+    expect(y2 - y1).toBeCloseTo(0, 6);
+  }
+  await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();   // and the capture is still open
+});
+
+test('a held mark pastes onto the next capture, back inside a smaller one', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async () => {} } });
+  });
+  await page.goto('/');
+  await pick(page, 'Line');
+  await drawArrow(page, [1000, 650], [1150, 700]);   // bottom right of a 1200 x 740 capture
+  await page.keyboard.press('Meta+c');
+  await expect(page.getByRole('status')).toContainText('⌘V pastes the line');
+
+  await page.locator('input[type=file]').setInputFiles('src-tauri/icons/128x128@2x.png');
+  await expect(page.getByText('256 × 256 px')).toBeVisible();
+  await expect(page.locator('.arrow')).toHaveCount(0);
+  await page.keyboard.press('Meta+v');
+  const [[x1, y1, x2, y2]] = await lineEnds(page);
+  for (const value of [x1, y1, x2, y2]) {
+    expect(value).toBeGreaterThanOrEqual(0);
+    expect(value).toBeLessThanOrEqual(256);
+  }
+  expect(Math.round(Math.hypot(x2 - x1, y2 - y1))).toBeGreaterThan(100);   // the whole line, not a clipped stub
 });
 
 // The footer button promises "Copy and Close ⌥⌘C". A fresh mark arrives

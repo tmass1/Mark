@@ -93,20 +93,32 @@ export function describe(kind: Annotation['kind']): string {
     : kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
-/** Shift a copy off its original so the two are distinguishable. */
-export function offsetBy<T extends Annotation>(item: T, distance: number): T {
+/** Shift a copy off its original so the two are distinguishable: down and to
+ *  the right by one distance, or across and down by two. */
+export function offsetBy<T extends Annotation>(item: T, dx: number, dy = dx): T {
   if (item.kind === 'pen') {
-    return { ...item, points: item.points.map(([x, y]) => [x + distance, y + distance] as Point) };
+    return { ...item, points: item.points.map(([x, y]) => [x + dx, y + dy] as Point) };
   }
   if (isSegment(item)) {
-    return { ...item, x1: item.x1 + distance, y1: item.y1 + distance,
-                      x2: item.x2 + distance, y2: item.y2 + distance };
+    return { ...item, x1: item.x1 + dx, y1: item.y1 + dy,
+                      x2: item.x2 + dx, y2: item.y2 + dy };
   }
   if (item.kind === 'step' && item.to) {
-    return { ...item, x: item.x + distance, y: item.y + distance,
-             to: [item.to[0] + distance, item.to[1] + distance] as Point };
+    return { ...item, x: item.x + dx, y: item.y + dy,
+             to: [item.to[0] + dx, item.to[1] + dy] as Point };
   }
-  return { ...item, x: item.x + distance, y: item.y + distance };
+  return { ...item, x: item.x + dx, y: item.y + dy };
+}
+
+/** How far to move a group of marks, given the boxes they occupy, so it lies
+ *  on an image of this size: back from any edge it would cross, or to the top
+ *  left if the group is the bigger of the two. */
+export function onto(boxes: readonly Rect[], width: number, height: number): Point {
+  const x = Math.min(...boxes.map(box => box.x)), y = Math.min(...boxes.map(box => box.y));
+  const group = { x, y, width: Math.max(...boxes.map(box => box.x + box.width)) - x,
+                  height: Math.max(...boxes.map(box => box.y + box.height)) - y };
+  const kept = clampRect(group, width, height);
+  return [kept.x - x, kept.y - y];
 }
 /** Redaction block size, tied to the size control but floored so a small
  *  setting cannot leave legible text behind. */
@@ -1183,8 +1195,12 @@ export class AnnotationLayer {
   paste(): Annotation[] {
     if (!this.clipboard.length) return [];
     this.commitHistory();
-    const copies = this.clipboard.map(item =>
+    let copies = this.clipboard.map(item =>
       ({ ...offsetBy(item, this.base * 0.9), id: this.nextId++ }));
+    // A paste lands on the image. The cascade walks towards a corner, and what
+    // is held can have come from a bigger capture than this one.
+    const [dx, dy] = onto(copies.map(copy => bounds(copy)), this.width, this.height);
+    if (dx || dy) copies = copies.map(copy => offsetBy(copy, dx, dy));
     this.items.push(...copies);
     this.chosen = new Set(copies.map(copy => copy.id));
     this.clipboard = copies;

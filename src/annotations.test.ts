@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
   ARROW_STYLES, COLORS, arrowPaint, arrowStrokeWidth, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
-  noteAt, offsetBy, penPath, polygonPath, snapAngle, stepArrow, stepList, stepNumbers, stepRadius, styleOf,
+  noteAt, offsetBy, onto, penPath, polygonPath, snapAngle, stepArrow, stepList, stepNumbers, stepRadius, styleOf,
   textSize, thin, borderColor, borderWidth, markShadow, outsetOps, pathData, pillAt, pillExit, restyled,
   shadowReach, stepTextSize, underlay, withNumbering, centredBaseline,
   type Arrow, type Note, type PathOp, type Point, type Shape, type Step,
@@ -205,6 +205,27 @@ describe('copying an annotation', () => {
     const shifted = offsetBy(shape({ x: 10, y: 20 }), 10);
     expect([shifted.x, shifted.y]).toEqual([20, 30]);
     expect(offsetBy(note({ x: 40, y: 60 }), 5)).toMatchObject({ x: 45, y: 65 });
+  });
+
+  it('moves across and down by different amounts when given two', () => {
+    const moved = offsetBy(arrow({ x1: 0, y1: 0, x2: 100, y2: 50 }), -30, 12);
+    expect([moved.x1, moved.y1, moved.x2, moved.y2]).toEqual([-30, 12, 70, 62]);
+    expect(offsetBy(shape({ x: 10, y: 20 }), 5, -5)).toMatchObject({ x: 15, y: 15 });
+  });
+
+  it('brings a paste back onto the image, and leaves one already on it alone', () => {
+    // Inside: nowhere to go.
+    expect(onto([{ x: 10, y: 10, width: 50, height: 20 }], 200, 100)).toEqual([0, 0]);
+    // Over the right and bottom edges: back by exactly the overhang.
+    expect(onto([{ x: 180, y: 90, width: 50, height: 20 }], 200, 100)).toEqual([-30, -10]);
+    // Off the top left: forward onto it.
+    expect(onto([{ x: -8, y: -4, width: 20, height: 20 }], 200, 100)).toEqual([8, 4]);
+    // Marks move as one group, measured round all of them.
+    expect(onto([{ x: 150, y: 10, width: 20, height: 5 }, { x: 190, y: 50, width: 30, height: 5 }], 200, 100))
+      .toEqual([-20, 0]);
+    // Wider than the image: pinned to its left edge rather than hanging off it
+    // at random. Its height fits, so upwards it only comes back from the bottom.
+    expect(onto([{ x: 700, y: 600, width: 450, height: 100 }], 256, 256)).toEqual([-700, -444]);
   });
 
   it('leaves the original untouched', () => {
