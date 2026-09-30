@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 
 test('browser preview has no native dependency and renders in light and dark', async ({ page }) => {
   const errors: string[] = [];
@@ -500,7 +500,7 @@ test('duplicates an annotation, and pastes further copies of it', async ({ page 
   await drawArrow(page, [200, 200], [600, 300]);
   await expect(page.locator('.arrow')).toHaveCount(1);
 
-  // ⌘D is what takes a mark now; ⌘C belongs to the button that closes.
+  // ⌘D is what takes a mark; ⌘C copies the image.
   await page.keyboard.press('Meta+d');
   await expect(page.locator('.arrow')).toHaveCount(2);
   await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
@@ -520,9 +520,9 @@ test('nothing to paste says which key would have filled the clipboard', async ({
   await expect(page.getByRole('status')).toContainText('⌘D');
 });
 
-// The footer button promises "Copy and Close ⌘C". A fresh mark arrives
-// selected, so a ⌘C that took the selection instead broke that promise at the
-// one moment it was most likely to be believed.
+// The footer button promises "Copy and Close ⌥⌘C". A fresh mark arrives
+// selected, so a key that took the selection instead would break that promise
+// at the one moment it was most likely to be believed.
 for (const [what, prepare] of [
   ['with the mark just drawn still selected', async (page: Page) => {
     await expect(page.locator('.handle')).not.toHaveCount(0);
@@ -532,33 +532,77 @@ for (const [what, prepare] of [
     await expect(page.locator('.handle')).toHaveCount(0);
   }],
 ] as const) {
-  test(`Command-C copies the image and closes, ${what}`, async ({ page }) => {
+  test(`Option-Command-C copies the image and closes, ${what}`, async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'clipboard', { value: { write: async () => {} } });
     });
     await page.goto('/');
     await drawArrow(page, [200, 200], [600, 300]);
     await prepare(page);
-    await page.keyboard.press('Meta+c');
+    await page.keyboard.press('Alt+Meta+c');
     await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
     // What it closed is not lost -- it is waiting in Recent, drawing and all.
     await expect(page.locator('.recent')).toHaveCount(1);
   });
 }
 
+// Option turns C into ç on a Mac, and that is the key WebKit reports, so the
+// shortcut is known by where the key is. A note field keeps ⌘C for its text,
+// but not this, whichever way the key arrives: it is never a text shortcut.
+for (const [how, press] of [
+  ['as the ç WebKit reports', (field: Locator) => field.evaluate(input => input.dispatchEvent(new KeyboardEvent('keydown',
+    { key: 'ç', code: 'KeyC', altKey: true, metaKey: true, bubbles: true, cancelable: true })))],
+  ['as a plain c', (field: Locator) => field.press('Alt+Meta+c')],
+] as const) {
+  test(`Option-Command-C closes from a note field, ${how}`, async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', { value: { write: async () => {} } });
+    });
+    await page.goto('/');
+    await numbering(page);
+    const at = await stage(page);
+    const spot = at(300, 300);
+    await page.mouse.click(spot.x, spot.y);
+    await page.keyboard.type('ship it');
+    const field = page.locator('.step-note').first();
+    await expect(field).toBeFocused();
+    await press(field);
+    await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+    await expect(page.locator('.recent')).toHaveCount(1);
+  });
+}
+
+test('Command-A with no capture selects nothing, not the window\'s words', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await page.keyboard.press('Meta+a');
+  expect(await page.evaluate(() => getSelection()?.toString() ?? '')).toBe('');
+});
+
 test('Copy keeps the capture open so you can carry on', async ({ page }) => {
   await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'clipboard', { value: { write: async () => {} } });
+    (window as any).__writes = 0;
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async () => { (window as any).__writes++; } } });
   });
   await page.goto('/');
   await drawArrow(page, [200, 200], [600, 300]);
+  const writes = () => page.evaluate(() => (window as any).__writes);
   await page.getByRole('button', { name: /^Copy/ }).first().click();
   await expect(page.getByRole('status')).toContainText('Copied to clipboard');
   await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
   await expect(page.locator('.arrow')).toHaveCount(1);   // the drawing survives too
+  expect(await writes()).toBe(1);
 
-  await page.keyboard.press('Meta+Shift+c');             // and again from the keyboard
+  // ⌘C is the same copy from the keyboard: the image, though the mark just
+  // drawn is still selected. ⇧⌘C, which it used to be, still is.
+  await expect(page.locator('.handle')).not.toHaveCount(0);
+  await page.keyboard.press('Meta+c');
+  await expect.poll(writes).toBe(2);
+  await page.keyboard.press('Meta+Shift+c');
+  await expect.poll(writes).toBe(3);
   await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
+  await expect(page.locator('.arrow')).toHaveCount(1);   // it copied the image, not the mark
 });
 
 test('a moved redaction hides where it lands, not where it came from', async ({ page }) => {

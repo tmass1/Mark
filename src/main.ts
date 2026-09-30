@@ -1,5 +1,5 @@
 import './style.css';
-import { command, isTauri, watchCapture, watchSettings, type CapturePreview, type Snapshot } from './platform';
+import { command, isTauri, watchCapture, watchMenuCopy, watchSettings, type CapturePreview, type Snapshot } from './platform';
 import { DEFAULT_SHORTCUT, prettyShortcut } from './shortcut';
 // The icon as an import, so its path is right whether this page is the app's
 // own or the copy the web demo runs in a frame.
@@ -341,8 +341,8 @@ app.innerHTML = `
         <circle cx="10" cy="10" r="7.2" fill="currentColor" mask="url(#steps-toggle-glyph)"/>
       </svg>Steps <span class="steps-count"></span>
     </button>
-    <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘⇧C</kbd></button>
-    <button class="copy primary" type="button">Copy and Close <kbd>⌘C</kbd></button>
+    <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘C</kbd></button>
+    <button class="copy primary" type="button">Copy and Close <kbd>⌥⌘C</kbd></button>
   </footer>
   <input class="file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
 `;
@@ -1433,7 +1433,7 @@ document.addEventListener('keydown', event => {
   // pasted it at all -- ⌘A selected every mark, ⌘Z undid a drawing, and Escape
   // closed the capture. The text tool never had this because its own editing
   // short-circuits above; this is the same courtesy for every other field.
-  // ⇧⌘C stays the app's: copying the image is not a text shortcut.
+  // ⇧⌘C and ⌥⌘C stay the app's: copying the image is not a text shortcut.
   //
   // ⌘Z is the one with a condition: an empty field has no typing to undo, and
   // a field Mark focused itself the instant a mark was made is exactly where
@@ -1442,7 +1442,8 @@ document.addEventListener('keydown', event => {
   const emptyField = target instanceof HTMLInputElement && target.value === '';
   const fieldKey = key === 'escape'
     || ((event.metaKey || event.ctrlKey)
-        && ((key === 'z' && !emptyField) || (!event.shiftKey && ['a', 'c', 'v', 'x'].includes(key))));
+        && ((key === 'z' && !emptyField)
+            || (!event.shiftKey && !event.altKey && ['a', 'c', 'v', 'x'].includes(key))));
   if (typing && fieldKey) return;
   if (key === 'escape') {
     // Escape backs out one level: the crop, then the selection, then the editor.
@@ -1450,15 +1451,17 @@ document.addEventListener('keydown', event => {
     if (layer.pendingCrop) layer.clearCrop();
     else if (!layer.deselect()) void dismiss().catch(report);
   } else if (event.metaKey && key === 'q') {
-    // No menu bar on an accessory app, so nothing else would catch this.
+    // The app's hidden menu has Quit too, but the demo has no menu to fall back on.
     event.preventDefault(); void command('quit_app').catch(report);
   } else if ((event.metaKey || event.ctrlKey) && key === 'w') {
     event.preventDefault(); void dismiss().catch(report);
   } else if (isTauri && event.metaKey && key === ',') {
     event.preventDefault(); void command('open_settings').catch(report);
-  } else if (capture && (event.metaKey || event.ctrlKey) && key === 'a') {
+  } else if ((event.metaKey || event.ctrlKey) && key === 'a') {
+    // Outside a text field ⌘A means marks, even with no capture to hold any:
+    // let through, it would reach the Edit menu and select the window's words.
     event.preventDefault();
-    if (!layer.selectAll()) flash('Nothing drawn to select.');
+    if (capture && !layer.selectAll()) flash('Nothing drawn to select.');
   } else if (capture && (event.metaKey || event.ctrlKey) && (key === ']' || key === '}')) {
     event.preventDefault();
     if (!layer.reorder(event.shiftKey ? 'front' : 'forward')) flash('Select something to reorder.');
@@ -1481,17 +1484,22 @@ document.addEventListener('keydown', event => {
     event.preventDefault(); void copyList();
   } else if (capture && key === 's' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault(); void exportImage(event.shiftKey ? 'share_image' : 'save_image');
-  } else if (capture && key === 'c' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
-    event.preventDefault(); void copyCapture(false);
-  } else if (capture && key === 'c' && (event.metaKey || event.ctrlKey)) {
-    // The footer button reads "Copy and Close ⌘C", so ⌘C copies and closes,
-    // whatever happens to be selected. It used to take the selection instead
-    // whenever there was one -- which is to say from the instant you drew
-    // anything, because a fresh mark arrives selected. The button was wrong
-    // exactly when it was most likely to be read. Duplicating a mark is ⌘D.
+  } else if (capture && (event.metaKey || event.ctrlKey) && event.altKey
+             && (event.code === 'KeyC' || key === 'c' || key === 'ç')) {
+    // Copy and Close is ⌥⌘C: a copy that also puts the capture away sits one
+    // modifier further off than a copy that leaves it open, so the reflex ⌘C
+    // never costs the capture. Option turns C into ç on a Mac, so the key is
+    // known by where it is as well as by what it types.
     event.preventDefault();
     if (layer.pendingCrop) { flash('Finish or cancel the crop first.'); return; }
     void copyCapture(true);
+  } else if (capture && key === 'c' && (event.metaKey || event.ctrlKey)) {
+    // ⌘C copies the image and leaves the capture open, as the Copy button says,
+    // whatever happens to be selected; ⇧⌘C, which it used to be, still does.
+    // Duplicating a mark is ⌘D.
+    event.preventDefault();
+    if (layer.pendingCrop) { flash('Finish or cancel the crop first.'); return; }
+    void copyCapture(false);
   } else if (capture && key === 'v' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
     if (!layer.paste().length) flash('Select a mark and duplicate it with ⌘D first.');
@@ -1505,7 +1513,7 @@ document.addEventListener('keydown', event => {
   // Return does nothing else. macOS would have it fire the default button, and
   // it used to, which meant a stray Return copied and closed the capture --
   // surprising in an editor you type in, and a real loss when the thing it
-  // closed took work. Copying has ⌘C and ⌘⇧C, and Return on the Copy button
+  // closed took work. Copying has ⌘C and ⌥⌘C, and Return on the Copy button
   // itself still presses it, because that is what a focused button does.
 }, { signal: abort.signal });
 
@@ -1524,6 +1532,13 @@ async function init() {
     on(gear, 'click', () => { void command('open_settings').catch(report); });
     void command<{ shortcut: string }>('get_settings').then(s => showShortcut(s.shortcut)).catch(() => {});
     cleanups.push(await watchSettings(s => showShortcut(s.shortcut)));
+    // The menu's Copy and Close, for a ⌥⌘C that reached the app rather than the
+    // page. The page does the copying either way: only it can draw the marks in.
+    cleanups.push(await watchMenuCopy(() => {
+      if (layer.isEditing) layer.commit();
+      if (layer.pendingCrop) { flash('Finish or cancel the crop first.'); return; }
+      void copyCapture(true);
+    }));
     // On macOS 26 the panes sit on the system's own glass, laid under the web
     // view by lib.rs, so the stylesheet draws them bare there.
     document.documentElement.classList.toggle('native-glass', await command<boolean>('glass_available').catch(() => false));

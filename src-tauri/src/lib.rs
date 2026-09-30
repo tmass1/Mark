@@ -379,8 +379,8 @@ fn decode_png(png: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-/// An accessory app has no menu bar, so Command-Q never reaches a menu. The
-/// editor forwards it here instead.
+/// Command-Q from the editor, which sees keys before the app's hidden menu
+/// does and takes this one itself.
 #[tauri::command]
 fn quit_app(app: AppHandle) { app.exit(0); }
 
@@ -558,7 +558,9 @@ fn menu_action(app: &AppHandle, id: &str) {
     match id {
         "capture" => { if let Err(e) = capture_region(app.clone(), None) { report(app, e); } }
         "show" => present(app),
-        "copy" => { if let Err(e) = copy_capture(app.clone(), true) { report(app, e); } }
+        // The editor copies: it alone can flatten the drawing into the image.
+        // Copying the capture from here would copy it without its marks.
+        "copy" => { if let Err(error) = app.emit_to(EDITOR, "copy-and-close", ()) { eprintln!("[Mark] {error}"); } }
         "close" => { let _ = dismiss_editor(app.clone()); }
         "login" => toggle_login_item(app),
         "settings" => { if let Err(e) = open_settings(app.clone()) { report(app, e); } }
@@ -606,10 +608,22 @@ pub fn run() {
                 .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
                 .icon_as_template(true).tooltip(tooltip(&prefs.shortcut))
                 .menu(&tray_menu).build(app)?;
-            let copy = MenuItem::with_id(app, "copy", "Copy and Close", true, Some("Super+C"))?;
+            let copy = MenuItem::with_id(app, "copy", "Copy and Close", true, Some("Alt+Super+C"))?;
             let close = MenuItem::with_id(app, "close", "Close", true, Some("Super+W"))?;
             let main = Submenu::with_items(app, "Mark", true, &[&capture, &show, &separator, &login, &preferences, &separator, &quit])?;
-            let edit = Submenu::with_items(app, "Edit", true, &[&copy, &close])?;
+            // Never shown, since an accessory app has no menu bar, but still
+            // where AppKit sends a key the page leaves alone. That is how a text
+            // field gets its editing keys: the page lets ⌘C, ⌘X, ⌘V, ⌘A and ⌘Z
+            // through inside a field, and without these items they did nothing
+            // -- or, for ⌘C, found Copy and Close.
+            let edit = Submenu::with_items(app, "Edit", true, &[
+                &PredefinedMenuItem::undo(app, None)?, &PredefinedMenuItem::redo(app, None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::cut(app, None)?, &PredefinedMenuItem::copy(app, None)?,
+                &PredefinedMenuItem::paste(app, None)?, &PredefinedMenuItem::select_all(app, None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &copy, &close,
+            ])?;
             app.set_menu(Menu::with_items(app, &[&main, &edit])?)?;
             install_glass(app.handle());
             apply_appearance(app.handle(), &prefs.appearance);

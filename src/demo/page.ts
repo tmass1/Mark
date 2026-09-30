@@ -146,7 +146,7 @@ const TIPS = [
   'Redact pixelates rather than blurs: a blur can be undone.',
   'Shift-click gathers several annotations; they then move and restyle together.',
   'Crop keeps the drawing, shifted to match. ⌘Z puts the whole capture back.',
-  '⌘C copies the image and closes. ⌘⇧C copies and keeps working.',
+  '⌘C copies the image and keeps working. ⌥⌘C copies and closes.',
   'Closed a capture by accident? Recent, on the empty state, holds the last six.',
 ];
 const TIP_EVERY = 6500;
