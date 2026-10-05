@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-updates"
+description = "Enables the open_updates command without any pre-configured scope."
+commands.allow = ["open_updates"]
+
+[[permission]]
+identifier = "deny-open-updates"
+description = "Denies the open_updates command without any pre-configured scope."
+commands.deny = ["open_updates"]

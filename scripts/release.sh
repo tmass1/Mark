@@ -102,6 +102,21 @@ HELP
 fi
 echo "  profile '$PROFILE' is ready"
 
+# What Software Update will say about this version, and the key that signs
+# it: both are needed after the build, so both are checked before it.
+VERSION=$(node -p "require('./package.json').version")
+NOTES="release-notes/$VERSION.md"
+step "Checking the release notes and the update key"
+if [ ! -s "$NOTES" ]; then
+  fail "Write $NOTES first: it is what Software Update shows before anyone installs $VERSION."
+  exit 1
+fi
+if ! security find-generic-password -s "Mark updater key" >/dev/null 2>&1; then
+  fail "No 'Mark updater key' in the keychain. It signs every in-app update; the README says where it is kept."
+  exit 1
+fi
+echo "  $NOTES, and the key"
+
 step "Building (universal: Apple silicon and Intel)"
 # Passed as a config overlay rather than an environment variable, so which
 # identity signed the build is unambiguous and recorded in the output.
@@ -134,6 +149,10 @@ hdiutil resize -size "$(( $(stat -f%z "$WORK/rw.dmg") + 4 * 1024 * 1024 ))" "$WO
 MOUNT=$(hdiutil attach "$WORK/rw.dmg" -nobrowse -mountrandom "$WORK" | awk '/\/private\/|\/Volumes\//{print $NF}' | tail -1)
 xcrun stapler staple "$MOUNT/Mark.app"
 xcrun stapler validate "$MOUNT/Mark.app"
+# The in-app update is made from this same stapled app, so updating gives
+# exactly what a fresh download would.
+step "Packing the in-app update"
+scripts/sign-update.sh "$MOUNT/Mark.app" "$VERSION" "https://mark.tommymassaro.com/updates" "$NOTES" "$BUNDLE/updates"
 hdiutil detach "$MOUNT" -quiet
 FINAL="$BUNDLE/dmg/$(basename "$DMG")"
 rm -f "$FINAL"
@@ -158,3 +177,4 @@ hdiutil detach "$CHECK" -quiet
 
 step "Done"
 echo "  $DMG is ready to send anywhere, and opens without a network."
+echo "  $BUNDLE/updates holds the in-app update; pnpm site:deploy publishes both."

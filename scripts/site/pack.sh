@@ -16,6 +16,17 @@ DMG="Mark_${VERSION}_universal.dmg"
 for candidate in "$DMG" "src-tauri/target/universal-apple-darwin/release/bundle/dmg/$DMG"; do
   if [ -f "$candidate" ]; then cp "$candidate" "dist-site/$DMG"; break; fi
 done
+# The in-app update: Software Update reads updates/latest.json, then fetches
+# the archive it names. Only this version's: a manifest left over from another
+# build would offer something this page no longer is.
+UPDATES=src-tauri/target/universal-apple-darwin/release/bundle/updates
+if [ -f "$UPDATES/latest.json" ] && [ "$(node -p "require('./$UPDATES/latest.json').version")" = "$VERSION" ]; then
+  mkdir -p dist-site/updates
+  cp "$UPDATES/latest.json" "$UPDATES/Mark_${VERSION}.app.tar.gz" dist-site/updates/
+  echo "dist-site/updates/ holds the in-app update for $VERSION"
+else
+  echo "No in-app update for $VERSION was found; Mark's Software Update will find nothing new until one is published."
+fi
 if [ -f "dist-site/$DMG" ]; then
   echo "dist-site/ is ready, with $DMG"
 else

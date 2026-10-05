@@ -8,7 +8,8 @@ fn main() {
       "copy_capture", "copy_edited", "copy_text", "save_image", "share_image", "quit_app",
       "dismiss_editor", "open_screen_settings",
       "glass_available", "set_glass",
-      "get_settings", "set_appearance", "set_shortcut", "login_enabled", "set_login", "open_settings"
+      "get_settings", "set_appearance", "set_shortcut", "login_enabled", "set_login", "open_settings",
+      "check_for_update", "pending_update", "install_update", "skip_update", "set_auto_update", "open_updates"
     ])
   )).expect("failed to build Mark's capability manifest");
 }

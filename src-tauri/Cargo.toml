@@ -26,6 +26,12 @@ tempfile = "3"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSImage", "NSRunningApplication", "NSWorkspace", "NSApplication", "NSWindow", "NSResponder", "NSView", "NSSharingService", "NSGlassEffectView", "NSGraphics"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSString", "NSURL", "NSArray", "NSGeometry"] }
+tauri-plugin-updater = "2"
+
+[features]
+# A build made only to test updating end to end: when its own check finds a
+# newer Mark, it installs it without asking. Never part of a release.
+update-selftest = []
 
 [profile.release]
 opt-level = "s"

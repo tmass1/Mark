@@ -3,6 +3,7 @@ mod glass;
 mod macos;
 mod session;
 mod settings;
+mod updates;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use tauri_plugin_dialog::DialogExt;
@@ -481,7 +482,7 @@ fn register_shortcut(app: &AppHandle, shortcut: &str) -> Result<(), String> {
 /// prefers-color-scheme follows the material, so one call themes everything.
 fn apply_appearance(app: &AppHandle, appearance: &str) {
     let theme = match appearance { "dark" => Some(tauri::Theme::Dark), "light" => Some(tauri::Theme::Light), _ => None };
-    for label in [EDITOR, SETTINGS] {
+    for label in [EDITOR, SETTINGS, updates::WINDOW] {
         if let Some(window) = app.get_webview_window(label) { let _ = window.set_theme(theme); }
     }
 }
@@ -536,22 +537,28 @@ fn set_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
 fn open_settings(app: AppHandle) -> Result<(), String> {
     let window = match app.get_webview_window(SETTINGS) {
         Some(window) => window,
-        None => {
-            let appearance = app.state::<Prefs>().0.lock().unwrap().appearance.clone();
-            let theme = match appearance.as_str() { "dark" => Some(tauri::Theme::Dark), "light" => Some(tauri::Theme::Light), _ => None };
-            tauri::WebviewWindowBuilder::new(&app, SETTINGS, tauri::WebviewUrl::App("settings.html".into()))
-                .title("Mark Settings").inner_size(460.0, 244.0).resizable(false).maximizable(false).minimizable(false)
-                // The editor floats above other windows; a settings window at the
-                // normal level would open underneath the very window that opened it.
-                .always_on_top(true)
-                .transparent(true).theme(theme)
-                .effects(tauri::window::EffectsBuilder::new().effect(tauri::window::Effect::Sidebar)
-                    .state(tauri::window::EffectState::Active).radius(12.0).build())
-                .center().build().map_err(|e| e.to_string())?
-        }
+        None => panel(&app, SETTINGS, "settings.html", "Mark Settings", 460.0, 244.0)?,
     };
     macos::activate_self();
     window.show().and_then(|_| window.set_focus()).map_err(|e| e.to_string())
+}
+
+/// A small window of Mark's own, in its glass and the appearance chosen in
+/// Settings: Settings itself, and Software Update. Each grows to fit what it
+/// shows, so the height given here is only where it starts.
+pub(crate) fn panel(app: &AppHandle, label: &str, page: &str, title: &str, width: f64, height: f64)
+    -> Result<tauri::WebviewWindow, String> {
+    let appearance = app.state::<Prefs>().0.lock().unwrap().appearance.clone();
+    let theme = match appearance.as_str() { "dark" => Some(tauri::Theme::Dark), "light" => Some(tauri::Theme::Light), _ => None };
+    tauri::WebviewWindowBuilder::new(app, label, tauri::WebviewUrl::App(page.into()))
+        .title(title).inner_size(width, height).resizable(false).maximizable(false).minimizable(false)
+        // The editor floats above other windows; a window at the normal level
+        // would open underneath the very window that opened it.
+        .always_on_top(true)
+        .transparent(true).theme(theme)
+        .effects(tauri::window::EffectsBuilder::new().effect(tauri::window::Effect::Sidebar)
+            .state(tauri::window::EffectState::Active).radius(12.0).build())
+        .center().build().map_err(|e| e.to_string())
 }
 
 fn menu_action(app: &AppHandle, id: &str) {
@@ -564,6 +571,7 @@ fn menu_action(app: &AppHandle, id: &str) {
         "close" => { let _ = dismiss_editor(app.clone()); }
         "login" => toggle_login_item(app),
         "settings" => { if let Err(e) = open_settings(app.clone()) { report(app, e); } }
+        "updates" => { if let Err(e) = updates::show(app, true) { report(app, e); } }
         "quit" => {
             app.exit(0);
         }
@@ -574,7 +582,9 @@ fn menu_action(app: &AppHandle, id: &str) {
 pub fn run() {
     tauri::Builder::default()
         .manage(Mutex::new(Session::default()))
+        .manage(updates::Pending::default())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
             if event.state() == ShortcutState::Pressed {
                 if let Err(e) = capture_region(app.clone(), None) { report(app, e); }
@@ -582,7 +592,9 @@ pub fn run() {
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, cancel_selection,
             copy_capture, copy_edited, copy_text, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
-            get_settings, set_appearance, set_shortcut, login_enabled, set_login, open_settings, quit_app])
+            get_settings, set_appearance, set_shortcut, login_enabled, set_login, open_settings, quit_app,
+            updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
+            updates::set_auto_update, updates::open_updates])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -598,19 +610,20 @@ pub fn run() {
             let show = MenuItem::with_id(app, "show", "Show Editor", true, None::<&str>)?;
             let preferences = MenuItem::with_id(app, "settings", "Settings…", true, Some("Super+Comma"))?;
             let quit = MenuItem::with_id(app, "quit", "Quit Mark", true, Some("Super+Q"))?;
+            let check = MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
             let separator = PredefinedMenuItem::separator(app)?;
             let login = CheckMenuItem::with_id(app, "login", "Open at Login", true,
                 macos::login_item_status() == macos::LOGIN_ENABLED, None::<&str>)?;
             app.manage(LoginToggle(login.clone()));
             app.manage(CaptureItem(capture.clone()));
-            let tray_menu = Menu::with_items(app, &[&capture, &show, &separator, &login, &preferences, &PredefinedMenuItem::separator(app)?, &quit])?;
+            let tray_menu = Menu::with_items(app, &[&capture, &show, &separator, &login, &preferences, &check, &PredefinedMenuItem::separator(app)?, &quit])?;
             TrayIconBuilder::with_id("mark")
                 .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
                 .icon_as_template(true).tooltip(tooltip(&prefs.shortcut))
                 .menu(&tray_menu).build(app)?;
             let copy = MenuItem::with_id(app, "copy", "Copy and Close", true, Some("Alt+Super+C"))?;
             let close = MenuItem::with_id(app, "close", "Close", true, Some("Super+W"))?;
-            let main = Submenu::with_items(app, "Mark", true, &[&capture, &show, &separator, &login, &preferences, &separator, &quit])?;
+            let main = Submenu::with_items(app, "Mark", true, &[&capture, &show, &separator, &login, &preferences, &check, &separator, &quit])?;
             // Never shown, since an accessory app has no menu bar, but still
             // where AppKit sends a key the page leaves alone. That is how a text
             // field gets its editing keys: the page lets ⌘C, ⌘X, ⌘V, ⌘A and ⌘Z
@@ -631,6 +644,7 @@ pub fn run() {
                 report(app.handle(), format!("The capture shortcut is unavailable ({error}). Use Capture Region in Mark's menu."));
             }
             app.manage(Prefs(Mutex::new(prefs)));
+            updates::watch(app.handle().clone());
             // Say up front that capture will not work, rather than letting the
             // first Capture Region be the thing that discovers it.
             if !macos::screen_access_granted() {

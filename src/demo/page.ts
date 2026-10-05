@@ -24,11 +24,11 @@ const COMPACT: [number, number] = [560, CHROME + RAIL_HEIGHT];
 const DEMO_SHORTCUT = DEFAULT_SHORTCUT;
 
 interface Capture { dataUrl: string; width: number; height: number; scale: number }
-interface Settings { appearance: 'dark' | 'light' | 'system'; shortcut: string }
+interface Settings { appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates: boolean }
 
 const state = {
   capture: null as Capture | null, busy: false, error: null as string | null,
-  settings: { appearance: 'dark', shortcut: DEMO_SHORTCUT } as Settings,
+  settings: { appearance: 'dark', shortcut: DEMO_SHORTCUT, checkUpdates: true } as Settings,
   armedDelay: 0,
 };
 
@@ -345,6 +345,8 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       case 'login_enabled': return false;
       case 'set_login': throw 'Opening at login is a Mac feature; this web preview can\'t.';
       case 'open_settings': openSettings(); return;
+      case 'set_auto_update': state.settings = { ...state.settings, checkUpdates: Boolean(args.enabled) }; return state.settings;
+      case 'open_updates': showHint('The Mac app checks for updates and installs them. This web demo is always the newest version.'); return;
       // The window plugin, as the settings page uses it.
       case 'plugin:window|close': settingsWin.hidden = true; return;
       case 'plugin:window|set_size': { const size = args.value as { height: number }; settingsFrame.style.height = `${Math.round(size.height)}px`; return; }

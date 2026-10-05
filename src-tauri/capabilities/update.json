@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "update",
+  "description": "Software Update may look for a newer Mark, install it or skip it, follow the download, and close itself.",
+  "windows": ["update"], "platforms": ["macOS"],
+  "permissions": [
+    "allow-check-for-update", "allow-pending-update", "allow-install-update", "allow-skip-update",
+    "core:event:allow-listen", "core:event:allow-unlisten",
+    "core:window:allow-close", "core:window:allow-set-size", "core:app:allow-version"
+  ]
+}

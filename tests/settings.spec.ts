@@ -63,6 +63,27 @@ test('login follows what macOS says, not the checkbox', async ({ page }) => {
   await expect(page.locator('.login')).not.toBeChecked();   // macOS said no
 });
 
+test('updates: the automatic check shows what Rust saved, and Check Now asks for a check', async ({ page }) => {
+  await installBridge(page, { returns: {
+    get_settings: { ...SAVED, checkUpdates: true }, login_enabled: false,
+    set_auto_update: { ...SAVED, checkUpdates: false },
+  } });
+  await page.goto('/settings.html');
+  const automatic = page.getByRole('checkbox', { name: 'Check for updates automatically' });
+  await expect(automatic).toBeChecked();
+  await automatic.click();
+  expect((await waitFor(page, 'set_auto_update')).args).toEqual({ enabled: false });
+  await expect(automatic).not.toBeChecked();
+  await page.getByRole('button', { name: 'Check Now' }).click();
+  await waitFor(page, 'open_updates');
+});
+
+test('a settings file from before updates shows them switched on', async ({ page }) => {
+  await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false } });
+  await page.goto('/settings.html');
+  await expect(page.getByRole('checkbox', { name: 'Check for updates automatically' })).toBeChecked();
+});
+
 test('the editor shows the saved shortcut, and follows a change', async ({ page }) => {
   await installBridge(page, { capture: null, returns: { get_settings: SAVED } });
   await page.goto('/');

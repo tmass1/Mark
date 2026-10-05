@@ -323,6 +323,14 @@ notarization; an Apple Development certificate is only good for this Mac.
    six, drawing and all, so closing one by accident costs a click rather than
    the shot. It lives in memory only and does not survive quitting Mark:
    it is an undo for closing, not a library.
+10. **Updates** come to Mark by themselves. It looks for a new version shortly
+    after it opens and once a day after that, and when there is one, Software
+    Update says what changed and offers **Install and Relaunch**, **Remind Me
+    Later** or **Skip This Version**. Installing downloads the new version,
+    checks it was signed with Mark's own key, puts it in place and reopens.
+    **Check for Updates…** is in the menu bar menu, and Settings can turn the
+    looking off. A check that fails by itself — offline, say — keeps quiet;
+    one you asked for says what went wrong.
 
 Escape, ⌘W, or the red traffic-light button closes without copying. Starting a
 new capture hides the old editor; cancel restores it and success replaces it.
@@ -454,6 +462,24 @@ instructions if either is missing:
 Stapling matters: it attaches the notarization ticket to the image, so it opens
 on a Mac that is offline or behind a firewall rather than silently failing the
 check.
+
+A release is also an **in-app update**, which takes two more things:
+
+- **release notes**, in `release-notes/<version>.md`: a few lines of what is
+  new, which Software Update shows before anyone installs. The script stops
+  before building if they are missing.
+- the **update signing key**, kept in the login keychain as "Mark updater key".
+  Every installed Mark carries the public half (in `tauri.conf.json`) and
+  installs nothing that key did not sign. Keep a copy of the private half in a
+  password manager: Keychain Access shows it under that name. Without it no
+  installed Mark can be updated again, and everyone would have to download the
+  next version by hand.
+
+`scripts/sign-update.sh` does the packing, on the notarized, stapled app inside
+the image, so an update is byte for byte what a fresh download holds: the
+archive, its signature, and `latest.json`, which announces the version. The key
+goes only into the signer's environment for that one command. `pnpm
+site:deploy` publishes them under `/updates/` beside the disk image.
 
 To try a build on your own machines before any of that, copy `Mark.app` across
 directly — over a shared folder, `rsync`, or a USB drive. Gatekeeper only

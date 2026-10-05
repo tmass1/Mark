@@ -2,11 +2,12 @@ import './style.css';
 import { command, isTauri } from './platform';
 import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent, shortcutProblem } from './shortcut';
 
-/** Mark's settings window: three things, each applied the moment it changes,
- *  with nothing to save. Appearance and the shortcut are Mark's own; login is
- *  read from and written to macOS, which is the only source of truth for it. */
+/** Mark's settings window: four things, each applied the moment it changes,
+ *  with nothing to save. Appearance, the shortcut and updates are Mark's own;
+ *  login is read from and written to macOS, which is the only source of truth
+ *  for it. */
 
-interface Settings { appearance: 'dark' | 'light' | 'system'; shortcut: string }
+interface Settings { appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates?: boolean }
 
 const APPEARANCES: { id: Settings['appearance']; name: string }[] = [
   { id: 'dark', name: 'Dark' }, { id: 'light', name: 'Light' }, { id: 'system', name: 'Match System' },
@@ -38,6 +39,13 @@ root.innerHTML = `
       <p class="pref-note login-note" role="status" hidden></p>
     </div>
   </section>
+  <section class="pref">
+    <h2 class="pref-label">Updates</h2>
+    <div class="pref-control">
+      <label class="check"><input class="auto-update" type="checkbox" checked /> Check for updates automatically</label>
+      <button class="check-now glassy" type="button">Check Now</button>
+    </div>
+  </section>
   <p class="pref-preview" hidden>Browser preview: settings apply in the Mac app.</p>
   <p class="pref-version" hidden></p>`;
 
@@ -46,6 +54,7 @@ const recorderKey = recorder.querySelector('kbd')!;
 const shortcutNote = root.querySelector<HTMLElement>('.shortcut-note')!;
 const login = root.querySelector<HTMLInputElement>('.login')!;
 const loginNote = root.querySelector<HTMLElement>('.login-note')!;
+const autoUpdate = root.querySelector<HTMLInputElement>('.auto-update')!;
 let current: Settings = { appearance: 'dark', shortcut: DEFAULT_SHORTCUT };
 let recording = false;
 
@@ -57,6 +66,7 @@ function show(settings: Settings) {
     button.classList.toggle('active', active);
   }
   if (!recording) recorderKey.textContent = prettyShortcut(settings.shortcut);
+  autoUpdate.checked = settings.checkUpdates !== false;
   placeLens();
 }
 
@@ -132,6 +142,14 @@ login.addEventListener('change', async () => {
     note(loginNote, String(error));
     login.checked = await command<boolean>('login_enabled').catch(() => false);
   }
+});
+
+autoUpdate.addEventListener('change', () => {
+  void command<Settings>('set_auto_update', { enabled: autoUpdate.checked }).then(show)
+    .catch(() => { autoUpdate.checked = current.checkUpdates !== false; });
+});
+root.querySelector<HTMLButtonElement>('.check-now')!.addEventListener('click', () => {
+  void command('open_updates').catch(() => {});
 });
 
 async function closeWindow() {

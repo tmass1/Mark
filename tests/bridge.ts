@@ -34,9 +34,16 @@ export async function installBridge(page: Page, snapshot: {
       transformCallback: (callback: unknown) => { (window as any)[`__cb${++next}`] = callback; return next; },
       unregisterCallback: () => {},
       convertFileSrc: (path: string) => path,
+      // Which window this page is, as Tauri tells every page: without it the
+      // window API cannot say whom a close or a resize is for.
+      metadata: { currentWindow: { label: 'window' }, currentWebview: { windowLabel: 'window', label: 'window' } },
       async invoke(cmd: string, args: Record<string, unknown> = {}) {
-        // Plugin traffic is plumbing, not contract; answer it and move on.
-        if (cmd.startsWith('plugin:event|')) return next++;
+        // Plugin traffic is plumbing, not contract; answer it and move on --
+        // keeping what is listened for, so a test can play Rust's part.
+        if (cmd.startsWith('plugin:event|')) {
+          if (cmd === 'plugin:event|listen') ((window as any).__listening ??= []).push(args);
+          return next++;
+        }
         sent.push({ cmd, args });
         if (state.fails[cmd]) throw state.fails[cmd];
         if (cmd === 'current_capture') {
@@ -51,6 +58,17 @@ export async function installBridge(page: Page, snapshot: {
 /** Everything the editor has asked Rust to do, in order. */
 export function sent(page: Page): Promise<Sent[]> {
   return page.evaluate(() => (window as any).__sent as Sent[]);
+}
+
+/** Deliver an event to whatever the page listens for it with, as Rust would emit it. */
+export async function emit(page: Page, event: string, payload: unknown = null): Promise<void> {
+  await expect.poll(() => page.evaluate(name =>
+    ((window as any).__listening ?? []).some((args: { event: string }) => args.event === name), event)).toBe(true);
+  await page.evaluate(([name, payload]) => {
+    for (const args of (window as any).__listening as { event: string; handler: number }[]) {
+      if (args.event === name) (window as any)[`__cb${args.handler}`]({ event: name, id: 0, payload });
+    }
+  }, [event, payload] as const);
 }
 
 /** Forget what has been sent so far, so the next assertion is about one action. */

@@ -20,7 +20,7 @@
       }
     }],
     "security": {
-      "capabilities": ["editor", "selector", "settings"],
+      "capabilities": ["editor", "selector", "settings", "update"],
       "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'self'",
       "devCsp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; frame-src 'none'; base-uri 'self'"
     }
@@ -30,5 +30,11 @@
     "shortDescription": "Capture a region. Copy and close.",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"],
     "macOS": { "minimumSystemVersion": "13.0", "signingIdentity": "4D33F3C596D8273A3BD4E6DC356F22FB87C779A5", "infoPlist": "Info.plist" }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFDNDVEODc2MjkwQTZCMUMKUldRY2F3b3BkdGhGckd3NmZXR2lXM1dFbXRoOHloSVArenVKUi9HK0lveE9UK2RMOGtLcEo4THQK",
+      "endpoints": ["https://mark.tommymassaro.com/updates/latest.json"]
+    }
   }
 }
