@@ -210,9 +210,13 @@ notarization; an Apple Development certificate is only good for this Mac.
    - **Pen**: drag to scribble. The stroke is smoothed through the midpoints of
      what the pointer reported, and thinned once on release rather than while
      you draw — a stroke that simplifies under the pointer visibly changes
-     shape as you make it.
+     shape as you make it. Selected, it shows its corners, and pulling one
+     stretches it the way a box resizes, its line keeping its weight.
    - **Text**: click, then type. Enter starts a new line and Escape finishes.
-     Click a note to move it; click it again to edit it.
+     Click a note to move it; click it again to edit it. Pull a corner to scale
+     it, letters and line spacing together, while the opposite corner stays
+     put. It can go past either end of the size slider; the slider then shows
+     its own end, and that is what the next mark is drawn at.
    - **Box** and **Ellipse**: drag out an outline. Grab the outline to move it,
      or a corner to resize. Each has a numbered way in its slot, which gives it
      a badge at its corner in the same sequence the arrows use — so circling

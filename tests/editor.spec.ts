@@ -262,6 +262,103 @@ test('draws a box and an ellipse, and resizes one by its corner', async ({ page 
   await expect(page.locator('.shape ellipse[stroke="#ff3b30"]')).toHaveCount(1);
 });
 
+/** The corner grips round the one selected mark, where they sit on the page. */
+async function corners(page: Page) {
+  return page.locator('.handle[data-corner]').evaluateAll(grips => Object.fromEntries(grips.map(grip => {
+    const box = grip.getBoundingClientRect();
+    return [grip.getAttribute('data-corner'), { x: box.x + box.width / 2, y: box.y + box.height / 2 }];
+  }))) as Promise<Record<'nw' | 'ne' | 'se' | 'sw', { x: number; y: number }>>;
+}
+async function pull(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+}
+const near = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y) < 2;
+
+/** A note typed with the Text tool, left selected. */
+async function typed(page: Page, words: string, [ix, iy]: [number, number]) {
+  await pick(page, 'Text');
+  const spot = (await stage(page))(ix, iy);
+  await page.mouse.click(spot.x, spot.y);
+  await page.keyboard.type(words);
+  await page.keyboard.press('Escape');
+  if (!(await page.locator('.handle[data-corner]').count())) await page.locator('.note').last().click();
+  await expect(page.locator('.handle[data-corner]')).toHaveCount(4);
+}
+
+test('text scales by its corners, the opposite corner staying put', async ({ page }) => {
+  await page.goto('/');
+  await typed(page, 'Market', [400, 300]);
+  const text = page.locator('.note text');
+  const size = async () => Number(await text.getAttribute('font-size'));
+  const before = await size();
+
+  // Out along the diagonal to twice the size, by the bottom right: the top left holds.
+  let grips = await corners(page);
+  await pull(page, grips.se, { x: grips.nw.x + (grips.se.x - grips.nw.x) * 2, y: grips.nw.y + (grips.se.y - grips.nw.y) * 2 });
+  expect(await size() / before).toBeCloseTo(2, 1);
+  let after = await corners(page);
+  expect(near(after.nw, grips.nw)).toBe(true);
+
+  // Back in by the top left, to half that: now the bottom right holds. The hand
+  // need not stay on the diagonal; text keeps its proportions anyway.
+  grips = after;
+  await pull(page, grips.nw, { x: (grips.nw.x + grips.se.x) / 2 + 30, y: (grips.nw.y + grips.se.y) / 2 });
+  after = await corners(page);
+  expect(near(after.se, grips.se)).toBe(true);
+  expect(await size()).toBeLessThan(before * 1.6);
+  expect(await text.textContent()).toBe('Market');   // the words are untouched
+
+  // Each pull is one step back.
+  await page.keyboard.press('Meta+z');
+  expect(await size() / before).toBeCloseTo(2, 1);
+  await page.keyboard.press('Meta+z');
+  expect(await size()).toBeCloseTo(before, 3);
+});
+
+test('text pulled past the slider keeps its size, but the next mark goes by the slider', async ({ page }) => {
+  await page.goto('/');
+  await typed(page, 'Big', [300, 200]);
+  const first = page.locator('.note text').first();
+  const before = Number(await first.getAttribute('font-size'));
+  const grips = await corners(page);
+  await pull(page, grips.se, { x: grips.nw.x + (grips.se.x - grips.nw.x) * 3.5, y: grips.nw.y + (grips.se.y - grips.nw.y) * 3.5 });
+  expect(Number(await first.getAttribute('font-size')) / before).toBeCloseTo(3.5, 1);
+  await expect(page.locator('.weight')).toHaveValue('2.5');    // the slider's top end
+
+  await page.keyboard.press('Escape');
+  await typed(page, 'next', [300, 650]);
+  const next = Number(await page.locator('.note text').last().getAttribute('font-size'));
+  expect(next / before).toBeCloseTo(2.5, 2);                  // what the slider showed, not 3.5
+});
+
+test('a pen stroke stretches by its corners, the way a box resizes', async ({ page }) => {
+  await page.goto('/');
+  await pick(page, 'Pen');
+  const at = await stage(page);
+  const path = [[300, 300], [380, 260], [460, 320], [520, 280], [600, 340]].map(([x, y]) => at(x, y));
+  await page.mouse.move(path[0].x, path[0].y);
+  await page.mouse.down();
+  for (const point of path.slice(1)) await page.mouse.move(point.x, point.y, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.locator('.handle[data-corner]')).toHaveCount(4);
+  const stroke = page.locator('.arrow').first();
+  const weight = await stroke.getAttribute('stroke-width');
+
+  // Up and out by the top right, unevenly: the bottom left holds, and the line
+  // keeps its weight, as a box's does.
+  const grips = await corners(page);
+  await pull(page, grips.ne, { x: grips.ne.x + 120, y: grips.ne.y - 40 });
+  const after = await corners(page);
+  expect(near(after.sw, grips.sw)).toBe(true);
+  expect(near(after.ne, { x: grips.ne.x + 120, y: grips.ne.y - 40 })).toBe(true);
+  expect(await stroke.getAttribute('stroke-width')).toBe(weight);
+  await page.keyboard.press('Meta+z');
+  expect(near((await corners(page)).ne, grips.ne)).toBe(true);
+});
+
 test('the size slider goes down to a hairline', async ({ page }) => {
   await page.goto('/');
   await pick(page, 'Box');
@@ -1108,7 +1205,8 @@ test('draws a freehand stroke that follows the pointer', async ({ page }) => {
   expect(d).toContain('Q');                                 // smoothed, not a polyline
   // Thinned on release, so it is not one node per pointermove.
   expect(d.split('Q').length).toBeLessThan(14);
-  await expect(page.locator('.handle')).toHaveCount(0);     // no ends to grab
+  await expect(page.locator('.handle[data-handle]')).toHaveCount(0);   // no ends to grab,
+  await expect(page.locator('.handle[data-corner]')).toHaveCount(4);   // but corners to stretch it by
 });
 
 test('a stroke moves, restyles and undoes like everything else', async ({ page }) => {

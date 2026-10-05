@@ -110,6 +110,20 @@ export function offsetBy<T extends Annotation>(item: T, dx: number, dy = dx): T 
   return { ...item, x: item.x + dx, y: item.y + dy };
 }
 
+/** A note grown or shrunk about a point that stays where it is. Its size is
+ *  its shape, so it scales as a whole: the letters, the gaps between its lines,
+ *  and where it sits relative to that point, all by the same factor. */
+export function scaledNote(note: Note, [ax, ay]: Point, k: number): Note {
+  return { ...note, x: ax + (note.x - ax) * k, y: ay + (note.y - ay) * k, size: note.size * k };
+}
+
+/** A pen stroke stretched about a point that stays where it is, across and down
+ *  separately, the way a box is resized by its corner. Its line keeps its
+ *  weight, as a box's does. */
+export function stretchedStroke(stroke: Stroke, [ax, ay]: Point, sx: number, sy: number): Stroke {
+  return { ...stroke, points: stroke.points.map(([x, y]) => [ax + (x - ax) * sx, ay + (y - ay) * sy] as Point) };
+}
+
 /** How far to move a group of marks, given the boxes they occupy, so it lies
  *  on an image of this size: back from any edge it would cross, or to the top
  *  left if the group is the bigger of the two. */
@@ -825,12 +839,18 @@ export function drawAnnotations(
 
 type Corner = 'nw' | 'ne' | 'se' | 'sw';
 const CORNERS: readonly Corner[] = ['nw', 'ne', 'se', 'sw'];
+const OPPOSITE: Record<Corner, Corner> = { nw: 'se', ne: 'sw', se: 'nw', sw: 'ne' };
+function cornerOf(box: Rect, corner: Corner): Point {
+  return [box.x + (corner === 'ne' || corner === 'se' ? box.width : 0),
+          box.y + (corner === 'sw' || corner === 'se' ? box.height : 0)];
+}
 
 type Drag =
   | { kind: 'create'; id: number; ox: number; oy: number }
   | { kind: 'move'; id: number; ox: number; oy: number; from: Annotation[] }
   | { kind: 'reshape'; id: number; end: 1 | 2 }
   | { kind: 'corner'; id: number; corner: Corner; from: Shape }
+  | { kind: 'scale'; id: number; corner: Corner; from: Note | Stroke; box: Rect }
   | { kind: 'crop'; ox: number; oy: number };
 
 /** The box an annotation occupies, for drawing a selection outline round it --
@@ -948,6 +968,8 @@ export class AnnotationLayer {
   private defs: SVGDefsElement | null = null;
   /** Each framed step's pill as last drawn, for its selection outline. */
   private pills = new Map<number, Pill | null>();
+  /** Each note's outline as last drawn: text is measured as it is rendered. */
+  private noteBoxes = new Map<number, Rect>();
   private measureWith: Measure | null = null;
   tool: Tool = 'arrow';
   base = 12;
@@ -1366,6 +1388,9 @@ export class AnnotationLayer {
     } else if (corner && current && isShape(current)) {
       this.commitHistory();
       this.drag = { kind: 'corner', id: current.id, corner, from: { ...current } };
+    } else if (corner && current && (current.kind === 'text' || current.kind === 'pen') && this.scaleBox(current)) {
+      this.commitHistory();
+      this.drag = { kind: 'scale', id: current.id, corner, from: { ...current }, box: this.scaleBox(current)! };
     } else if (hit !== null) {
       const from = this.find(hit);
       if (!from) return;
@@ -1477,6 +1502,21 @@ export class AnnotationLayer {
       const anchorX = corner === 'nw' || corner === 'sw' ? from.x + from.width : from.x;
       const anchorY = corner === 'nw' || corner === 'ne' ? from.y + from.height : from.y;
       Object.assign(item, span(anchorX, anchorY, x, y));
+    } else if (this.drag.kind === 'scale') {
+      // The corner opposite the one pulled stays put.
+      const { from, box, corner } = this.drag;
+      const anchor = cornerOf(box, OPPOSITE[corner]), [cx, cy] = cornerOf(box, corner);
+      const vx = cx - anchor[0], vy = cy - anchor[1];
+      if (from.kind === 'text') {
+        // How far along the outline's diagonal the pointer has gone, which keeps
+        // text in proportion however the hand wanders -- from small but legible
+        // to a line as tall as the image.
+        const along = ((x - anchor[0]) * vx + (y - anchor[1]) * vy) / (vx * vx + vy * vy || 1);
+        const k = Math.min(Math.max(along, Math.max(6, this.base * 0.2) / from.size), this.height / LINE / from.size);
+        Object.assign(item, scaledNote(from, anchor, k));
+      } else {
+        Object.assign(item, stretchedStroke(from, anchor, vx ? (x - anchor[0]) / vx : 1, vy ? (y - anchor[1]) / vy : 1));
+      }
     } else if (isSegment(item)) {
       // Shift holds the angle, measured from whichever end is staying put.
       const held = (fromX: number, fromY: number): Point =>
@@ -1550,6 +1590,7 @@ export class AnnotationLayer {
     while (this.svg.firstChild) this.svg.removeChild(this.svg.firstChild);
     this.defs = null;
     this.pills.clear();
+    this.noteBoxes.clear();
     const numbers = stepNumbers(this.items);
     for (const item of this.items) {
       if (item.id === this.editing) continue;   // the textarea stands in while editing
@@ -1605,7 +1646,10 @@ export class AnnotationLayer {
         const bounds = text.getBBox();
         box.setAttribute('x', String(bounds.x)); box.setAttribute('y', String(bounds.y));
         box.setAttribute('width', String(bounds.width)); box.setAttribute('height', String(bounds.height));
-        if (this.chosen.has(item.id)) group.append(this.dashedOutline(bounds, item.size * 0.16));
+        const pad = item.size * 0.16;
+        this.noteBoxes.set(item.id, { x: bounds.x - pad, y: bounds.y - pad,
+                                      width: bounds.width + pad * 2, height: bounds.height + pad * 2 });
+        if (this.chosen.has(item.id)) group.append(this.dashedOutline(bounds, pad));
       }
     }
     if (this.pendingCrop) { this.renderCrop(this.pendingCrop); return; }
@@ -1635,6 +1679,14 @@ export class AnnotationLayer {
           chosen.y + (corner === 'sw' || corner === 'se' ? chosen.height : 0),
           'data-corner', corner));
       }
+    } else if (chosen && (chosen.kind === 'text' || chosen.kind === 'pen')) {
+      // Text and a pen stroke take their corners too: text scales as a whole,
+      // a stroke stretches the way a box resizes.
+      const box = this.scaleBox(chosen);
+      if (box) {
+        if (chosen.kind === 'pen') this.svg.append(this.dashedOutline(box, 0));
+        for (const corner of CORNERS) this.svg.append(this.grip(...cornerOf(box, corner), 'data-corner', corner));
+      }
     }
   }
 
@@ -1660,6 +1712,11 @@ export class AnnotationLayer {
         crop.y + (corner === 'sw' || corner === 'se' ? crop.height : 0),
         'data-crop', corner));
     }
+  }
+
+  /** What a corner scales a note or a stroke by: the outline drawn round it. */
+  private scaleBox(item: Note | Stroke): Rect | undefined {
+    return item.kind === 'text' ? this.noteBoxes.get(item.id) : bounds(item);
   }
 
   private grip(cx: number, cy: number, attribute: string, value: string): SVGElement {

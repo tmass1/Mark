@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
   ARROW_STYLES, COLORS, arrowPaint, arrowStrokeWidth, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
-  noteAt, offsetBy, onto, penPath, polygonPath, snapAngle, stepArrow, stepList, stepNumbers, stepRadius, styleOf,
+  noteAt, offsetBy, onto, penPath, scaledNote, stretchedStroke, polygonPath, snapAngle, stepArrow, stepList, stepNumbers, stepRadius, styleOf,
   textSize, thin, borderColor, borderWidth, markShadow, outsetOps, pathData, pillAt, pillExit, restyled,
   shadowReach, stepTextSize, underlay, withNumbering, centredBaseline,
   type Arrow, type Note, type PathOp, type Point, type Shape, type Step,
@@ -226,6 +226,20 @@ describe('copying an annotation', () => {
     // Wider than the image: pinned to its left edge rather than hanging off it
     // at random. Its height fits, so upwards it only comes back from the bottom.
     expect(onto([{ x: 700, y: 600, width: 450, height: 100 }], 256, 256)).toEqual([-700, -444]);
+  });
+
+  it('scales a note as a whole about a point that stays put', () => {
+    const grown = scaledNote(note({ x: 40, y: 60, size: 20 }), [100, 100], 2);
+    expect(grown).toMatchObject({ x: -20, y: 20, size: 40 });
+    // The point itself, scaled about, goes nowhere.
+    expect(scaledNote(note({ x: 40, y: 60, size: 20 }), [40, 60], 0.5)).toMatchObject({ x: 40, y: 60, size: 10 });
+  });
+
+  it('stretches a pen stroke across and down separately, keeping its weight', () => {
+    const stroke = { kind: 'pen', id: 1, points: [[10, 10], [30, 20]], color: '#000', weight: 8 } as never;
+    const stretched = stretchedStroke(stroke, [10, 10], 2, 3) as { points: Point[]; weight: number };
+    expect(stretched.points).toEqual([[10, 10], [50, 40]]);
+    expect(stretched.weight).toBe(8);
   });
 
   it('leaves the original untouched', () => {

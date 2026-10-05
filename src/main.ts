@@ -881,9 +881,11 @@ function syncTools() {
   const selected = layer.styleSource;
   if (selected) {
     layer.style.color = selected.color;
-    layer.style.scale = selected.kind === 'text'
+    // A corner can take text past either end of the slider; the next mark
+    // goes by what the slider can show rather than that size.
+    layer.style.scale = Math.min(Number(weight.max), Math.max(Number(weight.min), selected.kind === 'text'
       ? selected.size / textSize(layer.base)
-      : selected.weight / layer.base;
+      : selected.weight / layer.base));
   }
   weight.value = layer.style.scale.toFixed(2);
   syncSteps();
