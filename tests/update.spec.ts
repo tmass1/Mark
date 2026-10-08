@@ -96,3 +96,22 @@ test('an install refused for its signature says why', async ({ page }) => {
   await page.getByRole('button', { name: 'Try Again' }).click();
   await waitFor(page, 'install_update');
 });
+
+// The window opens before the check has answered, so what it shows grows
+// after it opened. It asks to grow by exactly what the page is short of.
+test('the window grows to fit what it shows', async ({ page }) => {
+  await page.setViewportSize({ width: 520, height: 128 });           // what the page can see
+  await installBridge(page, { returns: {
+    check_for_update: null, 'plugin:app|version': '0.4.5',
+    'plugin:window|inner_size': { width: 1040, height: 320 },      // 160 points: the strip under the title bar too
+    'plugin:window|scale_factor': 2,
+  } });
+  await page.goto('/update.html?check');
+  await expect(page.getByRole('heading', { name: "You're up to date" })).toBeVisible();
+  const needs = await page.evaluate(() => Math.ceil(document.querySelector('#update')!.getBoundingClientRect().height));
+  expect(needs).toBeGreaterThan(128);                                 // so it really is short
+  await expect.poll(async () => {
+    const sizes = (await sent(page)).filter(call => call.cmd === 'plugin:window|set_size');
+    return sizes.length ? JSON.stringify(sizes[sizes.length - 1].args) : '';
+  }).toContain(`"height":${160 + needs - 128}`);
+});

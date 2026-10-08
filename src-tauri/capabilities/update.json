@@ -6,6 +6,6 @@
   "permissions": [
     "allow-check-for-update", "allow-pending-update", "allow-install-update", "allow-skip-update",
     "core:event:allow-listen", "core:event:allow-unlisten",
-    "core:window:allow-close", "core:window:allow-set-size", "core:app:allow-version"
+    "core:window:allow-close", "core:window:allow-inner-size", "core:window:allow-scale-factor", "core:window:allow-set-size", "core:app:allow-version"
   ]
 }

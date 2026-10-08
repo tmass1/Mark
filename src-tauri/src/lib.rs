@@ -537,7 +537,7 @@ fn set_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
 fn open_settings(app: AppHandle) -> Result<(), String> {
     let window = match app.get_webview_window(SETTINGS) {
         Some(window) => window,
-        None => panel(&app, SETTINGS, "settings.html", "Mark Settings", 460.0, 244.0)?,
+        None => panel(&app, SETTINGS, "settings.html", "Mark Settings", 460.0, 378.0)?,
     };
     macos::activate_self();
     window.show().and_then(|_| window.set_focus()).map_err(|e| e.to_string())

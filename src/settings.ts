@@ -1,5 +1,6 @@
 import './style.css';
 import { command, isTauri } from './platform';
+import { fitWindowTo } from './fit';
 import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent, shortcutProblem } from './shortcut';
 
 /** Mark's settings window: four things, each applied the moment it changes,
@@ -158,22 +159,7 @@ async function closeWindow() {
   await getCurrentWindow().close();
 }
 
-/** The window is as tall as its contents, so a message that wraps to a second
- *  line grows the window rather than falling off the bottom of it. Measured as
- *  a difference -- what the page needs against what it can see -- and applied
- *  to the window's current size, then checked again once the window has
- *  resized, so it lands exactly whatever the title bar does to the arithmetic. */
-async function fitWindow() {
-  if (!isTauri) return;
-  const shortfall = Math.ceil(root.getBoundingClientRect().height) - window.innerHeight;
-  if (Math.abs(shortfall) < 1) return;
-  const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
-  const current = getCurrentWindow();
-  const size = (await current.innerSize()).toLogical(await current.scaleFactor());
-  await current.setSize(new LogicalSize(size.width, size.height + shortfall));
-}
-new ResizeObserver(() => { void fitWindow().catch(() => {}); }).observe(root);
-window.addEventListener('resize', () => { void fitWindow().catch(() => {}); });
+fitWindowTo(root);
 
 async function init() {
   if (!isTauri) {

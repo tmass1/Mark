@@ -1,6 +1,7 @@
 import './style.css';
 import { command, isTauri } from './platform';
 import { notesHtml } from './notes';
+import { fitWindowTo } from './fit';
 import markIcon from './mark-icon.png';
 
 /** Software Update, in the shape Mac apps have long given it: what is new, and
@@ -133,17 +134,7 @@ window.addEventListener('keydown', event => {
   }
 });
 
-/** The window is as tall as what it says, as Settings is. */
-async function fitWindow() {
-  if (!isTauri) return;
-  const shortfall = Math.ceil(root.getBoundingClientRect().height) - window.innerHeight;
-  if (Math.abs(shortfall) < 1) return;
-  const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
-  const current = getCurrentWindow();
-  const size = (await current.innerSize()).toLogical(await current.scaleFactor());
-  await current.setSize(new LogicalSize(size.width, size.height + shortfall));
-}
-new ResizeObserver(() => { void fitWindow().catch(() => {}); }).observe(root);
+fitWindowTo(root);
 
 async function init() {
   if (!isTauri) {
