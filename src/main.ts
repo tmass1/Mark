@@ -6,7 +6,7 @@ import { DEFAULT_SHORTCUT, prettyShortcut } from './shortcut';
 import markIcon from './mark-icon.png';
 import { copyThenDismiss } from './model';
 import { sampleCapture } from './sample';
-import { ARROW_STYLES, AnnotationLayer, COLORS, LOOKS, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
+import { ARROW_STYLES, AnnotationLayer, COLORS, LOOKS, hexColour, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
          FONT, arrowPaint, badgeAt, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isShape, numbered,
          outsetOps, pathData, polygonPath, stepArrow, stepList, strokePath, styleOf, takesLooks, textSize,
          type Annotation, type ArrowStyle, type Look, type NoteMode, type Point, type ShapeFill, type Tool } from './annotations';
@@ -148,43 +148,59 @@ const BADGE = (cx: number, cy: number, r: number) =>
  *  Numbering is one of those differences -- a switch in the toolbar was there to
  *  be missed, where a slot wears what it will draw. Photoshop's arrangement, and
  *  for the same reason. */
-interface Choice { id: Tool; numbered?: boolean; name: string; art: string }
+/** Each way of drawing also answers to a key, as tools do in every drawing app:
+ *  its first letter where that is free. Ways that share a slot can share a key,
+ *  which then steps through them -- A for an arrow, A again for a numbered one. */
+interface Choice { id: Tool; numbered?: boolean; name: string; key: string; art: string }
 const SLOTS: Choice[][] = [
   [
-    { id: 'arrow', name: 'Arrow', art: `<path d="M5.5 14.5 14 6M5.5 14.5h5.2M5.5 14.5V9.3" ${STROKE}/>` },
-    { id: 'arrow', numbered: true, name: 'Numbered arrow', art:
+    { id: 'arrow', name: 'Arrow', key: 'a', art: `<path d="M5.5 14.5 14 6M5.5 14.5h5.2M5.5 14.5V9.3" ${STROKE}/>` },
+    { id: 'arrow', numbered: true, name: 'Numbered arrow', key: 'a', art:
       `<path d="M9.4 11.2 15 5.6M15 5.6h-3.6M15 5.6v3.6" ${STROKE}/>` + BADGE(6.4, 13.6, 4.3) },
   ],
-  [{ id: 'line', name: 'Line', art: `<path d="M5.4 14.6 14.6 5.4" ${STROKE}/>` }],
-  [{ id: 'pen', name: 'Pen', art:
-    `<path d="M4.2 13.8c1.9-4.6 3.2 2.3 5.1-1.1s2.9 3 4.4-1.2 1.4 2 2.1.9" ${STROKE}/>` }],
-  [{ id: 'text', name: 'Text', art: `<path d="M5 6h10M10 6v8.5M7.8 14.5h4.4" ${STROKE}/>` }],
   [
-    { id: 'box', name: 'Box', art: `<rect x="4.6" y="5.8" width="10.8" height="8.4" rx="1.4" ${STROKE}/>` },
-    { id: 'box', numbered: true, name: 'Numbered box', art:
+    { id: 'line', name: 'Line', key: 'l', art: `<path d="M5.4 14.6 14.6 5.4" ${STROKE}/>` },
+    { id: 'measure', name: 'Measure', key: 'm', art: `<path d="M4.2 11.4h11.6M4.2 8v6.8M15.8 8v6.8" ${STROKE}/>` },
+  ],
+  [{ id: 'pen', name: 'Pen', key: 'p', art:
+    `<path d="M4.2 13.8c1.9-4.6 3.2 2.3 5.1-1.1s2.9 3 4.4-1.2 1.4 2 2.1.9" ${STROKE}/>` }],
+  [{ id: 'text', name: 'Text', key: 't', art: `<path d="M5 6h10M10 6v8.5M7.8 14.5h4.4" ${STROKE}/>` }],
+  [
+    { id: 'box', name: 'Box', key: 'b', art: `<rect x="4.6" y="5.8" width="10.8" height="8.4" rx="1.4" ${STROKE}/>` },
+    { id: 'box', numbered: true, name: 'Numbered box', key: 'b', art:
       `<rect x="6.4" y="7.4" width="9" height="7.4" rx="1.4" ${STROKE}/>` + BADGE(5.6, 6.2, 4.1) },
   ],
   [
-    { id: 'ellipse', name: 'Ellipse', art: `<ellipse cx="10" cy="10" rx="5.6" ry="4.4" ${STROKE}/>` },
-    { id: 'ellipse', numbered: true, name: 'Numbered ellipse', art:
+    { id: 'ellipse', name: 'Ellipse', key: 'o', art: `<ellipse cx="10" cy="10" rx="5.6" ry="4.4" ${STROKE}/>` },
+    { id: 'ellipse', numbered: true, name: 'Numbered ellipse', key: 'o', art:
       `<ellipse cx="11" cy="11.2" rx="4.6" ry="3.7" ${STROKE}/>` + BADGE(5.6, 6.2, 4.1) },
   ],
-  [{ id: 'highlight', name: 'Highlighter', art:
+  [{ id: 'highlight', name: 'Highlighter', key: 'h', art:
     `<path d="M4.6 15.6h10.8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" opacity=".45"/>` +
     `<path d="M6.9 12.4 12.4 6.9l2 2-5.5 5.5z" ${STROKE}/>` }],
-  [{ id: 'redact', name: 'Redact', art:
+  [{ id: 'redact', name: 'Redact', key: 'x', art:
     `<path d="M4.8 5.2h4.1v4.1H4.8zM11.1 5.2h4.1v4.1h-4.1zM4.8 10.7h4.1v4.1H4.8zM11.1 10.7h4.1v4.1h-4.1z" fill="currentColor"/>` }],
-  [{ id: 'crop', name: 'Crop', art:
+  [{ id: 'crop', name: 'Crop', key: 'c', art:
     `<path d="M6.6 2.8v10.6h10.6M2.8 6.6h10.6v10.6" ${STROKE}/>` }],
 ];
+/** A tool's tooltip names its key, as "Undo (⌘Z)" names its own. */
+const tipOf = (choice: Choice) => `${choice.name} (${choice.key.toUpperCase()})`;
 /** Which variant each slot is wearing. */
 const worn = SLOTS.map(() => 0);
+/** What a crop can be held to: free, the image's own shape, or the shapes a
+ *  screenshot is most often wanted in -- square, the classic screen, wide, and
+ *  tall for a phone. */
+const CROP_SHAPES: { id: string; name: string; ratio: number | null }[] = [
+  { id: 'free', name: 'Free', ratio: null }, { id: 'original', name: 'Original', ratio: null },
+  { id: '1:1', name: '1:1', ratio: 1 }, { id: '4:3', name: '4:3', ratio: 4 / 3 },
+  { id: '16:9', name: '16:9', ratio: 16 / 9 }, { id: '9:16', name: '9:16', ratio: 9 / 16 },
+];
 const slotButton = (slot: Choice[], index: number) => {
   const choice = slot[worn[index]];
   // No tooltip on a slot with a menu: resting on it opens the menu, which names
   // every way it has including the one it is wearing.
   return `<button class="tool" type="button" role="radio" data-slot="${index}" aria-checked="${index === 0}"
-        ${slot.length > 1 ? 'aria-haspopup="menu" aria-expanded="false"' : `title="${choice.name}"`}>`
+        ${slot.length > 1 ? 'aria-haspopup="menu" aria-expanded="false"' : `title="${tipOf(choice)}"`}>`
     + `<svg viewBox="0 0 20 20" aria-hidden="true">${choice.art}</svg>`
     + (slot.length > 1 ? '<span class="tool-more" aria-hidden="true"></span>' : '')
     + `<span class="sr">${choice.name}</span></button>`;
@@ -215,6 +231,20 @@ app.innerHTML = `
     <div class="swatches" role="radiogroup" aria-label="Color">
       ${COLORS.map(color => `<button class="swatch" type="button" role="radio" aria-checked="false"
         data-color="${color.value}" style="--swatch:${color.value}" title="${color.name}"><span class="sr">${color.name}</span></button>`).join('')}
+      <div class="custom-colour">
+        <button class="swatch custom" type="button" role="radio" aria-checked="false" aria-haspopup="dialog"
+          aria-expanded="false" title="Any colour"><span class="sr">Any colour</span></button>
+        <div class="colour-menu" role="dialog" aria-label="Any colour" hidden>
+          <div class="colour-row">
+            <input class="hex" type="text" maxlength="7" spellcheck="false" autocomplete="off"
+              aria-label="Hex colour" placeholder="#FF3B30" />
+            <button class="pick" type="button" aria-label="Take a colour from the image" title="Take a colour from the image">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.9 3.8a2 2 0 0 1 2.8 2.8l-1.5 1.5.9.9-1.3 1.3-4.1-4.1 1.3-1.3.9.9zM10.4 7.6l-5.8 5.8v2.4H7l5.8-5.8" ${STROKE}/></svg>
+            </button>
+          </div>
+          <div class="recent-colours" role="group" aria-label="Recent colours"></div>
+        </div>
+      </div>
     </div>
     <div class="styles" role="radiogroup" aria-label="Arrow style" hidden>
       ${ARROW_STYLES.map(style => `<button class="style" type="button" role="radio" data-style="${style}"
@@ -310,6 +340,10 @@ app.innerHTML = `
     </div>
   </aside>
   <aside class="crop-bar" hidden>
+    <div class="segments crop-shapes" role="radiogroup" aria-label="Crop shape">
+      ${CROP_SHAPES.map((shape, index) => `<button class="segment" type="button" role="radio"
+        aria-checked="${index === 0}" data-shape="${shape.id}">${shape.name}</button>`).join('')}
+    </div>
     <span class="crop-size"></span>
     <button class="crop-cancel subtle" type="button">Cancel</button>
     <button class="crop-apply primary" type="button">Crop <kbd>⏎</kbd></button>
@@ -367,6 +401,12 @@ const styles = app.querySelector<HTMLElement>('.styles')!;
 const looks = app.querySelector<HTMLElement>('.looks')!;
 const looksButton = app.querySelector<HTMLButtonElement>('.looks-button')!;
 const looksMenu = app.querySelector<HTMLElement>('.looks-menu')!;
+const customSwatch = app.querySelector<HTMLButtonElement>('.swatch.custom')!;
+const colourMenu = app.querySelector<HTMLElement>('.colour-menu')!;
+const hexField = colourMenu.querySelector<HTMLInputElement>('.hex')!;
+const recentColours = colourMenu.querySelector<HTMLElement>('.recent-colours')!;
+/** This session's own colours, newest first: the eight are always there. */
+const customColours: string[] = [];
 const noteModes = app.querySelector<HTMLElement>('.steps-show .segments')!;
 const fills = app.querySelector<HTMLElement>('.fills')!;
 const removeButton = app.querySelector<HTMLButtonElement>('.remove')!;
@@ -390,6 +430,8 @@ const cropBar = app.querySelector<HTMLElement>('.crop-bar')!;
 const recents = app.querySelector<HTMLElement>('.recents')!;
 const recentList = app.querySelector<HTMLElement>('.recent-list')!;
 const cropSize = app.querySelector<HTMLElement>('.crop-size')!;
+const cropShapes = app.querySelector<HTMLElement>('.crop-shapes')!;
+const cropApply = app.querySelector<HTMLButtonElement>('.crop-apply')!;
 const abort = new AbortController();
 const cleanups: (() => void)[] = [];
 let capture: CapturePreview | null = null;
@@ -894,6 +936,12 @@ function syncTools() {
     swatch.setAttribute('aria-checked', String(active));
     swatch.classList.toggle('active', active);
   }
+  // A colour that is none of the eight shows on the ninth, which is then the
+  // one checked: there is always a swatch saying what the next mark will be.
+  const offPalette = !COLORS.some(color => color.value === layer.style.color);
+  customSwatch.setAttribute('aria-checked', String(offPalette));
+  customSwatch.classList.toggle('active', offPalette);
+  customSwatch.style.setProperty('--swatch', offPalette ? layer.style.color : '');
   for (const button of app.querySelectorAll<HTMLButtonElement>('.tool')) {
     const slot = Number(button.dataset.slot);
     const choice = SLOTS[slot][worn[slot]];
@@ -916,8 +964,12 @@ function syncTools() {
   overlay.classList.toggle('pen-tool', layer.tool === 'pen');
   overlay.classList.toggle('crop-tool', layer.tool === 'crop');
   const crop = layer.pendingCrop;
-  cropBar.hidden = !crop;
-  if (crop) cropSize.textContent = `Crop to ${Math.round(crop.width)} × ${Math.round(crop.height)} px`;
+  // With the crop tool in hand the bar is there before anything is dragged,
+  // so the shape can be chosen first.
+  cropBar.hidden = !crop && layer.tool !== 'crop';
+  cropSize.textContent = crop ? `Crop to ${Math.round(crop.width)} × ${Math.round(crop.height)} px` : 'Drag to crop';
+  cropApply.disabled = !crop;
+  if (!cropBar.hidden) placeLens(cropShapes);
   undoButton.disabled = !layer.canUndo && !crops.length;
   removeButton.disabled = picked.length === 0 || layer.isEditing;
   backButton.disabled = frontButton.disabled = picked.length === 0 || layer.isEditing;
@@ -937,6 +989,7 @@ function render() {
       if (shown) remember(shown);
       image.src = capture.dataUrl;
       stage.style.setProperty('--ratio', `${capture.width} / ${capture.height}`);
+      layer.density = capture.scale ?? 1;
       layer.setImage(capture.width, capture.height);
       shown = capture; mustFlatten = false; crops.length = 0; zoom = startingZoom(capture);
       // A different capture is a differently sized window, so a position chosen
@@ -997,7 +1050,7 @@ async function flatten(): Promise<HTMLCanvasElement> {
   canvas.width = capture!.width; canvas.height = capture!.height;
   const context = canvas.getContext('2d')!;
   context.drawImage(source, 0, 0, canvas.width, canvas.height);
-  drawAnnotations(context, layer.annotations, { source, notes: layer.notes });
+  drawAnnotations(context, layer.annotations, { source, notes: layer.notes, density: layer.density });
   return canvas;
 }
 
@@ -1092,7 +1145,7 @@ function wear(slot: number, variant: number) {
   const button = rail.querySelector<HTMLButtonElement>(`.tool[data-slot="${slot}"]`)!;
   button.querySelector('svg')!.innerHTML = choice.art;
   button.querySelector('.sr')!.textContent = choice.name;
-  if (button.dataset.tip !== undefined) button.dataset.tip = choice.name;
+  if (button.dataset.tip !== undefined) button.dataset.tip = tipOf(choice);
   layer.tool = choice.id;
   layer.style.numbered = !!choice.numbered;
   syncTools();
@@ -1122,7 +1175,8 @@ function openToolMenu(button: HTMLButtonElement) {
     item.type = 'button';
     item.setAttribute('role', 'menuitemradio');
     item.setAttribute('aria-checked', String(variant === worn[slot]));
-    item.innerHTML = `<svg viewBox="0 0 20 20" aria-hidden="true">${choice.art}</svg><span>${choice.name}</span>`;
+    item.innerHTML = `<svg viewBox="0 0 20 20" aria-hidden="true">${choice.art}</svg><span>${choice.name}</span>`
+      + `<kbd aria-hidden="true">${choice.key.toUpperCase()}</kbd>`;
     item.addEventListener('click', () => {
       wear(slot, variant);
       // Choosing a way of drawing with something selected draws that the new
@@ -1180,6 +1234,25 @@ document.addEventListener('pointerdown', event => {
   if (menuFor && !(event.target as Element).closest('.tool-menu, .tool')) closeToolMenu();
 }, true);
 
+/** A tool's key picks its slot as a click on the rail does. Pressed with that
+ *  slot already in hand, it goes on to the slot's next way of drawing that
+ *  answers to the same key; a key for one particular way, M for Measure, goes
+ *  straight to it. */
+function pickByKey(key: string): boolean {
+  for (const [slot, choices] of SLOTS.entries()) {
+    const answering = choices.map((choice, variant) => ({ choice, variant })).filter(({ choice }) => choice.key === key);
+    if (!answering.length) continue;
+    const current = choices[worn[slot]];
+    const inHand = current.id === layer.tool && !!current.numbered === layer.style.numbered;
+    const at = answering.findIndex(({ variant }) => variant === worn[slot]);
+    const next = at < 0 ? answering[0] : inHand ? answering[(at + 1) % answering.length] : answering[at];
+    wear(slot, next.variant);
+    layer.deselect();
+    return true;
+  }
+  return false;
+}
+
 on(rail, 'click', event => {
   const button = (event.target as Element).closest<HTMLButtonElement>('.tool');
   if (!button) return;
@@ -1235,8 +1308,131 @@ on(looksMenu, 'keydown', event => {
 document.addEventListener('pointerdown', event => {
   if (!looksMenu.hidden && !looks.contains(event.target as Node)) closeLooksMenu();
 }, { signal: abort.signal });
+// ---- any colour -------------------------------------------------------------------
+/** A colour that is none of the eight, used like a swatch and kept for the session. */
+function useColour(color: string) {
+  layer.restyle({ color });
+  const known = customColours.indexOf(color);
+  if (known >= 0) customColours.splice(known, 1);
+  if (!COLORS.some(swatch => swatch.value === color)) customColours.unshift(color);
+  customColours.length = Math.min(customColours.length, 5);
+  recentColours.replaceChildren(...customColours.map(value => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'swatch';
+    button.dataset.recent = value;
+    button.style.setProperty('--swatch', value);
+    button.setAttribute('aria-label', value.toUpperCase());
+    return button;
+  }));
+}
+function openColourMenu() {
+  colourMenu.hidden = false;
+  customSwatch.setAttribute('aria-expanded', 'true');
+  hideTip();
+  hexField.value = layer.style.color.toUpperCase();
+  hexField.removeAttribute('aria-invalid');
+  hexField.focus();
+  hexField.select();
+}
+function closeColourMenu(refocus = false) {
+  if (colourMenu.hidden) return;
+  colourMenu.hidden = true;
+  customSwatch.setAttribute('aria-expanded', 'false');
+  if (refocus) customSwatch.focus();
+}
+on(customSwatch, 'click', () => { if (colourMenu.hidden) openColourMenu(); else closeColourMenu(); });
+on(hexField, 'keydown', event => {
+  if ((event as KeyboardEvent).key !== 'Enter') return;
+  event.preventDefault();
+  const color = hexColour(hexField.value);
+  if (!color) { hexField.setAttribute('aria-invalid', 'true'); return; }
+  useColour(color);
+  closeColourMenu(true);
+});
+on(hexField, 'input', () => hexField.removeAttribute('aria-invalid'));
+on(colourMenu, 'keydown', event => {
+  // Its own Escape: the field would otherwise hand it on to the editor, and
+  // the editor's Escape backs out of the capture.
+  if ((event as KeyboardEvent).key !== 'Escape' || colourMenu.hidden) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeColourMenu(true);
+});
+on(recentColours, 'click', event => {
+  const color = (event.target as Element).closest<HTMLButtonElement>('[data-recent]')?.dataset.recent;
+  if (color) { useColour(color); closeColourMenu(true); }
+});
+document.addEventListener('pointerdown', event => {
+  if (!colourMenu.hidden && !colourMenu.parentElement!.contains(event.target as Node)) closeColourMenu();
+}, { signal: abort.signal });
+
+/** The eyedropper: the next press on the image takes the colour of the pixel
+ *  under it -- the screenshot's own, not a mark's -- and never draws. */
+let picking = false;
+let sampler: { src: string; context: CanvasRenderingContext2D } | null = null;
+const loupe = document.createElement('div');
+loupe.className = 'loupe';
+loupe.hidden = true;
+app.append(loupe);
+function sampleAt(event: MouseEvent): string | null {
+  if (!image.complete || !image.naturalWidth) return null;
+  if (sampler?.src !== image.src) {
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true })!;
+    context.drawImage(image, 0, 0);
+    sampler = { src: image.src, context };
+  }
+  const box = overlay.getBoundingClientRect();
+  const x = Math.floor(((event.clientX - box.left) / box.width) * image.naturalWidth);
+  const y = Math.floor(((event.clientY - box.top) / box.height) * image.naturalHeight);
+  if (x < 0 || y < 0 || x >= image.naturalWidth || y >= image.naturalHeight) return null;
+  const [r, g, b] = sampler.context.getImageData(x, y, 1, 1).data;
+  return `#${[r, g, b].map(value => value.toString(16).padStart(2, '0')).join('')}`;
+}
+function stopPicking() {
+  picking = false;
+  overlay.classList.remove('picking');
+  loupe.hidden = true;
+}
+on(colourMenu.querySelector<HTMLButtonElement>('.pick')!, 'click', () => {
+  closeColourMenu();
+  // The button it was opened from is hidden now; keys go to the editor, which
+  // is what Escape has to reach to put the eyedropper down.
+  (document.activeElement as HTMLElement | null)?.blur();
+  picking = true;
+  overlay.classList.add('picking');
+  flash('Click the image to take its colour. Escape cancels.');
+});
+// Ahead of the drawing, so a press meant for the eyedropper never becomes a mark.
+stage.addEventListener('pointerdown', event => {
+  if (!picking) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const color = sampleAt(event);
+  stopPicking();
+  if (color) useColour(color);
+}, { capture: true, signal: abort.signal });
+stage.addEventListener('pointermove', event => {
+  if (!picking) return;
+  const color = sampleAt(event);
+  loupe.hidden = !color;
+  if (!color) return;
+  const frame = app.getBoundingClientRect();
+  loupe.style.setProperty('--swatch', color);
+  loupe.style.transform = `translate(${event.clientX - frame.left + 14}px, ${event.clientY - frame.top + 14}px)`;
+}, { signal: abort.signal });
+
 on(undoButton, 'click', () => { stepBack(); });
-on(app.querySelector<HTMLButtonElement>('.crop-apply')!, 'click', () => { void applyCrop().catch(report); });
+on(cropApply, 'click', () => { void applyCrop().catch(report); });
+on(cropShapes, 'click', event => {
+  const chosen = (event.target as Element).closest<HTMLButtonElement>('[data-shape]');
+  const shape = CROP_SHAPES.find(item => item.id === chosen?.dataset.shape);
+  if (!chosen || !shape || !capture) return;
+  for (const button of cropShapes.querySelectorAll('[data-shape]')) button.setAttribute('aria-checked', String(button === chosen));
+  layer.setCropRatio(shape.id === 'original' ? capture.width / capture.height : shape.ratio);
+});
 on(app.querySelector<HTMLButtonElement>('.crop-cancel')!, 'click', () => layer.clearCrop());
 on(removeButton, 'click', () => { layer.deleteSelected(); });
 on(backButton, 'click', () => { layer.reorder('backward'); });
@@ -1317,7 +1513,7 @@ function thumbnail(width = 168): string {
   context.scale(scale, scale);
   // The image's own size, which badges are kept inside: the canvas is smaller.
   drawAnnotations(context, layer.annotations,
-                  { source: image, width: image.naturalWidth, height: image.naturalHeight });
+                  { source: image, width: image.naturalWidth, height: image.naturalHeight, density: layer.density });
   return canvas.toDataURL('image/png');
 }
 
@@ -1341,6 +1537,7 @@ function restore(entry: Past) {
   crops.length = 0;
   image.src = entry.capture.dataUrl;
   stage.style.setProperty('--ratio', `${entry.capture.width} / ${entry.capture.height}`);
+  layer.density = entry.capture.scale ?? 1;
   layer.setImage(entry.capture.width, entry.capture.height);
   layer.load(entry.annotations);
   shown = entry.capture;
@@ -1376,11 +1573,12 @@ async function applyCrop() {
   await source.decode();
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(crop.width); canvas.height = Math.round(crop.height);
-  canvas.getContext('2d')!.drawImage(source, Math.round(crop.x), Math.round(crop.y), canvas.width, canvas.height,
-                                     0, 0, canvas.width, canvas.height);
-  crops.push({ capture, dx: crop.x, dy: crop.y, depth: layer.undoDepth });
-  layer.shiftBy(-crop.x, -crop.y);
-  capture = { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
+  const dx = Math.round(crop.x), dy = Math.round(crop.y);
+  canvas.getContext('2d')!.drawImage(source, dx, dy, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+  crops.push({ capture, dx, dy, depth: layer.undoDepth });
+  layer.shiftBy(-dx, -dy);
+  // A crop keeps the capture's density, so 100% is still its true size after.
+  capture = { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height, scale: capture.scale };
   mustFlatten = true;
   swapImage(capture);
 }
@@ -1388,6 +1586,7 @@ async function applyCrop() {
 function swapImage(next: CapturePreview) {
   image.src = next.dataUrl;
   stage.style.setProperty('--ratio', `${next.width} / ${next.height}`);
+  layer.density = next.scale ?? 1;
   layer.resize(next.width, next.height);
   shown = next;
   render();
@@ -1431,6 +1630,7 @@ document.addEventListener('keydown', event => {
   const typing = target instanceof HTMLTextAreaElement || target?.isContentEditable === true ||
     (target instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'file', 'button'].includes(target.type));
   if (layer.isEditing) return;
+  if (key === 'escape' && picking) { event.preventDefault(); stopPicking(); return; }
   // An open slot menu owns Escape entirely: it is a popover, and the editor's
   // own Escape would back out of the capture behind it.
   if (key === 'escape' && menuFor) {
@@ -1496,6 +1696,11 @@ document.addEventListener('keydown', event => {
     event.preventDefault(); setZoom(1);
   } else if (capture && (event.metaKey || event.ctrlKey) && key === 'z') {
     event.preventDefault(); stepBack();
+  } else if (capture && !typing && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+             && SLOTS.some(choices => choices.some(choice => choice.key === key))) {
+    // One key a tool. Held down, it picks once rather than spinning through a slot.
+    event.preventDefault();
+    if (!event.repeat) pickByKey(key);
   } else if (capture && !typing && (key === 'backspace' || key === 'delete')) {
     event.preventDefault(); layer.deleteSelected();
   } else if (capture && key === 'l' && event.shiftKey && (event.metaKey || event.ctrlKey)) {

@@ -80,6 +80,35 @@ test('dismissing and quitting go through Rust', async ({ page }) => {
   await waitFor(page, 'quit_app');
 });
 
+// A Retina capture has two image pixels to a point; a measure says points, as
+// a design does -- and a crop keeps the capture's density, so it still does,
+// and 100% is still the size it was on screen.
+test('a measure on a Retina capture reads in points, and a crop keeps it so', async ({ page }) => {
+  await installBridge(page, { capture: { ...CAPTURE, scale: 2 } });
+  await page.goto('/');
+  await page.locator('.capture').waitFor();
+  const box = async () => (await page.locator('.overlay').boundingBox())!;
+  const at = async (x: number, y: number) => {
+    const b = await box();
+    return { x: b.x + (x / CAPTURE.width) * b.width, y: b.y + (y / CAPTURE.height) * b.height };
+  };
+  const drag = async (from: [number, number], to: [number, number]) => {
+    const a = await at(...from), b = await at(...to);
+    await page.mouse.move(a.x, a.y); await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 8 }); await page.mouse.up();
+  };
+  await expect.poll(async () => Math.round((await box()).width)).toBe(CAPTURE.width / 2);   // 100%: its size in points
+  await page.keyboard.press('m');
+  await drag([20, 80], [220, 80]);
+  await expect(page.locator('.measure text')).toHaveText('100 px');
+
+  await page.keyboard.press('c');
+  await drag([10, 10], [230, 150]);
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => Math.round((await box()).width)).toBe(110);                // 220 pixels, 110 points
+  await expect(page.locator('.measure text')).toHaveText('100 px');
+});
+
 test('the footer\'s Close dismisses through Rust and copies nothing', async ({ page }) => {
   await installBridge(page);
   await page.goto('/');

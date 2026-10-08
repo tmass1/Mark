@@ -141,6 +141,14 @@ notarization; an Apple Development certificate is only good for this Mac.
      a pointer. A slot with a menu has no tooltip: the menu names every way it
      has, including the one it is wearing.
 
+     Every tool also answers to a key, as tools do in every drawing app:
+     **A** arrow, **L** line, **M** measure, **P** pen, **T** text, **B** box,
+     **O** ellipse, **H** highlighter, **X** redact, **C** crop. A key picks its
+     slot as a click does; pressed again, it steps through the slot's ways that
+     share it, so **A** then **A** is a numbered arrow. Tooltips and slot menus
+     show each key. In a note, or writing on the image, a letter is only ever a
+     letter.
+
      The arrow's other way is **Numbered arrow**: it carries a numbered badge at
      its tail, and a click drops the number on its own — so a screenshot can be
      talked about rather than described: "1. do this, 2. do that" instead of
@@ -200,6 +208,11 @@ notarization; an Apple Development certificate is only good for this Mac.
      translucent, so what it covers still shows through.
    - **Line**: drag. The same two ends as an arrow, without the head, so it
      moves and reshapes the same way.
+   - **Measure**, the line's other way (**M**): drag across something and it
+     says how long it is, with a tick at each end and its length in a pill on
+     its middle. The length is in points, shown as px — the sizes CSS and
+     Figma use — so a Retina capture's 1440 pixels read as the 720 px they were
+     designed at. Its ends pull out like a line's, and it re-measures.
 
      Hold **shift** while drawing or reshaping either, or a step's arrow, and
      the end snaps to the nearest eighth of a turn — exactly horizontal,
@@ -227,6 +240,14 @@ notarization; an Apple Development certificate is only good for this Mac.
      region, and Enter or the Crop button trims to it. The drawing comes along,
      shifted to match, so cropping never quietly discards work; ⌘Z puts the
      capture back.
+
+     The crop bar, there as soon as the tool is in hand, holds a crop to a
+     shape: **Free**, **Original** (the image's own), **1:1**, **4:3**,
+     **16:9** or **9:16** for a phone. Chosen with a crop drawn, a shape becomes
+     the largest of it inside that crop; chosen first, the largest over the
+     whole image. Dragged toward an edge, a shaped crop shrinks to fit rather
+     than bending, and a crop keeps the capture's density, so 100% is still the
+     size it was on screen.
    - **Redact**: drag over anything that must not leave the machine. The region
      is replaced with coarse blocks averaged from the capture, and the size
      control sets how coarse. This is pixelation rather than blur on purpose:
@@ -260,6 +281,10 @@ notarization; an Apple Development certificate is only good for this Mac.
 
    Color and size come from the toolbar and drive every tool. Selecting an
    annotation adopts its style, so the toolbar always describes the next edit.
+   Past the eight colours, the ninth swatch is any colour: type it as hex, or
+   take it with the eyedropper from the screenshot itself — the next press on
+   the image picks the pixel under it and draws nothing. Colours used this way
+   are kept for the session, and while one is in hand the ninth swatch wears it.
    The pickers follow the selection when there is one — its last mark, which
    is where colour and size are read from — and the tool in hand when there is
    not, so one set shows at a time. A picker changes only what it picks: a

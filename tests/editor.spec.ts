@@ -240,6 +240,180 @@ async function numbering(page: import('@playwright/test').Page) {
   await variant(page, 0, 'Numbered arrow');
 }
 
+// ---- a key a tool ---------------------------------------------------------------
+
+/** The rail's slot in hand, and which of its ways it is wearing. */
+async function inHand(page: Page) {
+  return page.evaluate(() => {
+    const button = document.querySelector('.tool[aria-checked="true"]');
+    return button ? `${button.getAttribute('data-slot')}:${button.querySelector('.sr')!.textContent}` : '';
+  });
+}
+
+test('each tool answers to a key, and a slot\'s key steps through its ways', async ({ page }) => {
+  await page.goto('/');
+  for (const [key, expected] of [
+    ['b', '4:Box'], ['b', '4:Numbered box'], ['b', '4:Box'], ['o', '5:Ellipse'],
+    ['a', '0:Arrow'], ['a', '0:Numbered arrow'], ['m', '1:Measure'], ['l', '1:Line'],
+    ['p', '2:Pen'], ['t', '3:Text'], ['h', '6:Highlighter'], ['x', '7:Redact'], ['c', '8:Crop'],
+  ] as const) {
+    await page.keyboard.press(key);
+    expect(await inHand(page), `after ${key}`).toBe(expected);
+  }
+  // Held down, a key picks once rather than spinning through the slot.
+  await page.keyboard.down('b'); await page.keyboard.down('b'); await page.keyboard.down('b');
+  await page.keyboard.up('b');
+  expect(await inHand(page)).toBe('4:Box');
+});
+
+test('a tool\'s key is only a letter in a note', async ({ page }) => {
+  await page.goto('/');
+  await numbering(page);
+  const at = await stage(page);
+  const spot = at(300, 300);
+  await page.mouse.click(spot.x, spot.y);
+  await page.keyboard.type('a box to check');
+  await expect(page.locator('.step-note').first()).toHaveValue('a box to check');
+  expect(await inHand(page)).toBe('0:Numbered arrow');
+});
+
+test('a tool\'s key is only a letter while writing on the image', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('t');
+  const at = await stage(page);
+  const spot = at(700, 500);
+  await page.mouse.click(spot.x, spot.y);
+  await page.keyboard.type('bob ate');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.note text')).toHaveText('bob ate');
+  expect(await inHand(page)).toBe('3:Text');
+});
+
+// ---- any colour ----------------------------------------------------------------------
+
+test('any colour: typed as hex, it colours the selection and shows on the ninth swatch', async ({ page }) => {
+  await page.goto('/');
+  await drawArrow(page, [200, 200], [600, 300]);
+  const custom = page.getByRole('radio', { name: 'Any colour' });
+  await custom.click();
+  const hex = page.getByRole('textbox', { name: 'Hex colour' });
+  await expect(hex).toBeFocused();
+  await expect(hex).toHaveValue('#FF3B30');                              // what is in hand now
+  // Nonsense is refused, and nothing changes.
+  await hex.fill('#12345g');
+  await hex.press('Enter');
+  await expect(hex).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('.arrow')).toHaveAttribute('fill', '#ff3b30');
+  // Three digits are as good as six.
+  await hex.fill('0cb');
+  await hex.press('Enter');
+  await expect(page.locator('.arrow')).toHaveAttribute('fill', '#00ccbb');
+  await expect(page.getByRole('dialog', { name: 'Any colour' })).toBeHidden();
+  // No swatch of the eight is checked; the ninth is, wearing the colour.
+  await expect(custom).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('radio', { name: 'Red', exact: true })).toHaveAttribute('aria-checked', 'false');
+  expect(await custom.evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(0, 204, 187)');
+  // And it is kept to use again, newest first.
+  await page.getByRole('radio', { name: 'Blue', exact: true }).click();
+  await custom.click();
+  await page.getByRole('button', { name: '#00CCBB' }).click();
+  await expect(page.locator('.arrow')).toHaveAttribute('fill', '#00ccbb');
+});
+
+test('the eyedropper takes a colour from the screenshot, and never draws', async ({ page }) => {
+  await page.goto('/');
+  const custom = page.getByRole('radio', { name: 'Any colour' });
+  await custom.click();
+  await page.getByRole('button', { name: 'Take a colour from the image' }).click();
+  // Escape puts it down without taking anything.
+  await page.keyboard.press('Escape');
+  const at = await stage(page);
+  const margin = at(30, 30);                                             // the sample's grey margin
+  await page.mouse.click(margin.x, margin.y);
+  await expect(custom).toHaveAttribute('aria-checked', 'false');
+
+  await custom.click();
+  await page.getByRole('button', { name: 'Take a colour from the image' }).click();
+  await page.mouse.click(margin.x, margin.y);
+  await expect(custom).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('.arrow')).toHaveCount(0);                   // the press drew nothing
+  await drawArrow(page, [200, 200], [600, 300]);
+  await expect(page.locator('.arrow')).toHaveAttribute('fill', '#e9eef2');
+});
+
+// ---- crop to a shape -----------------------------------------------------------------
+
+test('a crop can be held to a shape, chosen before or after it is dragged', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('c');
+  // The bar is there before anything is dragged, so the shape can come first.
+  await expect(page.locator('.crop-bar')).toBeVisible();
+  await expect(page.locator('.crop-size')).toHaveText('Drag to crop');
+  await expect(page.locator('.crop-apply')).toBeDisabled();
+
+  // Square, chosen first: the largest square over the whole 1200 × 740 image.
+  await page.getByRole('radio', { name: '1:1' }).click();
+  await expect(page.locator('.crop-size')).toHaveText('Crop to 740 × 740 px');
+  // A shape chosen for a crop fits inside it.
+  await page.getByRole('radio', { name: '16:9' }).click();
+  await expect(page.locator('.crop-size')).toHaveText('Crop to 740 × 416 px');
+  // Dragged out past the image's right edge: 300 is all there is, so it
+  // shrinks to that at 16:9 rather than bending the shape.
+  await drawArrow(page, [900, 200], [1300, 300]);
+  await expect(page.locator('.crop-size')).toHaveText('Crop to 300 × 169 px');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.dimensions')).toHaveText('300 × 169 px');
+
+  // Original is the image's own shape: now the one just cropped.
+  await page.getByRole('radio', { name: 'Original' }).click();
+  await expect(page.locator('.crop-size')).toHaveText('Crop to 300 × 169 px');
+  // And Free lets go of the shape for the next drag -- on the image as it now
+  // is, 300 × 169.
+  await page.getByRole('radio', { name: 'Free' }).click();
+  const box = (await page.locator('.overlay').boundingBox())!;
+  const on = (x: number, y: number) => ({ x: box.x + (x / 300) * box.width, y: box.y + (y / 169) * box.height });
+  const [from, to] = [on(20, 20), on(200, 40)];
+  await page.mouse.move(from.x, from.y); await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 }); await page.mouse.up();
+  await expect(page.locator('.crop-size')).toHaveText('Crop to 180 × 20 px');
+});
+
+// ---- measure ------------------------------------------------------------------------
+
+test('a measure reads its length on screen, and is in the copy as drawn', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { write: async (items: any[]) => {
+      const bitmap = await createImageBitmap(await items[0].getType('image/png'));
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const context = canvas.getContext('2d')!;
+      context.drawImage(bitmap, 0, 0);
+      const pixel = (x: number, y: number) => [...context.getImageData(x, y, 1, 1).data.slice(0, 3)].join(',');
+      document.body.dataset.copiedLine = pixel(150, 600);
+      document.body.dataset.copiedPill = pixel(300, 585);
+    } } });
+  });
+  await page.goto('/');
+  await page.keyboard.press('m');
+  await drawArrow(page, [100, 600], [500, 600]);
+  // The sample capture has no density of its own, so a point is a pixel.
+  await expect(page.locator('.measure text')).toHaveText('400 px');
+  await expect(page.locator('.chosen')).toHaveText('Measure selected');
+  // Its ends are handles, as a line's are: pulled out, it re-measures.
+  const at = await stage(page);
+  const end = at(500, 600), further = at(600, 600);
+  await page.mouse.move(end.x, end.y);
+  await page.mouse.down();
+  await page.mouse.move(further.x, further.y, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.locator('.measure text')).toHaveText('500 px');
+  await page.keyboard.press('Meta+z');
+  await expect(page.locator('.measure text')).toHaveText('400 px');
+
+  await page.getByRole('button', { name: /Copy and Close/ }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-copied-line', '255,59,48');
+  await expect(page.locator('body')).toHaveAttribute('data-copied-pill', '255,59,48');
+});
+
 test('draws a box and an ellipse, and resizes one by its corner', async ({ page }) => {
   await page.goto('/');
   await pick(page, 'Box');
@@ -421,12 +595,12 @@ test('no tool, colour or control is ever clipped out of reach, at any width', as
         // breakpoint is fine, cut off by an edge is not.
         clippedInBar: [...bar.querySelectorAll('button, .size')].filter(el => shown(el) && !inside(el, barBox)).map(el => el.getAttribute('aria-label') || el.getAttribute('title') || el.className),
         tools: [...rail.querySelectorAll('.tool')].filter(el => inside(el, railBox)).length,
-        swatches: [...bar.querySelectorAll('.swatch')].filter(el => shown(el) && inside(el, barBox)).length,
+        swatches: [...bar.querySelectorAll('.swatches > .swatch, .swatch.custom')].filter(el => shown(el) && inside(el, barBox)).length,
         size: shown(bar.querySelector('.weight')!),
         picker: shown(bar.querySelector('.fills')!) || shown(bar.querySelector('.styles')!),
       };
     });
-    expect(report, `${width}px, ${state}`).toMatchObject({ barOverflow: 0, pageOverflow: 0, clippedInBar: [], tools: 9, swatches: 8, size: true, picker: true });
+    expect(report, `${width}px, ${state}`).toMatchObject({ barOverflow: 0, pageOverflow: 0, clippedInBar: [], tools: 9, swatches: 9, size: true, picker: true });
   }
 });
 
@@ -812,7 +986,8 @@ test('crops the capture, brings the drawing along, and can be undone', async ({ 
   await expect(page.locator('.crop-size')).toContainText('700 × 400');
 
   await page.getByRole('button', { name: /^Crop/ }).click();
-  await expect(page.locator('.crop-bar')).toBeHidden();
+  await expect(page.locator('.crop-frame')).toHaveCount(0);           // no crop pending
+  await expect(page.locator('.crop-size')).toHaveText('Drag to crop');
   await expect(page.locator('.dimensions')).toHaveText('700 × 400 px');
   // The arrow survives, moved to stay over the same part of the picture.
   await expect(page.locator('.arrow')).toHaveCount(1);
@@ -848,14 +1023,16 @@ test('a crop is abandoned by Escape without closing the editor', async ({ page }
   await drawArrow(page, [200, 200], [700, 500]);
   await expect(page.locator('.crop-bar')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('.crop-bar')).toBeHidden();
+  await expect(page.locator('.crop-frame')).toHaveCount(0);           // no crop pending
+  await expect(page.locator('.crop-size')).toHaveText('Drag to crop');
   await expect(page.locator('.dimensions')).toHaveText('1200 × 740 px');
   await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
   // A flick of the mouse is not a crop.
   const at = await stage(page);
   const spot = at(400, 300);
   await page.mouse.click(spot.x, spot.y);
-  await expect(page.locator('.crop-bar')).toBeHidden();
+  await expect(page.locator('.crop-frame')).toHaveCount(0);           // no crop pending
+  await expect(page.locator('.crop-size')).toHaveText('Drag to crop');
 });
 
 test('the copied image is the cropped one', async ({ page }) => {
@@ -1605,7 +1782,8 @@ test('Return does not close the capture, but still applies a crop that offers it
   await drawArrow(page, [200, 200], [900, 600]);
   await expect(page.locator('.crop-bar')).toBeVisible();
   await page.keyboard.press('Enter');
-  await expect(page.locator('.crop-bar')).toBeHidden();
+  await expect(page.locator('.crop-frame')).toHaveCount(0);           // no crop pending
+  await expect(page.locator('.crop-size')).toHaveText('Drag to crop');
   await expect(page.locator('.dimensions')).toHaveText('700 × 400 px');
   await expect(page.locator('.stage')).toBeVisible();
 });
@@ -1832,7 +2010,7 @@ test('Mark’s own tooltips: none of the system’s, quick once one is up, and p
   await page.getByRole('radio', { name: 'Crop', exact: true }).hover();
   await page.waitForTimeout(120);
   await expect(tip).toBeHidden();
-  await expect(tip).toHaveText('Crop');
+  await expect(tip).toHaveText('Crop (C)');                       // and its key
   await expect(tip).toHaveClass(/\bon\b/);
 
   // Beside a rail tool, where there is no room above or below.
@@ -1845,7 +2023,7 @@ test('Mark’s own tooltips: none of the system’s, quick once one is up, and p
   // makes tooltips feel slow.
   await page.getByRole('radio', { name: 'Text', exact: true }).hover();
   await page.waitForTimeout(150);
-  await expect(tip).toHaveText('Text');
+  await expect(tip).toHaveText('Text (T)');
 
   // Under a toolbar button, and flipped above one near the foot.
   await page.locator('.undo').hover();
@@ -1972,8 +2150,9 @@ test('a rail slot holds the ways of drawing one thing, and wears the one chosen'
   // No switch in the toolbar and no Step tool: the slot carries both.
   await expect(page.getByRole('switch', { name: 'Number them' })).toHaveCount(0);
   await expect(page.getByRole('radio', { name: 'Step', exact: true })).toHaveCount(0);
-  // Three slots draw something that can be numbered, and say so in the corner.
-  await expect(page.locator('.tool-more')).toHaveCount(3);
+  // Four slots hold more than one way of drawing -- the three that can be
+  // numbered, and Line with Measure -- and say so in the corner.
+  await expect(page.locator('.tool-more')).toHaveCount(4);
 
   const arrow = page.locator('.tool[data-slot="0"]');
   await expect(arrow).toHaveAccessibleName('Arrow');
@@ -2056,9 +2235,9 @@ test('a slot menu opens by resting on it, and gets out of the way again', async 
   await expect(arrow).toBeFocused();
 
   // A slot with one way has no menu, no marker, and keeps its tooltip.
-  await expect(page.locator('.tool[data-slot="1"] .tool-more')).toHaveCount(0);
-  await page.locator('.tool[data-slot="1"]').hover();
-  await expect(tip).toHaveText('Line');
+  await expect(page.locator('.tool[data-slot="2"] .tool-more')).toHaveCount(0);
+  await page.locator('.tool[data-slot="2"]').hover();
+  await expect(tip).toHaveText('Pen (P)');
   await expect(menu).toBeHidden();
 });
 
@@ -2099,7 +2278,7 @@ test('choosing a way of drawing numbers only what that slot draws', async ({ pag
   // Plain Arrow from the arrow slot's menu, with the numbered box still
   // selected: an arrow's numbering is nothing to do with the box.
   await page.locator('.tool[data-slot="0"]').click({ button: 'right' });
-  await page.locator('.tool-menu button').filter({ hasText: /^Arrow$/ }).click();
+  await page.locator('.tool-menu button').filter({ has: page.locator('span', { hasText: /^Arrow$/ }) }).click();
   await expect(page.locator('.shape .badge')).toHaveCount(1);
 });
 

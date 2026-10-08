@@ -27,7 +27,10 @@ export interface Arrow extends Ends, Looks { kind: 'arrow'; style?: ArrowStyle }
 /** Arrows drawn before styles existed, and anything restored, are tapered. */
 export function styleOf(a: Arrow | Step): ArrowStyle { return a.style ?? 'taper'; }
 export interface Line extends Ends { kind: 'line' }
-export type Segment = Arrow | Line;
+/** A line that says how long it is: a tick square across each end, and its
+ *  length in a pill on its middle -- a designer's measure. */
+export interface Measurement extends Ends { kind: 'measure' }
+export type Segment = Arrow | Line | Measurement;
 export interface Stroke { kind: 'pen'; id: number; points: Point[]; color: string; weight: number }
 export interface Note { kind: 'text'; id: number; x: number; y: number; text: string; color: string; size: number }
 /** Everything drawn as a rectangle: outlines, marker ink, and redaction. */
@@ -79,8 +82,10 @@ export function hasLook(item: Annotation, look: Look): boolean { return takesLoo
  *  capture, so every note in it is written the same way. */
 export type NoteMode = 'off' | 'beside' | 'framed';
 export const NOTE_MODES: readonly NoteMode[] = ['off', 'beside', 'framed'];
-export type Tool = 'arrow' | 'line' | 'pen' | 'text' | ShapeKind | 'crop';
-export function isSegment(item: Annotation): item is Segment { return item.kind === 'arrow' || item.kind === 'line'; }
+export type Tool = 'arrow' | 'line' | 'measure' | 'pen' | 'text' | ShapeKind | 'crop';
+export function isSegment(item: Annotation): item is Segment {
+  return item.kind === 'arrow' || item.kind === 'line' || item.kind === 'measure';
+}
 
 export const SHAPES: readonly ShapeKind[] = ['box', 'ellipse', 'highlight', 'redact'];
 export function isShape(item: Annotation): item is Shape { return (SHAPES as readonly string[]).includes(item.kind); }
@@ -139,7 +144,7 @@ export function onto(boxes: readonly Rect[], width: number, height: number): Poi
 export function blockSize(weight: number): number { return Math.max(7, weight * 1.5); }
 export type Point = [number, number];
 
-import { clampRect, type Rect } from './region';
+import { clampRect, ratioInside, ratioRect, type Rect } from './region';
 
 const SVG = 'http://www.w3.org/2000/svg';
 /** Below this a crop is a mis-drag, not an intention. */
@@ -156,6 +161,16 @@ export const COLORS = [
   { name: 'Black', value: '#1c1c1e' }, { name: 'White', value: '#ffffff' },
 ];
 
+/** Any colour typed as hex -- three digits or six, with or without the # --
+ *  as the six-digit lowercase form the palette and the rest of Mark use, or
+ *  null for anything that is not one. */
+export function hexColour(text: string): string | null {
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text.trim());
+  if (!match) return null;
+  const digits = match[1].toLowerCase();
+  return `#${digits.length === 3 ? [...digits].map(digit => digit + digit).join('') : digits}`;
+}
+
 /** A capture's own size sets the default stroke, so an arrow reads the same on a
  *  small region and a Retina full-screen grab. */
 export function baseWeight(width: number, height: number): number {
@@ -168,6 +183,36 @@ export function textSize(weight: number): number { return weight * 2; }
 export function stepRadius(weight: number): number { return weight * 1.45; }
 /** The numeral inside a badge, big enough to read at two digits. */
 export function stepTextSize(weight: number): number { return stepRadius(weight) * 1.25; }
+/** A measure is drawn finer than its weight -- a dimension line, not a stroke
+ *  of ink -- with its ticks and label scaled to the same weight. */
+export function measureWidth(weight: number): number { return Math.max(1, weight * 0.3); }
+export function measureTextSize(weight: number): number { return weight * 1.4; }
+/** A measure's length as sizes are stated: in points -- the image's pixels
+ *  over its density -- which is what CSS and Figma call px. */
+export function measureLabel(item: Ends, density = 1): string {
+  return `${Math.round(Math.hypot(item.x2 - item.x1, item.y2 - item.y1) / (density > 0 ? density : 1))} px`;
+}
+/** A measure's line and a tick square across each end, as runs. */
+export function measureRuns(item: Ends): Point[][] {
+  const dx = item.x2 - item.x1, dy = item.y2 - item.y1;
+  const length = Math.hypot(dx, dy) || 1;
+  const reach = item.weight * 0.9;
+  const nx = (-dy / length) * reach, ny = (dx / length) * reach;
+  return [
+    [[item.x1, item.y1], [item.x2, item.y2]],
+    [[item.x1 + nx, item.y1 + ny], [item.x1 - nx, item.y1 - ny]],
+    [[item.x2 + nx, item.y2 + ny], [item.x2 - nx, item.y2 - ny]],
+  ];
+}
+/** Where a measure's label goes: a pill level on the line's middle, whatever
+ *  the line's angle, so it can be read. */
+export function measurePill(item: Ends, text: string, measure: Measure) {
+  const size = measureTextSize(item.weight);
+  const font = `${WEIGHT} ${size}px ${FONT}`;
+  const height = size * 1.7;
+  const width = measure(text, font) + height;
+  return { x: (item.x1 + item.x2) / 2 - width / 2, y: (item.y1 + item.y2) / 2 - height / 2, width, height, size, font };
+}
 /** Where the baseline goes for text centred on a point: half the system font's
  *  cap height below it, which centres capitals and figures. Both renderers set
  *  text on its alphabetic baseline, the one line SVG and a canvas define alike
@@ -699,6 +744,9 @@ export interface DrawOptions {
    *  by default; a canvas drawn at another scale, as a thumbnail is, says. */
   width?: number;
   height?: number;
+  /** Image pixels per point, which a measure's label divides by: 2 for a
+   *  Retina capture. */
+  density?: number;
 }
 
 /** Paint onto a 2D context at natural size, so the copied PNG matches the screen.
@@ -707,7 +755,7 @@ export interface DrawOptions {
 export function drawAnnotations(
   ctx: CanvasRenderingContext2D, items: readonly Annotation[], options: DrawOptions = {},
 ): void {
-  const { source, notes = 'off' } = options;
+  const { source, notes = 'off', density = 1 } = options;
   const width = options.width ?? ctx.canvas?.width ?? Infinity;
   const height = options.height ?? ctx.canvas?.height ?? Infinity;
   const scale = ctx.getTransform?.().a ?? 1;
@@ -768,6 +816,23 @@ export function drawAnnotations(
       // The arrow goes down before the badge, so the badge covers its tail.
       if (arrow) lifted(ctx, own, scale, () => paintArrow(ctx, arrow));
       if (item.kind === 'step') badge(item, pill, own);
+      continue;
+    }
+    if (item.kind === 'measure') {
+      ctx.strokeStyle = item.color;
+      ctx.lineWidth = measureWidth(item.weight);
+      ctx.lineCap = 'round';
+      tracePath(ctx, runOps(measureRuns(item)));
+      ctx.stroke();
+      const text = measureLabel(item, density);
+      const pill = measurePill(item, text, measure);
+      tracePath(ctx, stadiumOps(pill.x, pill.y, pill.width, pill.height));
+      ctx.fill();
+      ctx.fillStyle = inkOn(item.color);
+      ctx.font = pill.font;
+      ctx.textAlign = 'center';
+      ctx.fillText(text, pill.x + pill.width / 2, centredBaseline(pill.y + pill.height / 2, pill.size));
+      ctx.textAlign = 'start';
       continue;
     }
     if (isShape(item)) {
@@ -971,6 +1036,9 @@ export class AnnotationLayer {
   /** Each note's outline as last drawn: text is measured as it is rendered. */
   private noteBoxes = new Map<number, Rect>();
   private measureWith: Measure | null = null;
+  /** Image pixels per point: 2 for a Retina capture. A measure's label divides
+   *  by it, so it reads in the sizes a design is made in. */
+  density = 1;
   tool: Tool = 'arrow';
   base = 12;
   style: LayerStyle = { color: COLORS[0].value, scale: 1, arrow: 'taper', fill: 'outline', numbered: false,
@@ -1042,6 +1110,19 @@ export class AnnotationLayer {
   get isEditing(): boolean { return this.editing !== null; }
   /** Never under a pixel: a half-pixel stroke renders as a faint smear, not a thin line. */
   private get weight(): number { return Math.max(1, this.base * this.style.scale); }
+
+  /** The shape a crop is held to, width over height; null leaves it free. */
+  cropRatio: number | null = null;
+
+  /** Hold the crop to a shape. The pending crop becomes the largest of that
+   *  shape inside it; with none yet, the largest over the whole image. */
+  setCropRatio(ratio: number | null): void {
+    this.cropRatio = ratio;
+    if (ratio) {
+      this.pendingCrop = ratioInside(this.pendingCrop ?? { x: 0, y: 0, width: this.width, height: this.height }, ratio);
+    }
+    this.render(); this.onChange();
+  }
 
   clearCrop(): void {
     if (!this.pendingCrop) return;
@@ -1433,13 +1514,14 @@ export class AnnotationLayer {
       this.items.push(step);
       this.chosen = new Set([step.id]);
       this.drag = { kind: 'create', id: step.id, ox: x, oy: y };
-    } else if (this.tool === 'arrow' || this.tool === 'line') {
+    } else if (this.tool === 'arrow' || this.tool === 'line' || this.tool === 'measure') {
       this.commitHistory();
-      const segment: Segment = this.tool === 'arrow'
+      const tool = this.tool;
+      const segment: Segment = tool === 'arrow'
         ? { kind: 'arrow', id: this.nextId++, x1: x, y1: y, x2: x, y2: y,
             color: this.style.color, weight: this.weight, style: this.style.arrow,
             shadow: this.style.shadow, border: this.style.border }
-        : { kind: 'line', id: this.nextId++, x1: x, y1: y, x2: x, y2: y,
+        : { kind: tool, id: this.nextId++, x1: x, y1: y, x2: x, y2: y,
             color: this.style.color, weight: this.weight };
       this.items.push(segment);
       this.chosen = new Set([segment.id]);
@@ -1469,7 +1551,9 @@ export class AnnotationLayer {
     if (!this.drag) return;
     if (this.drag.kind === 'crop') {
       const [cx, cy] = this.at(event);
-      this.pendingCrop = clampRect(span(this.drag.ox, this.drag.oy, cx, cy), this.width, this.height);
+      this.pendingCrop = this.cropRatio
+        ? ratioRect(this.drag.ox, this.drag.oy, cx, cy, this.cropRatio, this.width, this.height)
+        : clampRect(span(this.drag.ox, this.drag.oy, cx, cy), this.width, this.height);
       this.render();
       return;
     }
@@ -1597,6 +1681,8 @@ export class AnnotationLayer {
       if (item.kind === 'step') { this.svg.append(this.stepNode(item, numbers.get(item.id) ?? 1)); continue; }
       if (item.kind === 'arrow') {
         this.svg.append(this.plainArrowNode(item));
+      } else if (item.kind === 'measure') {
+        this.svg.append(this.measureNode(item));
       } else if (item.kind === 'line' || item.kind === 'pen') {
         const path = document.createElementNS(SVG, 'path');
         path.setAttribute('d', item.kind === 'line'
@@ -1920,13 +2006,50 @@ export class AnnotationLayer {
   /** A numbered mark's pill, when notes are framed and it has one to say. */
   private pillFor(item: Numbered, number: number): Pill | null {
     if (this.notes !== 'framed') return null;
+    return pillAt(item, number, this.textMeasure, this.width, this.height);
+  }
+
+  /** Text measured as the export measures it, on a canvas of its own. */
+  private get textMeasure(): Measure {
     if (!this.measureWith) {
       const context = document.createElement('canvas').getContext('2d');
       // With no canvas to ask, the text editor's own rough measure.
       this.measureWith = context ? measurer(context)
         : (text, font) => text.length * parseFloat(font.split(' ')[1]) * 0.55;
     }
-    return pillAt(item, number, this.measureWith, this.width, this.height);
+    return this.measureWith;
+  }
+
+  /** A measure: its line and ticks, and its length in a pill on its middle,
+   *  as the export draws them. */
+  private measureNode(item: Measurement): SVGElement {
+    const group = document.createElementNS(SVG, 'g');
+    group.setAttribute('data-item', String(item.id));
+    group.setAttribute('class', 'measure');
+    const path = document.createElementNS(SVG, 'path');
+    path.setAttribute('d', pathData(runOps(measureRuns(item))));
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', item.color);
+    path.setAttribute('stroke-width', String(measureWidth(item.weight)));
+    path.setAttribute('stroke-linecap', 'round');
+    const text = measureLabel(item, this.density);
+    const pill = measurePill(item, text, this.textMeasure);
+    const frame = document.createElementNS(SVG, 'rect');
+    frame.setAttribute('x', String(pill.x)); frame.setAttribute('y', String(pill.y));
+    frame.setAttribute('width', String(pill.width)); frame.setAttribute('height', String(pill.height));
+    frame.setAttribute('rx', String(pill.height / 2));
+    frame.setAttribute('fill', item.color);
+    const label = document.createElementNS(SVG, 'text');
+    label.setAttribute('x', String(pill.x + pill.width / 2));
+    label.setAttribute('y', String(centredBaseline(pill.y + pill.height / 2, pill.size)));
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('fill', inkOn(item.color));
+    label.setAttribute('font-family', FONT);
+    label.setAttribute('font-size', String(pill.size));
+    label.setAttribute('font-weight', String(WEIGHT));
+    label.textContent = text;
+    group.append(path, frame, label);
+    return group;
   }
 
   private shapeNode(item: Shape): SVGElement {

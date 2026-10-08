@@ -4,7 +4,7 @@ import {
   ARROW_STYLES, COLORS, arrowPaint, arrowStrokeWidth, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
   noteAt, offsetBy, onto, penPath, scaledNote, stretchedStroke, polygonPath, snapAngle, stepArrow, stepList, stepNumbers, stepRadius, styleOf,
   textSize, thin, borderColor, borderWidth, markShadow, outsetOps, pathData, pillAt, pillExit, restyled,
-  shadowReach, stepTextSize, underlay, withNumbering, centredBaseline,
+  shadowReach, stepTextSize, underlay, withNumbering, centredBaseline, measureLabel, measureRuns, measureWidth, hexColour,
   type Arrow, type Note, type PathOp, type Point, type Shape, type Step,
 } from './annotations';
 
@@ -745,5 +745,52 @@ describe('the looks in the export', () => {
     const box = shape({ x: 1000, y: 600, numbered: true });
     drawAnnotations(ctx, [box], { width: 1200, height: 740 });
     expect(calls).toContain(numeral(1, badgeAt(box, 1200, 740), 8));
+  });
+});
+
+describe('measuring', () => {
+  const measure = (over: Record<string, number> = {}) =>
+    ({ kind: 'measure', id: 3, x1: 100, y1: 200, x2: 500, y2: 200, color: '#ff3b30', weight: 10, ...over }) as const;
+
+  it('reads its length in points: the image pixels over the density', () => {
+    expect(measureLabel(measure())).toBe('400 px');
+    expect(measureLabel(measure(), 2)).toBe('200 px');                   // a Retina capture
+    expect(measureLabel(measure({ x2: 100, y2: 500 }), 2)).toBe('150 px'); // at any angle
+    expect(measureLabel(measure({ x2: 400.6 }))).toBe('301 px');         // to the nearest
+    expect(measureLabel(measure(), 0)).toBe('400 px');                   // never over nothing
+  });
+
+  it('ticks each end square to the line, as far as its weight reaches', () => {
+    const [line, start, end] = measureRuns(measure());
+    expect(line).toEqual([[100, 200], [500, 200]]);
+    expect(start).toEqual([[100, 209], [100, 191]]);
+    expect(end).toEqual([[500, 209], [500, 191]]);
+    // Square to it whatever the angle: each tick's direction is at right angles to the line's.
+    const slanted = measureRuns(measure({ x2: 400, y2: 600 }));
+    const [[ax, ay], [bx, by]] = slanted[1];
+    expect((bx - ax) * (400 - 100) + (by - ay) * (600 - 200)).toBeCloseTo(0, 6);
+  });
+
+  it('exports its line and ticks as one stroke, then its pill, then its length on the pill', () => {
+    const { ctx, calls } = recorder();
+    drawAnnotations(ctx, [measure() as never], { density: 2 });
+    expect(calls).toContain(`width:${measureWidth(10)}`);
+    expect(calls.filter(call => call === 'stroke!')).toHaveLength(1);
+    const pill = calls.indexOf('fill!');
+    expect(pill).toBeGreaterThan(calls.indexOf('stroke!'));
+    const label = calls.find(call => call.startsWith('text!:'))!;
+    expect(calls.indexOf(label)).toBeGreaterThan(pill);
+    const [text, at] = label.slice('text!:'.length).split('@');
+    expect(text).toBe('200 px');
+    expect(Number(at.split(',')[0])).toBeCloseTo(300, 6);                 // centred on the line's middle
+  });
+});
+
+describe('any colour', () => {
+  it('reads hex as people type it, and nothing else', () => {
+    expect(hexColour('#00CCBB')).toBe('#00ccbb');
+    expect(hexColour('0cb')).toBe('#00ccbb');
+    expect(hexColour('  #FFF ')).toBe('#ffffff');
+    for (const nonsense of ['', '#', '#12345g', '#1234', 'red', '#0011223']) expect(hexColour(nonsense), nonsense).toBeNull();
   });
 });
