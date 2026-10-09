@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Mark — screenshots for the Mac, marked up in a moment</title>
-    <meta name="description" content="Mark is a fast, small screenshot tool for the Mac. Press ⌘4, drag across a region, point at what matters, and it is on your clipboard." />
+    <title>Mark — screenshots that show Claude what you mean</title>
+    <meta name="description" content="Mark is a fast, small screenshot tool for the Mac. Capture part of your screen, point at what matters, and Claude — or any AI — sees exactly what you mean." />
         <link rel="canonical" href="https://mark.tommymassaro.com/" />
     <meta property="og:title" content="Mark for Mac" />
-    <meta property="og:description" content="Press ⌘4, drag across a region, point at what matters, and it is on your clipboard." />
+    <meta property="og:description" content="Capture part of your screen, point at what matters, and Claude — or any AI — sees exactly what you mean." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://mark.tommymassaro.com/" />
-    <meta property="og:image" content="https://mark.tommymassaro.com/site/hero.png" />
+    <meta property="og:image" content="https://mark.tommymassaro.com/site/ask.png" />
     <meta property="og:image:width" content="1876" />
     <meta property="og:image:height" content="1128" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -21,8 +21,9 @@
 
     <header class="top">
       <nav class="bar" aria-label="Site">
-        <a class="brand" href="#top"><img class="mark" data-mark alt="" width="26" height="26" />Mark</a>
+        <a class="brand" href="#top"><img class="mark" data-mark alt="" width="36" height="36" />Mark</a>
         <div class="links">
+          <a href="#claude">With Claude</a>
           <a href="#how">How it works</a>
           <a href="#features">Features</a>
           <a href="#try">Try it</a>
@@ -33,21 +34,85 @@
 
     <main id="top">
       <section class="hero">
-        <h1>Say it with an arrow.</h1>
-        <p class="lede">Mark is a fast, small screenshot tool for the Mac. Press <kbd data-shortcut>⌘4</kbd>, drag across a region
-          or click a window, point at what matters, and it’s on your clipboard.</p>
+        <h1>Show Claude what you mean.</h1>
+        <p class="lede">Mark is a fast, small screenshot tool for the Mac. Press <kbd data-shortcut>⌘4</kbd>, point at what
+          matters with arrows and numbered steps, and Claude — or any AI — sees exactly what you mean.</p>
         <div class="actions">
           <a class="primary big" href="#download" data-download>
             <svg class="apple" viewBox="0 0 17 20" aria-hidden="true"><path d="M14.2 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.8-3.1-.8C3.9 5.4 1.6 7.5 1.6 11c0 1.4.3 2.8.9 4.2.7 1.7 2.3 4.4 4 4.4.9 0 1.6-.6 2.9-.6 1.2 0 1.8.6 3 .6 1.8 0 3.2-2.4 3.9-4.1.5-1.1.7-1.6.7-1.7-.1 0-2.8-1-2.8-3.2zM11.9 3.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>
             Download for Mac
           </a>
-          <a class="glassy big" href="#try">Try it in your browser</a>
         </div>
         <p class="fine"><span class="only-mac">Version <span data-version>0.3.0</span> · macOS 13 or later · Apple silicon and Intel · Notarized by Apple</span>
           <span class="not-mac">Mark is a Mac app. The download runs on macOS 13 or later, Apple silicon or Intel.</span></p>
+        <!-- Mark itself rather than a picture of it: the real editor, overlay and
+             settings, running in the page against a picture of a desktop. A phone
+             can't drive it, so a phone gets the picture instead and never loads
+             the demo: page.ts gives the frame its source only in a window wide
+             enough to show it. -->
+        <div class="demo-frame" id="try">
+          <!-- A picture of an app looks just like the app, so the frame says
+               which this is -- until the demo has been used. -->
+          <p class="try-me"><span class="live" aria-hidden="true"></span><strong>Try me</strong> — it’s the real app, live</p>
+          <iframe class="demo" data-src="./demo.html?embed" title="Mark, running in your browser"></iframe>
+        </div>
+        <p class="demo-note">This is Mark itself — its real editor, selection overlay and settings — running in your browser
+          against a picture of a desktop.</p>
         <figure class="shot hero-shot">
-          <img src="./site/hero.png" width="938" height="564" alt="Mark’s editor over a captured dashboard: a red box around the repeat-rate card, an arrow at the chart’s peak with the note “Launch day”, and the revenue figure redacted into coarse blocks." fetchpriority="high" />
+          <img src="./site/hero.png" width="938" height="564" loading="lazy" alt="Mark’s editor over a captured dashboard: a red box around the repeat-rate card, an arrow at the chart’s peak with the note “Launch day”, and the revenue figure redacted into coarse blocks." />
         </figure>
+        <p class="no-demo">The demo wants a pointer and a keyboard. Open this page on a Mac to try it.</p>
+      </section>
+
+      <section class="claude" id="claude" aria-labelledby="claude-title">
+        <div class="claude-text">
+          <p class="eyebrow">Made for working with AI</p>
+          <h2 id="claude-title">Claude asks. You show it.</h2>
+          <p class="claude-lede">When seeing your screen would help, Claude Code or Claude Desktop asks Mark for a screenshot,
+            and you decide what it sees.</p>
+          <ol class="beats">
+            <li><span class="beat" aria-hidden="true">1</span><div><h3>Claude asks</h3>
+              <p>Mark comes forward with what Claude wants to see. Bring it on screen, and capture it the usual way.</p></div></li>
+            <li><span class="beat" aria-hidden="true">2</span><div><h3>You point</h3>
+              <p>Arrows, boxes and numbered steps, with a note beside each number — the way you’d point if you were sitting
+                together.</p></div></li>
+            <li><span class="beat" aria-hidden="true">3</span><div><h3>Claude sees what you mean</h3>
+              <p>Send gives Claude the picture, every mark and where it is, your notes, and the words in it, read on your Mac.
+                Nothing goes without that Send.</p></div></li>
+          </ol>
+          <div class="claude-actions">
+            <button class="primary big" type="button" data-ask>Let Claude ask</button>
+            <span class="claude-try">in the demo above</span>
+          </div>
+        </div>
+        <div class="claude-side">
+          <figure class="shot ask-shot">
+            <img src="./site/ask.png" width="938" height="564" loading="lazy" alt="Mark’s editor with Claude’s ask across the top — Claude asks to see “the chart’s peak” — over a captured revenue chart with two numbered arrows, and Send to Claude in the corner." />
+          </figure>
+          <figure class="received">
+            <figcaption>What Claude receives with the picture</figcaption>
+            <pre>The user's screenshot, captured with Mark at 1720 × 780 pixels (860 × 390 points on a 2× display).
+
+What they marked on it, in this image's pixels from its top left — numbered marks are steps they mean in order:
+1. a badge at (840, 596) with an arrow pointing at (1068, 424): “Launch day: why the spike?”
+2. a badge at (1192, 580) with an arrow pointing at (1232, 384): “And why it held”</pre>
+            <p class="received-note">On your Mac, the words in the screenshot go too, read by macOS — exact text, not a guess at
+              pixels. Anything you redact stays out.</p>
+          </figure>
+        </div>
+        <div class="claude-setup">
+          <div>
+            <h3>Set it up once</h3>
+            <p>For Claude Code, in Terminal. Mark’s Settings has this ready to copy, and the line for Claude Desktop.</p>
+            <div class="command"><code>claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp</code>
+              <button class="copy-command" type="button">Copy</button></div>
+          </div>
+          <div>
+            <h3>Any other AI</h3>
+            <p>Every capture lands on your clipboard as a PNG, and <kbd>⇧⌘L</kbd> copies its numbered steps as text. Paste
+              both into any chat.</p>
+          </div>
+        </div>
       </section>
 
       <section class="steps" id="how" aria-labelledby="how-title">
@@ -70,9 +135,9 @@
             </li>
             <li>
               <kbd class="cap">⌥⌘C</kbd>
-              <h3>Copy and close</h3>
-              <p>A PNG lands on the clipboard and the editor gets out of the way. <kbd>⌘S</kbd> saves a file instead;
-                <kbd>⇧⌘S</kbd> hands it to Mail, Messages or AirDrop; <kbd>⇧⌘T</kbd> copies the words in it.</p>
+              <h3>Copy, or send to Claude</h3>
+              <p>A PNG lands on the clipboard and the editor gets out of the way — or, when Claude asked for it, goes straight
+                back to Claude. <kbd>⌘S</kbd> saves a file instead; <kbd>⇧⌘T</kbd> copies the words in it.</p>
             </li>
           </ol>
         </div>
@@ -87,58 +152,38 @@
           <article class="card">
             <div class="visual arrows" data-arrows></div>
             <h3>Arrows worth pointing with</h3>
-            <p>Tapered, in the spirit of Skitch’s; solid, one width throughout; or thin, a stroke that doesn’t cover what it
-              points at. The tip lands exactly where you let go.</p>
+            <p>Tapered, solid or thin, and the tip lands exactly where you let go.</p>
           </article>
           <article class="card">
             <div class="visual picture"><img src="./site/frame.png" width="300" height="168" loading="lazy" alt="A capture set on a blue-violet gradient, with room around it, rounded corners, a soft shadow and a window’s title bar with its three lights." /></div>
             <h3>Framed for showing</h3>
-            <p>Set a capture on a gradient or a solid, with padding, rounded corners, a shadow and, if you like, a title bar.
-              What the canvas shows is what’s copied, saved and shared.</p>
+            <p>A gradient or a solid behind it, with padding, rounded corners and a shadow.</p>
           </article>
           <article class="card">
             <div class="visual picture"><img src="./site/redact.png" width="216" height="106" loading="lazy" alt="A revenue card whose figure has been replaced by coarse grey blocks; the change beneath it still reads 12.4% vs last month." /></div>
             <h3>Redact, don’t blur</h3>
-            <p>A redaction replaces the region with coarse blocks averaged from the capture. A blur can be partly undone, and
-              still gives away the shape of what’s under it.</p>
-          </article>
-          <article class="card plain">
-            <span class="glyph" data-glyph="window"></span>
-            <h3>A window, whole</h3>
-            <p>Press <kbd>Space</kbd> while you select and click a window. Mark takes all of it, even where another window covers
-              it, and leaves its shadow behind.</p>
-          </article>
-          <article class="card plain">
-            <span class="glyph" data-glyph="text"></span>
-            <h3>Copy the words</h3>
-            <p><kbd>⇧⌘T</kbd> reads the capture, as Live Text does, and copies it in reading order — a table pastes as a table.
-              Box part of it first to copy just that.</p>
-          </article>
-          <article class="card plain">
-            <span class="glyph" data-glyph="hide"></span>
-            <h3>Hide what’s sensitive</h3>
-            <p><kbd>⇧⌘R</kbd> finds email addresses, phone and card numbers, API keys and faces, and pixelates every one.
-              <kbd>⌘Z</kbd> puts them all back.</p>
-          </article>
-          <article class="card plain">
-            <span class="glyph" data-glyph="crop"></span>
-            <h3>Crop keeps your work</h3>
-            <p>To any shape — free, the original’s, square, 4:3, 16:9 or a phone’s 9:16. Everything you drew comes along,
-              shifted to match, and <kbd>⌘Z</kbd> puts the whole capture back.</p>
-          </article>
-          <article class="card plain">
-            <span class="glyph" data-glyph="menu"></span>
-            <h3>Lives in the menu bar</h3>
-            <p>No Dock icon, and no window until you want one. Open at Login keeps it ready, the shortcut is yours to change, and
-              it updates itself.</p>
-          </article>
-          <article class="card plain">
-            <span class="glyph" data-glyph="private"></span>
-            <h3>Nothing leaves your Mac</h3>
-            <p>No account, no cloud, no history on disk. Copying the words and finding what’s sensitive happen on the Mac itself,
-              and Recent keeps the last six captures in memory only.</p>
+            <p>Coarse blocks averaged from the capture, where a blur could be partly undone.</p>
           </article>
         </div>
+        <!-- The rest, a line each, in one pane. -->
+        <ul class="more" aria-label="More of what Mark does">
+          <li><span class="glyph" data-glyph="window"></span><div><h3>A window, whole</h3>
+            <p>Press <kbd>Space</kbd> and click one, even where it’s covered.</p></div></li>
+          <li><span class="glyph" data-glyph="text"></span><div><h3>Copy the words</h3>
+            <p><kbd>⇧⌘T</kbd> copies its text, in reading order.</p></div></li>
+          <li><span class="glyph" data-glyph="hide"></span><div><h3>Hide what’s sensitive</h3>
+            <p><kbd>⇧⌘R</kbd> pixelates emails, numbers, keys and faces.</p></div></li>
+          <li><span class="glyph" data-glyph="crop"></span><div><h3>Crop keeps your work</h3>
+            <p>To any shape, and what you drew comes along.</p></div></li>
+          <li><span class="glyph" data-glyph="steps"></span><div><h3>Number your steps</h3>
+            <p>1, 2, 3 on the picture, each with a note that copies as text.</p></div></li>
+          <li><span class="glyph" data-glyph="thumbnail"></span><div><h3>Or a thumbnail</h3>
+            <p>Copied at once, and waiting in the corner to drag anywhere.</p></div></li>
+          <li><span class="glyph" data-glyph="menu"></span><div><h3>Lives in the menu bar</h3>
+            <p>No Dock icon, and it keeps itself up to date.</p></div></li>
+          <li><span class="glyph" data-glyph="private"></span><div><h3>Nothing leaves your Mac</h3>
+            <p>No account, no cloud, and nothing goes to an AI without Send.</p></div></li>
+        </ul>
       </section>
 
       <section class="glass" aria-labelledby="glass-title">
@@ -153,17 +198,6 @@
         <figure class="shot light-shot">
           <img src="./site/hero-light.png" width="938" height="564" loading="lazy" alt="The same annotated capture in Mark’s light appearance." />
         </figure>
-      </section>
-
-      <section class="try" id="try" aria-labelledby="try-title">
-        <h2 id="try-title">Try it here.</h2>
-        <p>This is Mark’s real editor, selection overlay and settings, running in your browser against a picture of a desktop.
-          Click the icon in its menu bar, or click into the picture and press <kbd data-shortcut>⌘4</kbd> — then
-          <kbd>Space</kbd> to take its window.</p>
-        <div class="demo-frame">
-          <iframe class="demo" src="./demo.html?embed" title="Mark, running in your browser" loading="lazy"></iframe>
-        </div>
-        <p class="no-demo">The demo wants a pointer and a keyboard. Open this page on a Mac to try it.</p>
       </section>
 
       <section class="download" id="download" aria-labelledby="download-title">

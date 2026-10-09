@@ -24,6 +24,56 @@ for (const el of all('[data-shortcut]')) el.textContent = prettyShortcut(DEFAULT
 const dmg = `Mark_${pkg.version}_universal.dmg`;
 for (const link of all<HTMLAnchorElement>('[data-download]')) { link.href = `./${dmg}`; link.setAttribute('download', dmg); }
 
+// The demo, only where it is shown: a window wider than a phone's. A frame that
+// is hidden but has a source is loaded all the same -- a lazy one too, since a
+// hidden frame is taken for a tracker and fetched at once -- so the source waits
+// for a width that shows it. A window widened later gets the demo then. The
+// width is the stylesheet's, where the picture takes the demo's place.
+const wide = matchMedia('(min-width: 641px)');
+const startDemo = () => {
+  if (!wide.matches) return;
+  for (const frame of all<HTMLIFrameElement>('iframe[data-src]')) { frame.src = frame.dataset.src!; frame.removeAttribute('data-src'); }
+  wide.removeEventListener('change', startDemo);
+};
+wide.addEventListener('change', startDemo);
+startDemo();
+
+// The callout over the demo goes once the demo has been used. A click into it
+// moves the focus into its frame, which the page hears as its own window
+// losing focus -- with the frame left holding it, unlike a switch to another app.
+const demoFrame = document.querySelector<HTMLIFrameElement>('.demo');
+const tryMe = document.querySelector<HTMLElement>('.try-me');
+const used = () => window.setTimeout(() => {
+  if (document.activeElement !== demoFrame) return;
+  tryMe?.classList.add('used');
+  window.removeEventListener('blur', used);
+});
+if (demoFrame && tryMe) window.addEventListener('blur', used);
+
+// "Let Claude ask": up to the demo, where Claude -- played by the demo -- asks
+// for a screenshot, as it asks the app through its MCP server.
+for (const button of all<HTMLButtonElement>('[data-ask]')) {
+  button.addEventListener('click', () => {
+    if (!demoFrame) return;
+    tryMe?.classList.add('used');
+    demoFrame.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+    const ask = () => demoFrame.contentWindow?.postMessage('mark-demo:ask', location.origin);
+    // A demo still loading asks once it has; the editor reads the ask when it starts.
+    if (demoFrame.contentDocument?.readyState === 'complete' && demoFrame.src) ask();
+    else demoFrame.addEventListener('load', ask, { once: true });
+  });
+}
+
+// The setup line, copied.
+for (const button of all<HTMLButtonElement>('.copy-command')) {
+  button.addEventListener('click', async () => {
+    const text = button.parentElement?.querySelector('code')?.textContent ?? '';
+    try { await navigator.clipboard.writeText(text); button.textContent = 'Copied'; }
+    catch { button.textContent = 'Select it to copy'; }
+    window.setTimeout(() => { button.textContent = 'Copy'; }, 1800);
+  });
+}
+
 // The Mac gets the download line; anyone else is told what they are looking at.
 const platform = `${(navigator as { userAgentData?: { platform: string } }).userAgentData?.platform ?? ''} ${navigator.platform}`;
 document.documentElement.classList.toggle('elsewhere', !/Mac/i.test(platform));
@@ -58,6 +108,13 @@ const GLYPHS: Record<string, string> = {
   hide: `<path d="M2.8 10s2.6-4.9 7.2-4.9 7.2 4.9 7.2 4.9-2.6 4.9-7.2 4.9S2.8 10 2.8 10z" ${STROKE}/><circle cx="10" cy="10" r="2.1" ${STROKE}/><path d="M4 16 16 4" ${STROKE}/>`,
   menu: `<rect x="2.8" y="4" width="14.4" height="12" rx="1.8" ${STROKE}/><path d="M2.8 7.4h14.4" ${STROKE}/>`
     + `<path d="M12.4 5.7h2.6" ${STROKE}/><path d="M6.2 10.6h5.2M6.2 13.2h3.4" ${STROKE}/>`,
+  // A numbered badge, as the steps tool draws one.
+  steps: `<circle cx="10" cy="10" r="7.2" ${STROKE}/><path d="M8.6 8.2 10.4 6.9v6.4M8.7 13.3h3.4" ${STROKE}/>`,
+  // The request bar's speech bubble, and a screen with a capture waiting in its corner.
+  ask: `<path d="M4.4 4.2h11.2a1.6 1.6 0 0 1 1.6 1.6v6.6a1.6 1.6 0 0 1-1.6 1.6H9.4l-3.6 2.9v-2.9H4.4a1.6 1.6 0 0 1-1.6-1.6V5.8a1.6 1.6 0 0 1 1.6-1.6z" ${STROKE}/>`
+    + `<path d="M6.8 9.1h6.4" ${STROKE}/>`,
+  thumbnail: `<rect x="2.8" y="3.6" width="14.4" height="12.4" rx="1.8" ${STROKE}/>`
+    + `<rect x="10" y="9.8" width="5" height="4" rx=".9" fill="currentColor" opacity=".3"/><rect x="10" y="9.8" width="5" height="4" rx=".9" ${STROKE}/>`,
 };
 for (const el of all<HTMLElement>('[data-glyph]')) {
   el.innerHTML = `<svg viewBox="0 0 20 20" aria-hidden="true">${GLYPHS[el.dataset.glyph!] ?? ''}</svg>`;

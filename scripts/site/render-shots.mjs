@@ -2,6 +2,7 @@
 // real editor, overlay and settings rather than a mockup, and re-rendering after
 // a design change is one command. Needs the dev server (pnpm dev), then:
 //   node scripts/site/render-shots.mjs [http://127.0.0.1:1420]
+// ONLY=ask renders just the picture of Claude asking, leaving the rest as they are.
 import { chromium } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -10,6 +11,7 @@ import fs from 'node:fs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const out = path.join(here, '../../public/site');
 const origin = process.argv[2] ?? 'http://127.0.0.1:1420';
+const only = process.env.ONLY;
 fs.mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch();
@@ -38,6 +40,7 @@ const boxOf = async locator => await locator.boundingBox();
 // The stats and the chart of the demo's desktop: wide, and full of things to point at.
 const REGION = { x: 400, y: 172, w: 860, h: 390 };
 
+if (!only) {
 // 1. Mid-selection: the veil, the clear region, the guides through the pointer and the readout.
 await page.locator('.tray').click();
 await page.locator('.tray-menu [data-act="capture"]').click();
@@ -114,5 +117,40 @@ await framing.waitFor({ state: 'hidden' });
 await page.mouse.move(stage.x + 20, stage.y + 880);
 await page.waitForTimeout(400);
 await shot('frame', await boxOf(editor.locator('.backdrop')));
+}
+
+// 5. Claude asks: the editor in request mode, over a capture of the chart with
+// two numbered steps -- and, printed, the very words Send gave Claude with it.
+if (!only || only === 'ask') {
+  await page.goto(`${origin}/demo.html`);
+  await editor.getByRole('heading', { name: 'Capture your screen' }).waitFor();
+  await page.evaluate(() => window.postMessage('mark-demo:ask', location.origin));
+  await editor.locator('.request-bar').waitFor();
+  await editor.locator('[data-start="region"]').click();
+  await page.frameLocator('.overlay').locator('.veil').waitFor();
+  await drag(at(REGION.x, REGION.y), at(REGION.x + REGION.w, REGION.y + REGION.h));
+  await page.frameLocator('.overlay').getByRole('button', { name: 'Capture', exact: true }).click();
+  await editor.locator('.capture').waitFor();
+  await page.waitForTimeout(300);
+  const image = await boxOf(editor.locator('.overlay'));
+  const k = image.width / REGION.w;
+  const on = (x, y) => ({ x: image.x + (x - REGION.x) * k, y: image.y + (y - REGION.y) * k });
+  // The arrow slot's numbered way, from its menu, as a right-click offers it.
+  await editor.locator('.tool[data-slot="0"]').click({ button: 'right' });
+  await editor.locator('.tool-menu button', { hasText: 'Numbered arrow' }).click();
+  await drag(on(820, 470), on(934, 384));
+  await page.keyboard.type('Launch day: why the spike?');
+  await page.keyboard.press('Escape');
+  await drag(on(996, 462), on(1016, 364));
+  await page.keyboard.type('And why it held');
+  await page.keyboard.press('Escape');
+  if (await editor.locator('.handle, .note-outline').count()) await page.keyboard.press('Escape');
+  await page.mouse.move(stage.x + 20, stage.y + 880);
+  await page.waitForTimeout(400);
+  await shot('ask', await boxOf(page.locator('.win.editor')));
+  await editor.getByRole('button', { name: /^Send to Claude/ }).click();
+  await page.locator('.sent').waitFor();
+  console.log('\n--- what Claude received ---\n' + await page.locator('.sent-text').textContent());
+}
 
 await browser.close();
