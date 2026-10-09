@@ -29,9 +29,13 @@ function render(next: View) {
   // own underneath, the full width of the window.
   const [body, actions = ''] = ((): [string, string?] => {
     switch (next.kind) {
+      // Cancel, as Mac apps give it, also gives checking the height of what
+      // follows it -- up to date, or an update without notes -- so the window
+      // does not change size when the answer comes.
       case 'checking': return [`
         <h1 class="update-title">Checking for updates…</h1>
-        <div class="update-bar" role="progressbar" aria-label="Checking"><span class="indeterminate"></span></div>`];
+        <div class="update-bar" role="progressbar" aria-label="Checking"><span class="indeterminate"></span></div>`, `
+        <span class="push"></span><button class="cancel glassy" type="button">Cancel</button>`];
       case 'offer': return [`
         <h1 class="update-title">A new version of Mark is available</h1>
         <p class="update-sub">Mark ${escape(next.offer.version)} is ready to install. You have ${escape(next.offer.current)}.</p>
@@ -67,7 +71,27 @@ function render(next: View) {
   root.innerHTML = `<img class="update-icon" src="${markIcon}" alt="" /><div class="update-body">${body}</div>`
     + (actions ? `<div class="update-actions">${actions}</div>` : '');
   // Return answers with the main action: install, try again, or OK.
-  (['.install', '.retry', '.done'].map(name => root.querySelector<HTMLButtonElement>(name)).find(Boolean))?.focus();
+  (['.install', '.retry', '.done', '.cancel'].map(name => root.querySelector<HTMLButtonElement>(name)).find(Boolean))?.focus();
+  void appear();
+}
+
+/** The window opens hidden, and shows itself once the first thing it says is
+ *  in and the window fits it, centred at the size it will be -- rather than
+ *  opening at one size and jumping to another in front of you. */
+let shown = false;
+async function appear() {
+  if (shown || !isTauri) return;
+  shown = true;
+  try {
+    await fit();
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    const current = getCurrentWindow();
+    await current.center();
+    await current.show();
+    await current.setFocus();
+  } catch {
+    // Mark shows the window itself a moment later.
+  }
 }
 
 /** Plainly, what a failure means; the updater's own words go underneath. */
@@ -122,7 +146,7 @@ root.addEventListener('click', event => {
   else if (button.classList.contains('skip') && view.kind === 'offer') {
     void command('skip_update', { version: view.offer.version }).finally(() => void closeWindow());
   } else if (button.classList.contains('retry') && view.kind === 'failed') view.retry();
-  else if (button.classList.contains('later') || button.classList.contains('done')) void closeWindow();
+  else if (button.classList.contains('later') || button.classList.contains('done') || button.classList.contains('cancel')) void closeWindow();
 });
 
 window.addEventListener('keydown', event => {
@@ -134,7 +158,7 @@ window.addEventListener('keydown', event => {
   }
 });
 
-fitWindowTo(root);
+const fit = fitWindowTo(root);
 
 async function init() {
   if (!isTauri) {

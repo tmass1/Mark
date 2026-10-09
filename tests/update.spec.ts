@@ -115,3 +115,55 @@ test('the window grows to fit what it shows', async ({ page }) => {
     return sizes.length ? JSON.stringify(sizes[sizes.length - 1].args) : '';
   }).toContain(`"height":${160 + needs - 128}`);
 });
+
+// Software Update opens hidden, so it is never seen at one size jumping to
+// another. It shows itself once what it says first is in and the window fits
+// it -- sized, then centred at that size, then shown and brought forward.
+test('a new window shows itself only once it fits what it shows, centred', async ({ page }) => {
+  await page.setViewportSize({ width: 520, height: 152 });           // what the page can see
+  await installBridge(page, { returns: {
+    pending_update: OFFER,
+    'plugin:window|inner_size': { width: 1040, height: 368 },      // 184 points: the strip under the title bar too
+    'plugin:window|scale_factor': 2,
+  } });
+  await page.goto('/update.html');
+  await expect(page.getByRole('heading', { name: 'A new version of Mark is available' })).toBeVisible();
+  const needs = await page.evaluate(() => Math.ceil(document.querySelector('#update')!.getBoundingClientRect().height));
+  expect(needs).toBeGreaterThan(152);                                 // the notes make it taller than it opened
+  await waitFor(page, 'plugin:window|set_focus');
+  const window = (await sent(page)).filter(call => call.cmd.startsWith('plugin:window|'));
+  const order = window.map(call => call.cmd.replace('plugin:window|', '')).filter(cmd => ['set_size', 'center', 'show', 'set_focus'].includes(cmd));
+  expect(order).toEqual(['set_size', 'center', 'show', 'set_focus']);
+  expect(JSON.stringify(window.find(call => call.cmd === 'plugin:window|set_size')!.args)).toContain(`"height":${184 + needs - 152}`);
+});
+
+// Asked to check, it shows straight away -- the check can take a while -- and
+// in the shape of the answers it will turn into, so nothing jumps when one comes.
+test('checking shows at once, the height of its answers, and Cancel puts it away', async ({ page }) => {
+  await installBridge(page, { holds: ['check_for_update'] });
+  await page.goto('/update.html?check');
+  await expect(page.getByRole('heading', { name: 'Checking for updates…' })).toBeVisible();
+  await waitFor(page, 'plugin:window|show');
+  const checking = await page.evaluate(() => document.querySelector('#update')!.getBoundingClientRect().height);
+
+  const answers = await page.context().newPage();
+  await installBridge(answers, { returns: { check_for_update: null, 'plugin:app|version': '0.5.0' } });
+  await answers.goto('/update.html?check');
+  await expect(answers.getByRole('heading', { name: "You're up to date" })).toBeVisible();
+  expect(await answers.evaluate(() => document.querySelector('#update')!.getBoundingClientRect().height)).toBe(checking);
+  await answers.close();
+
+  await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await waitFor(page, 'plugin:window|close');
+});
+
+test('the window shows itself once, not again for every answer', async ({ page }) => {
+  await installBridge(page, { returns: { check_for_update: OFFER } });
+  await page.goto('/update.html?check');
+  await expect(page.getByRole('heading', { name: 'A new version of Mark is available' })).toBeVisible();
+  await waitFor(page, 'plugin:window|show');
+  await page.getByRole('button', { name: 'Install and Relaunch' }).click();
+  await waitFor(page, 'install_update');
+  expect((await sent(page)).filter(call => call.cmd === 'plugin:window|show')).toHaveLength(1);
+});

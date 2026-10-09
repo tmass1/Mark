@@ -15,4 +15,13 @@ describe('windows that fit themselves', () => {
       ]));
     });
   }
+
+  // Software Update opens hidden and shows itself once it fits. Without leave
+  // to, it would sit unseen until Mark gave up waiting and showed it unfitted.
+  it('update may centre, show and focus itself', () => {
+    const capability = JSON.parse(readFileSync('src-tauri/capabilities/update.json', 'utf8')) as { permissions: string[] };
+    expect(capability.permissions).toEqual(expect.arrayContaining([
+      'core:window:allow-center', 'core:window:allow-show', 'core:window:allow-set-focus',
+    ]));
+  });
 });

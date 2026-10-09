@@ -4,36 +4,48 @@ import { isTauri } from './platform';
  *  what it shows, so a message that wraps, or an answer that arrives after the
  *  window opened, grows the window rather than falling off the bottom of it.
  *
- *  Measured as a difference -- what the page needs against what it can see --
- *  and applied to the window's current size, then checked again once the
- *  window has resized, so it lands exactly whatever the title bar does to the
- *  arithmetic: the window's inner size includes the strip under the title bar,
- *  and the page does not. One fit runs at a time; a change that arrives during
- *  one is measured again when it finishes, rather than racing it with a stale
- *  reading of the window's height. */
-export function fitWindowTo(root: HTMLElement): void {
-  if (!isTauri) return;
-  let fitting = false;
+ *  The window is sized to what the page needs plus the strip under the title
+ *  bar, which the window's inner size includes and the page does not. That
+ *  strip is read once, on the first fit, before anything has been resized and
+ *  while the two still agree. Every fit after it depends only on what the page
+ *  lays out -- never on the page's height mid-resize, which can lag the window
+ *  and would have it ask for the same growth twice. One fit runs at a time; a
+ *  change that arrives during one is measured again when it finishes.
+ *
+ *  Returns the fit itself, for a page that has to know when the window fits:
+ *  one that opened hidden shows itself only then. */
+export function fitWindowTo(root: HTMLElement): () => Promise<void> {
+  if (!isTauri) return async () => {};
+  let running: Promise<void> | null = null;
   let again = false;
-  const fit = async () => {
-    if (fitting) { again = true; return; }
-    fitting = true;
+  let frame: { width: number; strip: number } | undefined;
+  let asked: number | undefined;
+  const run = async () => {
     try {
+      const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
+      const current = getCurrentWindow();
+      if (!frame) {
+        const size = (await current.innerSize()).toLogical(await current.scaleFactor());
+        frame = { width: size.width, strip: size.height - window.innerHeight };
+      }
       do {
         again = false;
-        const shortfall = Math.ceil(root.getBoundingClientRect().height) - window.innerHeight;
-        if (Math.abs(shortfall) < 1) break;
-        const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
-        const current = getCurrentWindow();
-        const size = (await current.innerSize()).toLogical(await current.scaleFactor());
-        await current.setSize(new LogicalSize(size.width, size.height + shortfall));
+        const height = Math.ceil(root.getBoundingClientRect().height) + frame.strip;
+        if (Math.abs(height - (asked ?? window.innerHeight + frame.strip)) < 1) continue;
+        asked = height;
+        await current.setSize(new LogicalSize(frame.width, height));
       } while (again);
     } catch {
       // A window that cannot be measured keeps the size it opened at.
-    } finally {
-      fitting = false;
     }
+  };
+  const fit = (): Promise<void> => {
+    if (running) { again = true; return running; }
+    // Let go only once the run has finished, even one with nothing to change.
+    running = run().finally(() => { running = null; });
+    return running;
   };
   new ResizeObserver(() => { void fit(); }).observe(root);
   window.addEventListener('resize', () => { void fit(); });
+  return fit;
 }

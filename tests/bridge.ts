@@ -18,6 +18,8 @@ export async function installBridge(page: Page, snapshot: {
   fails?: Record<string, string>;
   /** Canned replies, for commands whose return value the editor acts on. */
   returns?: Record<string, unknown>;
+  /** Commands that never answer, to see what a page shows while it waits. */
+  holds?: string[];
 } = {}) {
   const state = {
     capture: snapshot.capture === undefined ? CAPTURE : snapshot.capture,
@@ -25,6 +27,7 @@ export async function installBridge(page: Page, snapshot: {
     busy: snapshot.busy ?? false,
     fails: snapshot.fails ?? {},
     returns: snapshot.returns ?? {},
+    holds: snapshot.holds ?? [],
   };
   await page.addInitScript(([state]) => {
     const sent: Sent[] = [];
@@ -45,6 +48,7 @@ export async function installBridge(page: Page, snapshot: {
           return next++;
         }
         sent.push({ cmd, args });
+        if (state.holds.includes(cmd)) return new Promise(() => {});
         if (state.fails[cmd]) throw state.fails[cmd];
         if (cmd === 'current_capture') {
           return { capture: state.capture, error: state.error, busy: state.busy };

@@ -101,13 +101,22 @@ pub fn open_updates(app: AppHandle) -> Result<(), String> { show(&app, true) }
 /// to check, it looks for itself; opened because a check found something, it
 /// shows what was found.
 pub fn show(app: &AppHandle, check: bool) -> Result<(), String> {
-    let window = match app.get_webview_window(WINDOW) {
-        Some(window) => window,
-        None => crate::panel(app, WINDOW, if check { "update.html?check" } else { "update.html" },
-                             "Software Update", 520.0, 160.0)?,
-    };
-    crate::macos::activate_self();
-    window.show().and_then(|_| window.set_focus()).map_err(|e| e.to_string())
+    if let Some(window) = app.get_webview_window(WINDOW) {
+        crate::macos::activate_self();
+        return window.show().and_then(|_| window.set_focus()).map_err(|e| e.to_string());
+    }
+    // A new window opens hidden. Its page shows it once what it says first is
+    // in and the window has been sized and centred to fit, so it never appears
+    // at one size and jumps to another. Should the page not get that far, the
+    // window shows anyway, a moment later, at the height it opened at: that of
+    // its plainest answers -- checking, up to date, an update without notes.
+    let window = crate::panel(app, WINDOW, if check { "update.html?check" } else { "update.html" },
+                              "Software Update", 520.0, 184.0, false)?;
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1500));
+        if matches!(window.is_visible(), Ok(false)) { let _ = window.show().and_then(|_| window.set_focus()); }
+    });
+    Ok(())
 }
 
 /// Looks shortly after launch, then once a day by the clock on the wall, so a

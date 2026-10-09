@@ -537,7 +537,7 @@ fn set_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
 fn open_settings(app: AppHandle) -> Result<(), String> {
     let window = match app.get_webview_window(SETTINGS) {
         Some(window) => window,
-        None => panel(&app, SETTINGS, "settings.html", "Mark Settings", 460.0, 378.0)?,
+        None => panel(&app, SETTINGS, "settings.html", "Mark Settings", 460.0, 378.0, true)?,
     };
     macos::activate_self();
     window.show().and_then(|_| window.set_focus()).map_err(|e| e.to_string())
@@ -545,13 +545,14 @@ fn open_settings(app: AppHandle) -> Result<(), String> {
 
 /// A small window of Mark's own, in its glass and the appearance chosen in
 /// Settings: Settings itself, and Software Update. Each grows to fit what it
-/// shows, so the height given here is only where it starts.
-pub(crate) fn panel(app: &AppHandle, label: &str, page: &str, title: &str, width: f64, height: f64)
+/// shows, so the height given here is only where it starts. One made hidden
+/// is shown by its own page, once it fits.
+pub(crate) fn panel(app: &AppHandle, label: &str, page: &str, title: &str, width: f64, height: f64, visible: bool)
     -> Result<tauri::WebviewWindow, String> {
     let appearance = app.state::<Prefs>().0.lock().unwrap().appearance.clone();
     let theme = match appearance.as_str() { "dark" => Some(tauri::Theme::Dark), "light" => Some(tauri::Theme::Light), _ => None };
     tauri::WebviewWindowBuilder::new(app, label, tauri::WebviewUrl::App(page.into()))
-        .title(title).inner_size(width, height).resizable(false).maximizable(false).minimizable(false)
+        .title(title).inner_size(width, height).visible(visible).resizable(false).maximizable(false).minimizable(false)
         // The editor floats above other windows; a window at the normal level
         // would open underneath the very window that opened it.
         .always_on_top(true)
