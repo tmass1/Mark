@@ -50,6 +50,14 @@ const GLYPHS: Record<string, string> = {
   crop: `<path d="M6.6 2.8v10.6h10.6M2.8 6.6h10.6v10.6" ${STROKE}/>`,
   timed: `<circle cx="10" cy="11.4" r="5.4" ${STROKE}/><path d="M10 8.4v3l2.1 1.3M8.1 3.4h3.8M10 3.4v2.6" ${STROKE}/>`,
   private: `<rect x="3.2" y="4.5" width="13.6" height="9.6" rx="1.8" ${STROKE}/><path d="M7.6 16.6h4.8M10 8.2v2.6" ${STROKE}/>`,
+  // The capture menu's window, Copy Text's viewfinder, Hide Sensitive's eye, a menu bar with Mark in it.
+  window: `<rect x="3.2" y="4.4" width="13.6" height="11.2" rx="1.8" ${STROKE}/><path d="M3.2 7.8h13.6" ${STROKE}/>`
+    + `<circle cx="5.6" cy="6.1" r=".7" fill="currentColor"/><circle cx="7.6" cy="6.1" r=".7" fill="currentColor"/>`,
+  text: `<path d="M3 6.6V4.8A1.8 1.8 0 0 1 4.8 3h1.8M13.4 3h1.8A1.8 1.8 0 0 1 17 4.8v1.8M17 13.4v1.8a1.8 1.8 0 0 1-1.8 1.8h-1.8M6.6 17H4.8A1.8 1.8 0 0 1 3 15.2v-1.8" ${STROKE}/>`
+    + `<path d="M6.8 7.6h6.4M6.8 10.2h6.4M6.8 12.8h3.8" ${STROKE}/>`,
+  hide: `<path d="M2.8 10s2.6-4.9 7.2-4.9 7.2 4.9 7.2 4.9-2.6 4.9-7.2 4.9S2.8 10 2.8 10z" ${STROKE}/><circle cx="10" cy="10" r="2.1" ${STROKE}/><path d="M4 16 16 4" ${STROKE}/>`,
+  menu: `<rect x="2.8" y="4" width="14.4" height="12" rx="1.8" ${STROKE}/><path d="M2.8 7.4h14.4" ${STROKE}/>`
+    + `<path d="M12.4 5.7h2.6" ${STROKE}/><path d="M6.2 10.6h5.2M6.2 13.2h3.4" ${STROKE}/>`,
 };
 for (const el of all<HTMLElement>('[data-glyph]')) {
   el.innerHTML = `<svg viewBox="0 0 20 20" aria-hidden="true">${GLYPHS[el.dataset.glyph!] ?? ''}</svg>`;

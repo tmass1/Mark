@@ -88,8 +88,8 @@ document.body.innerHTML = `
     </aside>
   </div></div>
   <p class="caption">This is Mark's real editor, selection overlay and settings, running in your browser against a stand-in for the Mac.
-    Capturing takes a region of this picture of a desktop; Copy puts a real PNG on your clipboard. Liquid Glass, capturing your actual
-    screen, and opening at login need the Mac app.</p>`;
+    Capturing takes a region or the window of this picture of a desktop; Copy puts a real PNG on your clipboard. Liquid Glass,
+    capturing your actual screen, reading the words in it, and opening at login need the Mac app.</p>`;
 
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 const stage = $<HTMLDivElement>('.stage');

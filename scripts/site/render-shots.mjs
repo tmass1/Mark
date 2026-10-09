@@ -102,10 +102,17 @@ await page.mouse.move(stage.x + 20, stage.y + 880);
 await page.waitForTimeout(400);
 await shot('hero-light', await boxOf(win));
 
-// 4. The menu bar item, open.
-await page.locator('.tray').click();
-await page.locator('.tray-menu').waitFor({ state: 'visible' });
-await page.waitForTimeout(200);
-await shot('menu', { x: stage.x + stage.width - 300, y: stage.y, width: 300, height: 150 });
+// 4. Framed: the same marked-up capture on a gradient, with a title bar, as
+// Frame shows it on the canvas -- which is what it copies.
+await editor.getByRole('button', { name: 'Frame', exact: true }).click();
+const framing = editor.locator('.frame-panel');
+await framing.waitFor({ state: 'visible' });
+await framing.getByRole('radio', { name: 'Aurora', exact: true }).click();
+await framing.getByLabel('Title bar').check();
+await page.keyboard.press('Escape');                   // the panel goes; the frame stays
+await framing.waitFor({ state: 'hidden' });
+await page.mouse.move(stage.x + 20, stage.y + 880);
+await page.waitForTimeout(400);
+await shot('frame', await boxOf(editor.locator('.backdrop')));
 
 await browser.close();
