@@ -21,6 +21,9 @@ export function fitWindowTo(root: HTMLElement): () => Promise<void> {
   let frame: { width: number; strip: number } | undefined;
   let asked: number | undefined;
   const run = async () => {
+    // A page that has put nothing in yet has nothing to fit: sized to that, a
+    // window would only have to be sized again a moment later.
+    if (!root.firstElementChild) return;
     try {
       const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
       const current = getCurrentWindow();
