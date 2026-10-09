@@ -18,7 +18,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1472, height: 960 }, deviceScaleFactor: 2 });
 await page.goto(`${origin}/demo.html`);
 const editor = page.frameLocator('.win.editor iframe');
-await editor.getByRole('heading', { name: 'Capture a region' }).waitFor();
+await editor.getByRole('heading', { name: 'Capture your screen' }).waitFor();
 const stage = await page.locator('.stage').boundingBox();
 const at = (x, y) => ({ x: stage.x + x, y: stage.y + y });
 

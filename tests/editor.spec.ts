@@ -15,6 +15,15 @@ test('browser preview has no native dependency and renders in light and dark', a
   expect(errors).toEqual([]);
 });
 
+test('the browser preview, with no screen to capture, offers one way in: a file', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
+  const tiles = page.getByRole('group', { name: 'Capture' }).getByRole('button');
+  await expect(tiles).toHaveCount(1);
+  await expect(tiles).toHaveAccessibleName('Choose image…');
+});
+
 test('clipboard denial retains the capture and Escape dismisses without copying', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'clipboard', { value: { write: async () => { throw new Error('Clipboard denied'); } } });
@@ -25,7 +34,7 @@ test('clipboard denial retains the capture and Escape dismisses without copying'
   await expect(page.getByRole('img')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('img')).toBeHidden();
-  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
 });
 
 test('choosing a local image updates dimensions and copy uses PNG', async ({ page }) => {
@@ -110,7 +119,7 @@ test('Escape clears the selection before it closes the editor', async ({ page })
   await expect(page.locator('.handle')).toHaveCount(0);
   await expect(page.getByRole('img')).toBeVisible();   // still open
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
 });
 
 test('the copied image carries the arrow at full resolution', async ({ page }) => {
@@ -646,7 +655,7 @@ test('the active-tool pill is under the tool from the first frame, and after reo
   // Out to the empty state and back: the rail was display: none in between,
   // and the pill must not slide from wherever it was before.
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
   await page.locator('input[type=file]').setInputFiles('src-tauri/icons/128x128.png');
   await expect(page.getByText('128 × 128 px')).toBeVisible();
   expect(await misplaced()).toEqual([]);
@@ -894,7 +903,7 @@ for (const [what, prepare] of [
     await drawArrow(page, [200, 200], [600, 300]);
     await prepare(page);
     await page.keyboard.press('Alt+Meta+c');
-    await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
     // What it closed is not lost -- it is waiting in Recent, drawing and all.
     await expect(page.locator('.recent')).toHaveCount(1);
   });
@@ -921,7 +930,7 @@ for (const [how, press] of [
     const field = page.locator('.step-note').first();
     await expect(field).toBeFocused();
     await press(field);
-    await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
     await expect(page.locator('.recent')).toHaveCount(1);
   });
 }
@@ -934,7 +943,7 @@ test('Close puts the capture away without copying it, and keeps it in Recent', a
   await page.goto('/');
   await drawArrow(page, [200, 200], [600, 300]);
   await page.getByRole('button', { name: 'Close without copying' }).click();
-  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
   await expect(page.locator('.recent')).toHaveCount(1);
   expect(await page.evaluate(() => (window as any).__writes)).toBe(0);
 });
@@ -942,7 +951,7 @@ test('Close puts the capture away without copying it, and keeps it in Recent', a
 test('Command-A with no capture selects nothing, not the window\'s words', async ({ page }) => {
   await page.goto('/');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
   await page.keyboard.press('Meta+a');
   expect(await page.evaluate(() => getSelection()?.toString() ?? '')).toBe('');
 });
@@ -1114,7 +1123,7 @@ test('a closed capture comes back from Recent, drawing and all', async ({ page }
 
   await page.keyboard.press('Escape');                    // clear the selection
   await page.keyboard.press('Escape');                    // and close
-  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
   await expect(page.locator('.recent')).toHaveCount(1);
   await expect(page.locator('.recent')).toContainText('1200 × 740');
   // The thumbnail is a real picture, not a placeholder.
@@ -1358,7 +1367,7 @@ test('the empty state has no footer to act on', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('footer')).toBeVisible();     // a capture is showing
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
   await expect(page.locator('footer')).toBeHidden();
   // And it comes back with the capture.
   await page.locator('.recent').click();

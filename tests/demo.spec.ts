@@ -27,7 +27,7 @@ async function open(page: Page) {
   });
   await page.goto('/demo.html');
   const editor = page.frameLocator('.win.editor iframe');
-  await expect(editor.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(editor.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
   return editor;
 }
 
@@ -178,7 +178,7 @@ test('a browser that refuses the clipboard is told so, and the card offers the f
   });
   await page.goto('/demo.html');
   const editor = page.frameLocator('.win.editor iframe');
-  await expect(editor.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(editor.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
   await startSelection(page);
   const stage = (await page.locator('.stage').boundingBox())!;
   await page.mouse.move(stage.x + 300, stage.y + 200); await page.mouse.down(); await page.mouse.move(stage.x + 600, stage.y + 350, { steps: 8 }); await page.mouse.up();

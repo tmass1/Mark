@@ -129,19 +129,23 @@ const STROKE = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-line
  *  the set reads as four answers to the same question rather than four
  *  unrelated pictures. */
 type CaptureMode = 'region' | 'window' | 'display' | 'timed';
-const CAPTURE_MODES: { mode: CaptureMode; name: string; hint: string; art: string }[] = [
-  { mode: 'region', name: 'Region', hint: prettyShortcut(DEFAULT_SHORTCUT), art:
+/** `tile` is the word on the empty state's tiles, where four have to fit
+ *  side by side in the smallest window; `tip` says it in full -- except for
+ *  Region, which its word and its key say well enough, and which is focused
+ *  each time the empty state comes back, where a tip would pop up unasked. */
+const CAPTURE_MODES: { mode: CaptureMode; name: string; tile: string; tip: string; hint: string; art: string }[] = [
+  { mode: 'region', name: 'Region', tile: 'Region', tip: 'Drag out the part of the screen to capture', hint: prettyShortcut(DEFAULT_SHORTCUT), art:
     `<path d="M4.4 7.7V5.9a1.5 1.5 0 0 1 1.5-1.5h1.8M12.3 4.4h1.8a1.5 1.5 0 0 1 1.5 1.5v1.8`
     + `M15.6 12.3v1.8a1.5 1.5 0 0 1-1.5 1.5h-1.8M7.7 15.6H5.9a1.5 1.5 0 0 1-1.5-1.5v-1.8" ${STROKE}/>` },
-  { mode: 'window', name: 'Window', hint: '', art:
+  { mode: 'window', name: 'Window', tile: 'Window', tip: 'Click a window to capture it, whole even where it is covered', hint: '', art:
     `<rect x="3.2" y="4.4" width="13.6" height="11.2" rx="1.8" ${STROKE}/>`
     + `<path d="M3.2 7.8h13.6" ${STROKE}/>`
     + `<circle cx="5.6" cy="6.1" r=".7" fill="currentColor"/><circle cx="7.6" cy="6.1" r=".7" fill="currentColor"/>` },
-  { mode: 'display', name: 'Whole Screen', hint: '', art:
+  { mode: 'display', name: 'Whole Screen', tile: 'Screen', tip: 'Capture the whole screen the pointer is on, straight away', hint: '', art:
     `<rect x="3.2" y="4.5" width="13.6" height="9.6" rx="1.8" fill="currentColor" opacity=".16"/>`
     + `<rect x="3.2" y="4.5" width="13.6" height="9.6" rx="1.8" ${STROKE}/>`
     + `<path d="M7.6 16.6h4.8" ${STROKE}/>` },
-  { mode: 'timed', name: 'Timed Region', hint: '5s', art:
+  { mode: 'timed', name: 'Timed Region', tile: 'Timed', tip: 'Choose a region, then capture it five seconds later', hint: '5s', art:
     `<circle cx="10" cy="11.4" r="5.4" ${STROKE}/>`
     + `<path d="M10 8.4v3l2.1 1.3M8.1 3.4h3.8M10 3.4v2.6" ${STROKE}/>` },
 ];
@@ -321,8 +325,15 @@ app.innerHTML = `
            the Dock. It used to be redrawn from paths, which is how the two came
            to be different pictures. -->
       <img class="viewfinder" src="${markIcon}" alt="" width="72" height="72" />
-      <h1>Capture a region</h1><p class="empty-hint">A little less between seeing and sharing.</p>
-      <button class="start primary" type="button">Capture Region <kbd>${prettyShortcut(DEFAULT_SHORTCUT)}</kbd></button>
+      <h1>Capture your screen</h1><p class="empty-hint">A little less between seeing and sharing.</p>
+      <!-- Every way in, side by side, as macOS's own screenshot toolbar lays
+           them out, rather than one button with the rest behind a menu. A
+           region, the one most reached for, is the blue one. -->
+      <div class="modes" role="group" aria-label="Capture">
+        ${CAPTURE_MODES.map(item => `<button class="mode ${item.mode === 'region' ? 'start primary' : 'glassy'}" type="button"
+          data-start="${item.mode}"${item.mode === 'region' ? '' : ` title="${item.tip}"`}><svg viewBox="0 0 20 20" aria-hidden="true">${item.art}</svg>
+          <span class="mode-name">${item.tile}</span><kbd class="mode-hint">${item.hint}</kbd></button>`).join('')}
+      </div>
       <section class="recents" hidden aria-label="Recent captures">
         <p class="recents-label">Recent</p>
         <div class="recent-list"></div>
@@ -465,6 +476,7 @@ const shareButton = app.querySelector<HTMLButtonElement>('.share')!;
 const saveButton = app.querySelector<HTMLButtonElement>('.save')!;
 const copyTextButton = app.querySelector<HTMLButtonElement>('.copy-text')!;
 const start = app.querySelector<HTMLButtonElement>('.start')!;
+const modeTiles = [...app.querySelectorAll<HTMLButtonElement>('.mode')];
 const choose = app.querySelector<HTMLButtonElement>('.choose')!;
 const input = app.querySelector<HTMLInputElement>('.file-input')!;
 const message = app.querySelector<HTMLElement>('.message')!;
@@ -1075,8 +1087,9 @@ function render() {
   applyZoom();
   copy.disabled = busy || copyPending;
   copyOnly.disabled = closeButton.disabled = busy || copyPending;
-  start.disabled = busy;
-  start.firstChild!.textContent = isTauri ? (busy ? 'Selecting… ' : 'Capture Region ') : 'Choose image… ';
+  // The preview has no screen to capture, so it has one way in: a file.
+  for (const tile of modeTiles) { tile.disabled = busy; if (tile !== start) tile.hidden = !isTauri; }
+  start.querySelector('.mode-name')!.textContent = isTauri ? (busy ? 'Selecting…' : 'Region') : 'Choose image…';
   start.querySelector('kbd')!.hidden = !isTauri;
   syncTools();
 }
@@ -1231,7 +1244,10 @@ on(saveButton, 'click', () => { void exportImage('save_image'); });
 on(copyTextButton, 'click', () => { void copyText(); });
 on(hideButton, 'click', () => { void hideSensitive(); });
 on(shareButton, 'click', () => { void exportImage('share_image'); });
-on(start, 'click', () => startCapture('region'));
+on(app.querySelector<HTMLElement>('.modes')!, 'click', event => {
+  const mode = (event.target as Element).closest<HTMLButtonElement>('[data-start]')?.dataset.start;
+  if (mode) startCapture(mode as CaptureMode);
+});
 on(app.querySelector<HTMLButtonElement>('.capture-go')!, 'click', () => startCapture('region'));
 on(captureMore, 'click', event => {
   event.stopPropagation();

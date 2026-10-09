@@ -94,12 +94,12 @@ notarization; an Apple Development certificate is only good for this Mac.
    start is deliberately silent, while every other launch still opens the
    editor, because a start with no window at all reads as a failed launch.
 2. Press **⌘4**, choose **Capture Region** or **Capture Window** from Mark's
-   menu, or use the **Capture** button in the editor's title bar. That button
-   stays put while a capture is open, so a second shot does not mean closing
-   the first, and its menu offers **Region**, **Window**, **Whole Screen** —
-   the display the pointer is on, grabbed straight away with no overlay — and
-   **Timed Region**, which opens the overlay with a five second delay already
-   armed.
+   menu, or pick one of the four tiles the editor opens on: **Region**,
+   **Window**, **Screen** — the display the pointer is on, grabbed straight
+   away with no overlay — and **Timed**, which opens the overlay with a five
+   second delay already armed. The **Capture** button in the editor's title
+   bar offers the same four, and stays put while a capture is open, so a
+   second shot does not mean closing the first.
 3. Grant Screen Recording access when macOS asks. This permission is also used
    for still screenshots; Mark does not capture audio or video.
 4. Drag to select a region. Guides run the full width and height of the display

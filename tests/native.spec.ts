@@ -41,6 +41,47 @@ test('each way in sends the capture command it should', async ({ page }) => {
   expect(await waitFor(page, 'capture_region')).toMatchObject({ args: { delay: 5 } });
 });
 
+// The empty state is where Mark opens, so every way in is there, side by
+// side, rather than one button with the rest behind the title bar's menu.
+test('the empty state offers every way in, each sending the command it should', async ({ page }) => {
+  await installBridge(page, { capture: null });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
+  const tiles = page.getByRole('group', { name: 'Capture' }).getByRole('button');
+  await expect(tiles).toHaveCount(4);
+  for (const [i, name] of ['Region ⌘4', 'Window', 'Screen', 'Timed 5s'].entries()) await expect(tiles.nth(i)).toHaveAccessibleName(name);
+  const ways: [string, string, Record<string, unknown>][] = [
+    ['Region', 'capture_region', {}], ['Window', 'capture_region', { window: true }],
+    ['Screen', 'capture_display', {}], ['Timed', 'capture_region', { delay: 5 }],
+  ];
+  for (const [name, cmd, args] of ways) {
+    await clear(page);
+    await tiles.filter({ hasText: name }).click();
+    expect((await waitFor(page, cmd)).args, name).toEqual(args);
+  }
+});
+
+// With a recent capture under the tiles it is at its tallest; at the
+// smallest window it is at its narrowest. It fits both, words whole.
+test('the empty state fits the smallest window and the usual one, recents and all', async ({ page }) => {
+  await installBridge(page);
+  for (const width of [560, 460, 380]) {
+    await page.setViewportSize({ width, height: 542 });
+    await page.goto('/');
+    await page.locator('.capture').waitFor();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.recent')).toHaveCount(1);
+    const fit = await page.evaluate(() => {
+      const card = document.querySelector('.empty')!.getBoundingClientRect(), canvas = document.querySelector('.canvas')!.getBoundingClientRect();
+      return {
+        inside: card.top >= canvas.top - 0.5 && card.bottom <= canvas.bottom + 0.5 && card.left >= 0 && card.right <= innerWidth,
+        cut: [...document.querySelectorAll('.mode-name')].filter(el => el.scrollWidth > el.clientWidth).map(el => el.textContent),
+      };
+    });
+    expect(fit, `${width}px`).toEqual({ inside: true, cut: [] });
+  }
+});
+
 test('an untouched capture is copied by reference, with closing asked for explicitly', async ({ page }) => {
   await installBridge(page);
   await page.goto('/');

@@ -33,7 +33,7 @@ test('the demo in the page is the real demo, framed without its caption', async 
   await expect(demo.locator('html')).toHaveClass(/embedded/);
   await expect(demo.locator('.caption')).toBeHidden();
   const editor = demo.frameLocator('.win.editor iframe');
-  await expect(editor.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(editor.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
   await expect(editor.locator('.start kbd')).toHaveText('⌘4');
 });
 
@@ -72,7 +72,7 @@ test('every page finds everything it asks for', async ({ page }) => {
 test('the demo’s editor shows the icon on its empty state, from its own depth', async ({ page }) => {
   await page.goto('/demo.html');
   const editor = page.frameLocator('.win.editor iframe');
-  await expect(editor.getByRole('heading', { name: 'Capture a region' })).toBeVisible();
+  await expect(editor.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
   expect(await editor.locator('.viewfinder').evaluate(
     el => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0)).toBe(true);
 });
