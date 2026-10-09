@@ -93,12 +93,13 @@ notarization; an Apple Development certificate is only good for this Mac.
    may ask you to approve it under Login Items in System Settings. A login
    start is deliberately silent, while every other launch still opens the
    editor, because a start with no window at all reads as a failed launch.
-2. Press **⌘4**, choose **Capture Region** from Mark's menu, or use the
-   **Capture** button in the editor's title bar. That button stays put while a
-   capture is open, so a second shot does not mean closing the first, and its
-   menu offers **Region**, **Whole Screen** — the display the pointer is on,
-   grabbed straight away with no overlay — and **Timed Region**, which opens
-   the overlay with a five second delay already armed.
+2. Press **⌘4**, choose **Capture Region** or **Capture Window** from Mark's
+   menu, or use the **Capture** button in the editor's title bar. That button
+   stays put while a capture is open, so a second shot does not mean closing
+   the first, and its menu offers **Region**, **Window**, **Whole Screen** —
+   the display the pointer is on, grabbed straight away with no overlay — and
+   **Timed Region**, which opens the overlay with a five second delay already
+   armed.
 3. Grant Screen Recording access when macOS asks. This permission is also used
    for still screenshots; Mark does not capture audio or video.
 4. Drag to select a region. Guides run the full width and height of the display
@@ -111,6 +112,13 @@ notarization; an Apple Development certificate is only good for this Mac.
    delay. A delayed shot clears the screen immediately so you can open the menu
    or hover state you are capturing, and counts down in the menu bar rather
    than over the shot. Escape cancels.
+
+   Press **Space** to pick a window instead, as in macOS's own screenshots —
+   **Capture Window** opens the overlay this way. The window under the pointer
+   is framed and named with its size, and a click (or Return) captures that
+   window alone: all of it, even where another window covers it, and without
+   its shadow, so the image is the window edge to edge. Space again goes back
+   to a region; a switch made on one display is made on all of them.
 5. Pick a tool in the toolbar.
    - **Arrow**: drag. Drag its body to move it, or either end to reshape it.
      Three styles sit beside the colours: **tapered**, which narrows almost to a
@@ -604,7 +612,7 @@ while a drawing switches to the flattened path, and the overlay reporting its
 selection in global points — the display's own origin added, which is what keeps
 a second monitor from capturing whatever sits at those coordinates on the first.
 
-Four things no test can reach, because they need a real screen, a real pointer,
+Five things no test can reach, because they need a real screen, a real pointer,
 or a restart:
 
 1. **Whole Screen** grabs the display the pointer is on, not another one.
@@ -613,6 +621,9 @@ or a restart:
 3. A selection on a second display captures that display's content.
 4. With **Open at Login** on, a restart brings Mark back with no editor window,
    while opening it by hand still shows one.
+5. **Capture Window** takes the window alone: all of it where another window
+   covers part of it, nothing of what is in front, no shadow, at the density
+   of the display it is on.
 
 Beyond those, check the shortcut from another app, screen-access grant and
 denial, Copy and Close into Preview, cancellation with an existing editor,

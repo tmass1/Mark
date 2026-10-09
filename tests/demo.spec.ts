@@ -51,6 +51,23 @@ test('the menu bar starts a real selection, and the capture is cut from the desk
   await expect(editor.locator('.capture')).toBeVisible();
 });
 
+test('Capture Window picks the window in the picture, and captures all of it', async ({ page }) => {
+  const editor = await open(page);
+  await page.locator('.tray').click();
+  await page.locator('.tray-menu [data-act="window"]').click();
+  const overlay = page.frameLocator('.overlay');
+  await expect(overlay.locator('.hint')).toHaveText(/^Click a window to capture it/);
+
+  const stage = (await page.locator('.stage').boundingBox())!;
+  await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
+  await expect(overlay.locator('.pick-name')).toHaveText('Dashboard — Overview');
+  await page.mouse.click(stage.x + stage.width / 2, stage.y + stage.height / 2);
+
+  await expect(page.locator('.win.editor')).toBeVisible();
+  // The window as it is in the 2880 × 1800 picture: 2200 × 1380 of its pixels.
+  await expect(editor.locator('.dimensions')).toHaveText('2200 × 1380 px');
+});
+
 test('annotating and copying produce a PNG for the clipboard, and closing returns to the desktop', async ({ page }) => {
   const editor = await open(page);
   await startSelection(page);

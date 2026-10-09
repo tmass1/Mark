@@ -88,11 +88,14 @@ fn report(app: &AppHandle, error: String) {
 #[tauri::command]
 fn current_capture(app: AppHandle) -> Snapshot { app.state::<State>().lock().unwrap().snapshot() }
 
+/// The overlay, for a region -- or, asked for a window, already picking one.
+/// Space switches between the two either way, as it does in macOS's own.
 #[tauri::command]
-fn capture_region(app: AppHandle, delay: Option<u32>) -> Result<(), String> {
+fn capture_region(app: AppHandle, delay: Option<u32>, window: Option<bool>) -> Result<(), String> {
     let delay = delay.unwrap_or(0).min(60);
+    let window = window.unwrap_or(false);
     let handle = app.clone();
-    app.run_on_main_thread(move || begin_selection(&handle, delay)).map_err(|e| e.to_string())
+    app.run_on_main_thread(move || begin_selection(&handle, delay, window)).map_err(|e| e.to_string())
 }
 
 /// The whole display the pointer is on, with no overlay in between. The rest of
@@ -111,7 +114,7 @@ fn capture_display(app: AppHandle, delay: Option<u32>) -> Result<(), String> {
     let handle = app.clone();
     app.run_on_main_thread(move || {
         if !ready_to_capture(&handle) { return; }
-        take_selection(&handle, rect, delay);
+        take_selection(&handle, capture::Target::Region(rect), delay);
     }).map_err(|e| e.to_string())
 }
 
@@ -141,18 +144,22 @@ fn ready_to_capture(app: &AppHandle) -> bool {
 /// Put Mark's own selection overlay on every display. macOS's picker is not used:
 /// it returns an image and nothing else, so it cannot keep a selection alive for
 /// resizing, exact sizing, or a delayed shutter.
-fn begin_selection(app: &AppHandle, delay: u32) {
+fn begin_selection(app: &AppHandle, delay: u32, window: bool) {
     if !ready_to_capture(app) { return; }
-    if let Err(error) = open_selectors(app, delay) {
+    if let Err(error) = open_selectors(app, delay, window) {
         close_selectors(app);
         app.state::<State>().lock().unwrap().busy = false;
         report(app, format!("The selection overlay couldn't open ({error})."));
     }
 }
 
-fn open_selectors(app: &AppHandle, delay: u32) -> Result<(), String> {
+fn open_selectors(app: &AppHandle, delay: u32, window: bool) -> Result<(), String> {
     let monitors = app.available_monitors().map_err(|e| e.to_string())?;
     if monitors.is_empty() { return Err("no display was found".into()); }
+    // The windows that can be picked, read once, before the overlays cover them,
+    // and the pointer, so one is picked under a pointer that has not moved yet.
+    let windows = capture::capturable(macos::windows_on_screen(), std::process::id() as i32);
+    let pointer = macos::pointer();
     for (index, monitor) in monitors.iter().enumerate() {
         let scale = monitor.scale_factor();
         // Points, not pixels: window geometry and screencapture -R share this space.
@@ -166,11 +173,9 @@ fn open_selectors(app: &AppHandle, delay: u32) -> Result<(), String> {
             .decorations(false).transparent(true).always_on_top(true)
             .skip_taskbar(true).shadow(false).resizable(false).visible(false)
             .accept_first_mouse(true)
-            // The overlay reports its selection in global points, so it needs to
-            // know where on the desktop this display starts.
-            .initialization_script(format!(
-                "window.__MARK_DISPLAY__={{x:{},y:{},width:{},height:{},scale:{}}};window.__MARK_DELAY__={};",
-                origin.x, origin.y, size.width, size.height, scale, delay))
+            .initialization_script(selector_globals(
+                capture::Rect { x: origin.x, y: origin.y, width: size.width, height: size.height }, scale,
+                delay, &windows, window, pointer)?)
             .build().map_err(|e| e.to_string())?;
         if let Ok(handle) = window.ns_window() { macos::raise_overlay(handle); }
         window.show().map_err(|e| e.to_string())?;
@@ -178,6 +183,24 @@ fn open_selectors(app: &AppHandle, delay: u32) -> Result<(), String> {
     macos::activate_self();
     if let Some(first) = app.get_webview_window(&format!("{SELECTOR}0")) { let _ = first.set_focus(); }
     Ok(())
+}
+
+/// What an overlay is told before its page runs. It reports a selection in
+/// global points, so it needs to know where on the desktop its display starts;
+/// and to pick a window, where the windows are, in the same points, and where
+/// the pointer is. JSON throughout, so a window's title is only ever a string.
+fn selector_globals(display: capture::Rect, scale: f64, delay: u32, windows: &[capture::Window], window: bool,
+                    pointer: Option<(f64, f64)>) -> Result<String, String> {
+    let json = |value: serde_json::Value| value.to_string();
+    let globals = [
+        ("__MARK_DISPLAY__", json(serde_json::json!({ "x": display.x, "y": display.y, "width": display.width,
+                                                       "height": display.height, "scale": scale }))),
+        ("__MARK_DELAY__", json(delay.into())),
+        ("__MARK_WINDOWS__", serde_json::to_string(windows).map_err(|e| e.to_string())?),
+        ("__MARK_MODE__", json((if window { "window" } else { "region" }).into())),
+        ("__MARK_POINTER__", json(pointer.map_or(serde_json::Value::Null, |(x, y)| serde_json::json!({ "x": x, "y": y })))),
+    ];
+    Ok(globals.iter().map(|(name, value)| format!("window.{name}={value};")).collect())
 }
 
 fn close_selectors(app: &AppHandle) {
@@ -201,10 +224,24 @@ fn capture_rect(app: AppHandle, x: f64, y: f64, width: f64, height: f64, delay: 
     let rect = capture::Rect { x, y, width, height };
     let delay = delay.min(60);
     let handle = app.clone();
-    app.run_on_main_thread(move || take_selection(&handle, rect, delay)).map_err(|e| e.to_string())
+    app.run_on_main_thread(move || take_selection(&handle, capture::Target::Region(rect), delay)).map_err(|e| e.to_string())
 }
 
-fn take_selection(app: &AppHandle, rect: capture::Rect, delay: u32) {
+/// One window, picked in the overlay, by the number the window server gave it.
+/// It is looked up again rather than taken on trust: the window has to still be
+/// there, and its size here is what the image's density is worked out from.
+#[tauri::command]
+fn capture_window(app: AppHandle, id: u32, delay: u32) -> Result<(), String> {
+    let window = capture::capturable(macos::windows_on_screen(), std::process::id() as i32)
+        .into_iter().find(|window| window.id == id)
+        .ok_or("That window has closed. Pick another, or press Escape.")?;
+    let target = capture::Target::Window { id, bounds: window.bounds() };
+    let delay = delay.min(60);
+    let handle = app.clone();
+    app.run_on_main_thread(move || take_selection(&handle, target, delay)).map_err(|e| e.to_string())
+}
+
+fn take_selection(app: &AppHandle, target: capture::Target, delay: u32) {
     close_selectors(app);
     let (cancelled, previous) = {
         let state = app.state::<State>();
@@ -229,7 +266,7 @@ fn take_selection(app: &AppHandle, rect: capture::Rect, delay: u32) {
         // Let the overlay actually leave the screen before the shutter.
         std::thread::sleep(Duration::from_millis(180));
         let result = capture::run_capture_cancellable(
-            Path::new("/usr/sbin/screencapture"), &std::env::temp_dir(), &cancelled, Some(rect));
+            Path::new("/usr/sbin/screencapture"), &std::env::temp_dir(), &cancelled, Some(target));
         let handle = app.clone();
         if let Err(error) = app.run_on_main_thread(move || {
             let mut wanted: Option<(f64, f64)> = None;
@@ -242,8 +279,9 @@ fn take_selection(app: &AppHandle, rect: capture::Rect, delay: u32) {
                     Ok(Some(mut capture)) => {
                         // Pixels divided by the points asked for: exactly the
                         // density of the display it came off.
-                        if rect.width >= 1.0 { capture.scale = f64::from(capture.width) / rect.width; }
-                        wanted = Some((rect.width, rect.height));
+                        let (width, height) = target.size();
+                        if width >= 1.0 { capture.scale = f64::from(capture.width) / width; }
+                        wanted = Some((width, height));
                         session.capture = Some(capture);
                         true
                     }
@@ -564,7 +602,8 @@ pub(crate) fn panel(app: &AppHandle, label: &str, page: &str, title: &str, width
 
 fn menu_action(app: &AppHandle, id: &str) {
     match id {
-        "capture" => { if let Err(e) = capture_region(app.clone(), None) { report(app, e); } }
+        "capture" => { if let Err(e) = capture_region(app.clone(), None, None) { report(app, e); } }
+        "window" => { if let Err(e) = capture_region(app.clone(), None, Some(true)) { report(app, e); } }
         "show" => present(app),
         // The editor copies: it alone can flatten the drawing into the image.
         // Copying the capture from here would copy it without its marks.
@@ -588,10 +627,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
             if event.state() == ShortcutState::Pressed {
-                if let Err(e) = capture_region(app.clone(), None) { report(app, e); }
+                if let Err(e) = capture_region(app.clone(), None, None) { report(app, e); }
             }
         }).build())
-        .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, cancel_selection,
+        .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, capture_window, cancel_selection,
             copy_capture, copy_edited, copy_text, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
             get_settings, set_appearance, set_shortcut, login_enabled, set_login, open_settings, quit_app,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
@@ -608,6 +647,7 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let prefs = settings::load(app.handle());
             let capture = MenuItem::with_id(app, "capture", "Capture Region", true, Some(prefs.shortcut.as_str()))?;
+            let window = MenuItem::with_id(app, "window", "Capture Window", true, None::<&str>)?;
             let show = MenuItem::with_id(app, "show", "Show Editor", true, None::<&str>)?;
             let preferences = MenuItem::with_id(app, "settings", "Settings…", true, Some("Super+Comma"))?;
             let quit = MenuItem::with_id(app, "quit", "Quit Mark", true, Some("Super+Q"))?;
@@ -617,14 +657,14 @@ pub fn run() {
                 macos::login_item_status() == macos::LOGIN_ENABLED, None::<&str>)?;
             app.manage(LoginToggle(login.clone()));
             app.manage(CaptureItem(capture.clone()));
-            let tray_menu = Menu::with_items(app, &[&capture, &show, &separator, &login, &preferences, &check, &PredefinedMenuItem::separator(app)?, &quit])?;
+            let tray_menu = Menu::with_items(app, &[&capture, &window, &show, &separator, &login, &preferences, &check, &PredefinedMenuItem::separator(app)?, &quit])?;
             TrayIconBuilder::with_id("mark")
                 .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
                 .icon_as_template(true).tooltip(tooltip(&prefs.shortcut))
                 .menu(&tray_menu).build(app)?;
             let copy = MenuItem::with_id(app, "copy", "Copy and Close", true, Some("Alt+Super+C"))?;
             let close = MenuItem::with_id(app, "close", "Close", true, Some("Super+W"))?;
-            let main = Submenu::with_items(app, "Mark", true, &[&capture, &show, &separator, &login, &preferences, &check, &separator, &quit])?;
+            let main = Submenu::with_items(app, "Mark", true, &[&capture, &window, &show, &separator, &login, &preferences, &check, &separator, &quit])?;
             // Never shown, since an accessory app has no menu bar, but still
             // where AppKit sends a key the page leaves alone. That is how a text
             // field gets its editing keys: the page lets ⌘C, ⌘X, ⌘V, ⌘A and ⌘Z
@@ -688,7 +728,25 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{pretty_shortcut, safe_name};
+    use super::{capture, pretty_shortcut, safe_name, selector_globals};
+
+    /// The overlay's whole picture of the screen arrives as this one script; a
+    /// slip in it and the overlay knows nothing -- not even where its display is.
+    #[test]
+    fn an_overlay_is_told_its_display_the_windows_and_the_pointer_as_plain_data() {
+        let display = capture::Rect { x: 1440.0, y: -120.0, width: 1728.0, height: 1117.0 };
+        let windows = [capture::Window { id: 7, app: "Notes".into(), title: "\"Quotes\" </script> and \\".into(),
+                                         x: 1500.0, y: 40.5, width: 800.0, height: 600.0 }];
+        assert_eq!(selector_globals(display, 2.0, 5, &windows, true, Some((1600.25, 300.0))).unwrap(),
+            "window.__MARK_DISPLAY__={\"height\":1117.0,\"scale\":2.0,\"width\":1728.0,\"x\":1440.0,\"y\":-120.0};\
+             window.__MARK_DELAY__=5;\
+             window.__MARK_WINDOWS__=[{\"id\":7,\"app\":\"Notes\",\"title\":\"\\\"Quotes\\\" </script> and \\\\\",\"x\":1500.0,\"y\":40.5,\"width\":800.0,\"height\":600.0}];\
+             window.__MARK_MODE__=\"window\";\
+             window.__MARK_POINTER__={\"x\":1600.25,\"y\":300.0};");
+        let region = selector_globals(display, 1.0, 0, &[], false, None).unwrap();
+        assert!(region.contains("window.__MARK_WINDOWS__=[];") && region.contains("window.__MARK_MODE__=\"region\";")
+                && region.ends_with("window.__MARK_POINTER__=null;"));
+    }
 
     /// A command a window may not call fails at runtime with "not allowed by
     /// ACL", and a call whose error is caught fails silently. Every command

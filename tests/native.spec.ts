@@ -25,6 +25,12 @@ test('each way in sends the capture command it should', async ({ page }) => {
 
   await clear(page);
   await page.locator('.capture-more').click();
+  await page.locator('.capture-menu [data-mode="window"]').click();
+  // The same overlay, opened to pick a window rather than draw a region.
+  expect(await waitFor(page, 'capture_region')).toMatchObject({ args: { window: true } });
+
+  await clear(page);
+  await page.locator('.capture-more').click();
   await page.locator('.capture-menu [data-mode="display"]').click();
   expect(await waitFor(page, 'capture_display')).toMatchObject({ args: {} });
 

@@ -120,13 +120,19 @@ const KEPT_CHARS = 120_000_000;
 /** Six tools do not fit as words, so the palette is glyphs with real labels
  *  behind them for screen readers and tooltips. */
 const STROKE = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
-/** The three ways into a capture. Part of the screen, all of it, and part of it
- *  later: a frame, a filled display, and a stopwatch, so the set reads as three
- *  answers to the same question rather than three unrelated pictures. */
-const CAPTURE_MODES: { mode: string; name: string; hint: string; art: string }[] = [
+/** The four ways into a capture. Part of the screen, one window, all of it, and
+ *  part of it later: a frame, a window, a filled display, and a stopwatch, so
+ *  the set reads as four answers to the same question rather than four
+ *  unrelated pictures. */
+type CaptureMode = 'region' | 'window' | 'display' | 'timed';
+const CAPTURE_MODES: { mode: CaptureMode; name: string; hint: string; art: string }[] = [
   { mode: 'region', name: 'Region', hint: prettyShortcut(DEFAULT_SHORTCUT), art:
     `<path d="M4.4 7.7V5.9a1.5 1.5 0 0 1 1.5-1.5h1.8M12.3 4.4h1.8a1.5 1.5 0 0 1 1.5 1.5v1.8`
     + `M15.6 12.3v1.8a1.5 1.5 0 0 1-1.5 1.5h-1.8M7.7 15.6H5.9a1.5 1.5 0 0 1-1.5-1.5v-1.8" ${STROKE}/>` },
+  { mode: 'window', name: 'Window', hint: '', art:
+    `<rect x="3.2" y="4.4" width="13.6" height="11.2" rx="1.8" ${STROKE}/>`
+    + `<path d="M3.2 7.8h13.6" ${STROKE}/>`
+    + `<circle cx="5.6" cy="6.1" r=".7" fill="currentColor"/><circle cx="7.6" cy="6.1" r=".7" fill="currentColor"/>` },
   { mode: 'display', name: 'Whole Screen', hint: '', art:
     `<rect x="3.2" y="4.5" width="13.6" height="9.6" rx="1.8" fill="currentColor" opacity=".16"/>`
     + `<rect x="3.2" y="4.5" width="13.6" height="9.6" rx="1.8" ${STROKE}/>`
@@ -1125,7 +1131,7 @@ on(captureMore, 'click', event => {
 });
 on(captureMenu, 'click', event => {
   const mode = (event.target as Element).closest<HTMLButtonElement>('[data-mode]')?.dataset.mode;
-  if (mode) startCapture(mode as 'region' | 'display' | 'timed');
+  if (mode) startCapture(mode as CaptureMode);
 });
 document.addEventListener('pointerdown', event => {
   if (!captureMenu.hidden && !captureControl.contains(event.target as Node)) closeCaptureMenu();
@@ -1487,11 +1493,11 @@ function stepZoom(direction: 1 | -1) {
 
 /** Start a capture. In the browser preview there is nothing native to call, so
  *  every mode falls back to the file chooser, as the empty state does. */
-function startCapture(mode: 'region' | 'display' | 'timed') {
+function startCapture(mode: CaptureMode) {
   closeCaptureMenu();
   if (!isTauri) { input.click(); return; }
-  const call = mode === 'display'
-    ? command('capture_display', {})
+  const call = mode === 'display' ? command('capture_display', {})
+    : mode === 'window' ? command('capture_region', { window: true })
     : command('capture_region', mode === 'timed' ? { delay: 5 } : {});
   void call.catch(report);
 }

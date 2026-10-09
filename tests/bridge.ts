@@ -45,6 +45,7 @@ export async function installBridge(page: Page, snapshot: {
         // keeping what is listened for, so a test can play Rust's part.
         if (cmd.startsWith('plugin:event|')) {
           if (cmd === 'plugin:event|listen') ((window as any).__listening ??= []).push(args);
+          if (cmd === 'plugin:event|emit') ((window as any).__emitted ??= []).push(args);
           return next++;
         }
         sent.push({ cmd, args });
@@ -73,6 +74,11 @@ export async function emit(page: Page, event: string, payload: unknown = null): 
       if (args.event === name) (window as any)[`__cb${args.handler}`]({ event: name, id: 0, payload });
     }
   }, [event, payload] as const);
+}
+
+/** Events the page has emitted to its sibling windows, in order. */
+export function emitted(page: Page): Promise<{ event: string; payload: unknown }[]> {
+  return page.evaluate(() => (window as any).__emitted ?? []);
 }
 
 /** Forget what has been sent so far, so the next assertion is about one action. */

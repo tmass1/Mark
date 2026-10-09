@@ -4,7 +4,9 @@ use objc2::rc::Retained as Rc;
 use objc2_app_kit::{NSApplication, NSImage, NSPasteboard, NSRunningApplication,
                     NSApplicationActivationOptions, NSSharingServicePicker, NSWindow,
                     NSWindowCollectionBehavior, NSWorkspace};
-use objc2_foundation::{NSArray, NSData, NSPoint, NSRect, NSRectEdge, NSSize, NSString, NSURL};
+use objc2_foundation::{NSArray, NSData, NSDictionary, NSNumber, NSPoint, NSRect, NSRectEdge, NSSize, NSString, NSURL};
+
+use crate::capture::{Listed, Rect};
 
 /// Above the menu bar and the Dock. A selection overlay that sits below either
 /// one cannot capture what is under it.
@@ -14,6 +16,59 @@ const SCREEN_SAVER_LEVEL: isize = 1000;
 extern "C" {
     fn CGPreflightScreenCaptureAccess() -> bool;
     fn CGRequestScreenCaptureAccess() -> bool;
+    fn CGWindowListCopyWindowInfo(option: u32, relative_to_window: u32) -> *mut NSArray<NSDictionary<NSString, AnyObject>>;
+    fn CGRectMakeWithDictionaryRepresentation(dictionary: *const AnyObject, rect: *mut NSRect) -> bool;
+    fn CGEventCreate(source: *const std::ffi::c_void) -> *mut std::ffi::c_void;
+    fn CGEventGetLocation(event: *mut std::ffi::c_void) -> NSPoint;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    fn CFRelease(object: *const std::ffi::c_void);
+}
+
+/// Where the pointer is, in the global points the window list uses: top left
+/// of the main display at the origin, as screencapture -R also counts.
+pub fn pointer() -> Option<(f64, f64)> {
+    unsafe {
+        let event = CGEventCreate(std::ptr::null());
+        if event.is_null() { return None; }
+        let at = CGEventGetLocation(event);
+        CFRelease(event);
+        Some((at.x, at.y))
+    }
+}
+
+/// kCGWindowListOptionOnScreenOnly and kCGWindowListExcludeDesktopElements:
+/// the windows in this Space, without the desktop and its icons.
+const ON_SCREEN_WITHOUT_DESKTOP: u32 = (1 << 0) | (1 << 4);
+
+/// Every window on screen, front to back, as the window server lists it. Its
+/// title comes only with screen access, which a capture has by the time it asks.
+pub fn windows_on_screen() -> Vec<Listed> {
+    // A Copy function's result is the caller's to release, which Retained does.
+    let Some(list) = (unsafe { Retained::from_raw(CGWindowListCopyWindowInfo(ON_SCREEN_WITHOUT_DESKTOP, 0)) }) else {
+        return Vec::new();
+    };
+    list.iter().filter_map(|info| listed(&info)).collect()
+}
+
+fn listed(info: &NSDictionary<NSString, AnyObject>) -> Option<Listed> {
+    let value = |key: &str| info.objectForKey(&NSString::from_str(key));
+    let number = |key: &str| value(key).and_then(|v| v.downcast_ref::<NSNumber>().map(NSNumber::as_f64));
+    let text = |key: &str| value(key).and_then(|v| v.downcast_ref::<NSString>().map(NSString::to_string)).unwrap_or_default();
+    let mut bounds = NSRect::ZERO;
+    let ok = unsafe { CGRectMakeWithDictionaryRepresentation(Retained::as_ptr(&value("kCGWindowBounds")?), &mut bounds) };
+    if !ok { return None; }
+    Some(Listed {
+        id: number("kCGWindowNumber")? as u32,
+        pid: number("kCGWindowOwnerPID")? as i32,
+        layer: number("kCGWindowLayer")? as i64,
+        alpha: number("kCGWindowAlpha").unwrap_or(1.0),
+        app: text("kCGWindowOwnerName"),
+        title: text("kCGWindowName"),
+        bounds: Rect { x: bounds.origin.x, y: bounds.origin.y, width: bounds.size.width, height: bounds.size.height },
+    })
 }
 
 pub fn screen_access() -> bool {
@@ -157,4 +212,21 @@ pub fn share_file(handle: *mut std::ffi::c_void, path: &std::path::Path) -> Resu
     );
     picker.showRelativeToRect_ofView_preferredEdge(anchor, &view, NSRectEdge::MinY);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    /// The window server's own list, read through the same calls a capture
+    /// makes. Ignored by default, since what is on screen is up to the Mac it
+    /// runs on: `cargo test -- --ignored` with a few windows open.
+    #[test]
+    #[ignore]
+    fn the_window_server_lists_what_is_on_screen() {
+        let all = super::windows_on_screen();
+        assert!(!all.is_empty(), "no windows listed at all");
+        assert!(all.iter().any(|w| w.layer == 0 && w.bounds.width > 100.0 && !w.app.is_empty()));
+        for w in all.iter().filter(|w| w.layer == 0).take(8) {
+            println!("{:>6}  {:<22} {:>6.0},{:<6.0} {:>5.0} x {:<5.0} alpha {}", w.id, w.app, w.bounds.x, w.bounds.y, w.bounds.width, w.bounds.height, w.alpha);
+        }
+    }
 }

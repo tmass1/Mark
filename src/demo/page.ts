@@ -30,7 +30,17 @@ const state = {
   capture: null as Capture | null, busy: false, error: null as string | null,
   settings: { appearance: 'dark', shortcut: DEMO_SHORTCUT, checkUpdates: true } as Settings,
   armedDelay: 0,
+  armedMode: 'region' as 'region' | 'window',
 };
+
+/** The one app window in the picture of a desktop, as fractions of it, so
+ *  window mode has something to pick: measured off scene.jpg (2880 × 1800),
+ *  where it spans 340–2539 across and 236–1615 down. */
+const SCENE_WINDOW = { id: 1, app: 'Dashboard', title: 'Overview', x: 340 / 2880, y: 236 / 1800, width: 2200 / 2880, height: 1380 / 1800 };
+function sceneWindows() {
+  const w = stage.offsetWidth, h = stage.offsetHeight;
+  return [{ ...SCENE_WINDOW, x: SCENE_WINDOW.x * w, y: SCENE_WINDOW.y * h, width: SCENE_WINDOW.width * w, height: SCENE_WINDOW.height * h }];
+}
 
 /** In the site's frame the page is the desktop and nothing else: no caption,
  *  no margin, and the frame around it is the host's to draw. */
@@ -52,6 +62,7 @@ document.body.innerHTML = `
       </span>
       <div class="tray-menu" role="menu" hidden>
         <button role="menuitem" data-act="capture">Capture Region <kbd></kbd></button>
+        <button role="menuitem" data-act="window">Capture Window</button>
         <button role="menuitem" data-act="show">Show Editor</button>
         <hr />
         <button role="menuitem" data-act="settings">Settings… <kbd>⌘,</kbd></button>
@@ -217,9 +228,9 @@ window.addEventListener('mouseup', endDrag);
 window.addEventListener('blur', endDrag);
 
 // ---- selection -------------------------------------------------------------
-async function beginSelection(delay: number) {
+async function beginSelection(delay: number, window = false) {
   if (state.busy) return;
-  state.busy = true; state.armedDelay = delay; state.error = null;
+  state.busy = true; state.armedDelay = delay; state.armedMode = window ? 'window' : 'region'; state.error = null;
   emitTo(editorFrame, 'capture-changed');
   showEditor(false); settingsWin.hidden = true; stopTips(); showHint(null);
   clip.hidden = true;                              // the desktop is about to be captured
@@ -280,9 +291,11 @@ function applyAppearance() {
 for (const f of [editorFrame, settingsFrame]) f.addEventListener('load', applyAppearance);
 
 // ---- the part of lib.rs the frames talk to ---------------------------------
-export const host: DemoHost & { display(): { x: number; y: number; width: number; height: number; scale: number }; delay(): number; beginDrag(label: string, x: number, y: number): void; endDrag(): void; key(e: { code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }): boolean } = {
+export const host: DemoHost & { display(): { x: number; y: number; width: number; height: number; scale: number }; delay(): number; mode(): 'region' | 'window'; windows(): ReturnType<typeof sceneWindows>; beginDrag(label: string, x: number, y: number): void; endDrag(): void; key(e: { code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }): boolean } = {
   display: () => ({ x: 0, y: 0, width: stage.offsetWidth, height: stage.offsetHeight, scale: sceneScale() }),
   delay: () => state.armedDelay,
+  mode: () => state.armedMode,
+  windows: sceneWindows,
   beginDrag(label, x, y) { beginDrag(label === 'settings' ? settingsWin : editorWin, x, y); },
   endDrag,
   key(e) {
@@ -292,7 +305,7 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
   async invoke(command, args) {
     switch (command) {
       case 'current_capture': return { capture: state.capture, error: state.error, busy: state.busy };
-      case 'capture_region': await beginSelection(Number(args.delay ?? 0)); return;
+      case 'capture_region': await beginSelection(Number(args.delay ?? 0), Boolean(args.window)); return;
       case 'capture_display': {
         state.busy = true; emitTo(editorFrame, 'capture-changed'); showEditor(false);
         await tick(Number(args.delay ?? 0));
@@ -304,6 +317,14 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         await tick(Number(args.delay ?? 0));
         const region = await crop(Number(args.x), Number(args.y), Number(args.width), Number(args.height));
         state.busy = false; await took(region); return;
+      }
+      case 'capture_window': {
+        const picked = sceneWindows().find(w => w.id === Number(args.id));
+        if (!picked) throw 'That window has closed. Pick another, or press Escape.';
+        overlay?.remove(); overlay = null;
+        await tick(Number(args.delay ?? 0));
+        const shot = await crop(picked.x, picked.y, picked.width, picked.height);
+        state.busy = false; await took(shot); return;
       }
       case 'cancel_selection': endSelection(); if (editorWanted) showEditor(true); emitTo(editorFrame, 'capture-changed'); return;
       case 'copy_capture': {
@@ -387,6 +408,7 @@ trayMenu.addEventListener('click', event => {
   const act = (event.target as Element).closest<HTMLButtonElement>('[data-act]')?.dataset.act;
   toggleTray(false);
   if (act === 'capture') void beginSelection(0);
+  if (act === 'window') void beginSelection(0, true);
   if (act === 'show') { editorWanted = true; showEditor(true); showHint(null); emitTo(editorFrame, 'capture-changed'); }
   if (act === 'settings') openSettings();
   if (act === 'quit') void host.invoke('quit_app', {}, window, 'page');

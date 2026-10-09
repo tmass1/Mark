@@ -1,10 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "selector",
-  "description": "The selection overlay may take a region, cancel, and tell its siblings to clear.",
+  "description": "The selection overlay may take a region or a window, cancel, and tell its siblings to clear or switch.",
   "windows": ["selector-*"], "platforms": ["macOS"],
   "permissions": [
-    "allow-capture-rect", "allow-cancel-selection",
+    "allow-capture-rect", "allow-capture-window", "allow-cancel-selection",
     "core:event:allow-listen", "core:event:allow-unlisten", "core:event:allow-emit"
   ]
 }

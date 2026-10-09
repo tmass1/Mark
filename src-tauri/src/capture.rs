@@ -13,7 +13,7 @@ pub struct Capture {
 }
 
 /// A region in global screen points, as Mark's own selection overlay reports it.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rect { pub x: f64, pub y: f64, pub width: f64, pub height: f64 }
 
 impl Rect {
@@ -22,6 +22,58 @@ impl Rect {
     fn argument(&self) -> String {
         format!("-R{},{},{},{}", self.x.round(), self.y.round(), self.width.round(), self.height.round())
     }
+}
+
+/// What the shutter takes: a region of the screen, or one window by the number
+/// the window server knows it by -- all of it, even where another window
+/// covers it, and nothing that is in front of it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Target { Region(Rect), Window { id: u32, bounds: Rect } }
+
+impl Target {
+    fn arguments(&self) -> Vec<String> {
+        match self {
+            Target::Region(rect) => vec![rect.argument()],
+            // -o leaves the shadow out, so the image is the window edge to edge.
+            Target::Window { id, .. } => vec!["-o".into(), format!("-l{id}")],
+        }
+    }
+
+    /// The shot's size in points: its pixels divided by these are the density
+    /// it was taken at, and the editor opens to fit it.
+    pub fn size(&self) -> (f64, f64) {
+        let (Target::Region(rect) | Target::Window { bounds: rect, .. }) = self;
+        (rect.width, rect.height)
+    }
+}
+
+/// A window as the window server lists it, front to back.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Listed { pub id: u32, pub pid: i32, pub layer: i64, pub alpha: f64, pub app: String, pub title: String, pub bounds: Rect }
+
+/// A window the overlay offers to capture, in the global points it works in.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Window { pub id: u32, pub app: String, pub title: String, pub x: f64, pub y: f64, pub width: f64, pub height: f64 }
+
+impl Window {
+    pub fn bounds(&self) -> Rect { Rect { x: self.x, y: self.y, width: self.width, height: self.height } }
+}
+
+/// Narrower or shorter than this, in points, a window is a sliver: a helper an
+/// app keeps on screen, not something anyone means to capture.
+const SLIVER: f64 = 24.0;
+
+/// The windows worth offering, still front to back, so the first one under the
+/// pointer is the one in front. Only ordinary windows: the menu bar, the Dock
+/// and panels floating above everything sit on other layers. Not one that
+/// cannot be seen, nor a sliver, nor Mark's own -- by now only its overlays.
+pub fn capturable(listed: Vec<Listed>, own_pid: i32) -> Vec<Window> {
+    listed.into_iter()
+        .filter(|w| w.layer == 0 && w.alpha > 0.0 && w.pid != own_pid
+                    && w.bounds.width >= SLIVER && w.bounds.height >= SLIVER)
+        .map(|w| Window { id: w.id, app: w.app, title: w.title,
+                          x: w.bounds.x, y: w.bounds.y, width: w.bounds.width, height: w.bounds.height })
+        .collect()
 }
 
 #[derive(Clone, Serialize)]
@@ -73,18 +125,18 @@ pub fn run_capture(executable: &Path, temporary_root: &Path) -> Result<Option<Ca
     run_capture_cancellable(executable, temporary_root, &AtomicBool::new(false), None)
 }
 
-pub fn run_capture_cancellable(executable: &Path, temporary_root: &Path, cancelled: &AtomicBool, rect: Option<Rect>)
+pub fn run_capture_cancellable(executable: &Path, temporary_root: &Path, cancelled: &AtomicBool, target: Option<Target>)
     -> Result<Option<Capture>, String> {
     if cancelled.load(Ordering::SeqCst) { return Ok(None); }
     let directory = tempfile::Builder::new().prefix("Mark-").tempdir_in(temporary_root).map_err(|e| e.to_string())?;
     let output_path = directory.path().join("Capture.png");
     let diagnostic_path = directory.path().join("stderr");
     let diagnostic_file = std::fs::File::create(&diagnostic_path).map_err(|e| e.to_string())?;
-    // No -i: the region already came from Mark's own overlay, so screencapture
-    // runs headless and returns immediately.
+    // No -i: the region or window already came from Mark's own overlay, so
+    // screencapture runs headless and returns immediately.
     let mut arguments: Vec<String> = vec!["-x".into(), "-t".into(), "png".into()];
-    match rect {
-        Some(rect) => arguments.push(rect.argument()),
+    match target {
+        Some(target) => arguments.extend(target.arguments()),
         None => { arguments.insert(0, "-s".into()); arguments.insert(0, "-i".into()); }
     }
     let mut child = Command::new(executable).args(&arguments)
@@ -162,6 +214,38 @@ mod tests {
     fn a_rectangle_becomes_one_screencapture_argument() {
         let rect = Rect { x: 12.4, y: -80.6, width: 640.5, height: 400.2 };
         assert_eq!(rect.argument(), "-R12,-81,641,400");
+        assert_eq!(Target::Region(rect).arguments(), ["-R12,-81,641,400"]);
+    }
+
+    #[test]
+    fn a_window_is_taken_by_its_number_without_its_shadow() {
+        let bounds = Rect { x: -248.0, y: 893.0, width: 1968.0, height: 1283.0 };
+        let target = Target::Window { id: 24576, bounds };
+        assert_eq!(target.arguments(), ["-o", "-l24576"]);
+        // Its density is found from the window's own size, as a region's is from the region's.
+        assert_eq!(target.size(), (1968.0, 1283.0));
+    }
+
+    fn listed(id: u32, pid: i32, layer: i64, alpha: f64, width: f64, height: f64) -> Listed {
+        Listed { id, pid, layer, alpha, app: format!("App {id}"), title: format!("Title {id}"),
+                 bounds: Rect { x: 10.0 * f64::from(id), y: 30.0, width, height } }
+    }
+
+    #[test]
+    fn only_ordinary_visible_windows_of_other_apps_are_offered_front_to_back() {
+        let mark = 400;
+        let offered = capturable(vec![
+            listed(1, 100, 0, 1.0, 800.0, 600.0),     // in front: offered first
+            listed(2, mark, 0, 1.0, 1440.0, 900.0),   // Mark's own overlay
+            listed(3, 101, 25, 1.0, 1440.0, 30.0),    // the menu bar's layer
+            listed(4, 102, 0, 0.0, 500.0, 400.0),     // there, but not to be seen
+            listed(5, 103, 0, 1.0, 12.0, 300.0),      // a sliver
+            listed(6, 104, 0, 1.0, 640.0, 480.0),     // behind the first
+        ], mark);
+        assert_eq!(offered.iter().map(|w| w.id).collect::<Vec<_>>(), [1, 6]);
+        assert_eq!(offered[0], Window { id: 1, app: "App 1".into(), title: "Title 1".into(),
+                                        x: 10.0, y: 30.0, width: 800.0, height: 600.0 });
+        assert_eq!(offered[1].bounds(), Rect { x: 60.0, y: 30.0, width: 640.0, height: 480.0 });
     }
 
     #[test]
