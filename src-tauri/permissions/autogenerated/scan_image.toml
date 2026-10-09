@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scan-image"
+description = "Enables the scan_image command without any pre-configured scope."
+commands.allow = ["scan_image"]
+
+[[permission]]
+identifier = "deny-scan-image"
+description = "Denies the scan_image command without any pre-configured scope."
+commands.deny = ["scan_image"]

@@ -241,12 +241,48 @@ footer > * { flex: none; }
 }
 .glassy:hover { background: var(--control-hover); }
 
+/* Frame shows whether there is one: tinted while the capture is framed. */
+.frame-button.on { color: var(--blue); }
+.frame-panel {
+  position: fixed; z-index: 30; width: 252px; display: flex; flex-direction: column; gap: 12px; padding: 12px 14px 14px;
+  border-radius: 14px; background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: 0 12px 34px var(--shadow), 0 0 0 .5px var(--control-line);
+}
+.frame-panel[hidden] { display: none; }
+.frame-head { display: flex; align-items: center; justify-content: space-between; }
+.frame-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.frame-switch {
+  position: relative; width: 34px; height: 20px; padding: 0; border: none; border-radius: 999px;
+  background: var(--sunken); box-shadow: inset 0 0 0 .5px var(--control-line); transition: background .15s;
+}
+.frame-switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px #0000004d; transition: transform .15s;
+}
+.frame-switch[aria-checked="true"] { background: var(--blue); }
+.frame-switch[aria-checked="true"]::after { transform: translateX(14px); }
+.frame-switch:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.backgrounds { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.background {
+  aspect-ratio: 1; width: 100%; padding: 0; border: none; border-radius: 8px;
+  background: var(--background); box-shadow: inset 0 0 0 .5px #00000026;
+}
+.background[aria-checked="true"] { box-shadow: inset 0 0 0 .5px #00000026, 0 0 0 2px var(--glass), 0 0 0 3.5px var(--blue); }
+.background:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.frame-slider { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.frame-slider input { width: 100%; margin: 0; accent-color: var(--blue); }
+.frame-check { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; }
+.frame-check input { margin: 0; accent-color: var(--blue); }
+@media (prefers-reduced-motion: reduce) { .frame-switch, .frame-switch::after { transition: none; } }
+
 /* Share and Save are one pair of related actions, so they read as one control
    rather than two loose circles. */
 .exports { display: inline-flex; }
 .exports .glassy { border-radius: 0; }
 .exports .glassy:first-child { border-radius: 999px 0 0 999px; padding-left: 13px; }
-.exports .glassy:last-child { border-radius: 0 999px 999px 0; padding-right: 13px; border-left: none; }
+.exports .glassy:last-child { border-radius: 0 999px 999px 0; padding-right: 13px; }
+.exports .glassy + .glassy { border-left: none; }
 
 .subtle, .settings { border: none; padding: 6px 8px; border-radius: 999px; background: transparent; color: var(--muted); font-size: 12px; }
 .subtle:hover, .settings:hover { background: var(--sunken); color: var(--ink); }
@@ -346,6 +382,10 @@ footer > * { flex: none; }
 
 .size { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .weight { width: 88px; accent-color: var(--blue); }
+/* Hide Sensitive, with Redact in hand, where the pickers sit for other tools:
+   the bar holds it whole at every width, as it holds them. */
+.hide-sensitive { gap: 6px; height: 30px; padding: 0 12px 0 10px; font-size: 12px; }
+.hide-sensitive svg { flex: none; width: 17px; height: 17px; }
 
 /* The native select brought its own height, radius and chevron, none of which
    matched the buttons beside it. */
@@ -538,6 +578,20 @@ footer > * { flex: none; }
 .stage { position: relative; aspect-ratio: var(--ratio, 4 / 3); max-width: 100%; max-height: 100%; border-radius: 6px; box-shadow: 0 22px 54px -22px #00000066, 0 3px 10px #00000021, 0 0 0 .5px #0000002b; }
 .stage.zoomed { aspect-ratio: auto; max-width: none; max-height: none; flex: none; }
 .capture { display: block; width: 100%; height: 100%; border-radius: inherit; user-select: none; -webkit-user-select: none; }
+
+/* ---- the frame ---------------------------------------------------------- */
+
+/* Off, the backdrop and the card are no boxes at all, so the stage lays out
+   exactly as it always has. On, the editor sizes all of it in pixels, in the
+   numbers the export draws with: the backdrop is the whole framed image, the
+   card the window on it -- title bar and capture -- and the stage, inside the
+   card, is still just the capture's own box. */
+.backdrop, .card { display: contents; }
+.chrome { display: none; }
+.canvas.framed .backdrop { display: block; position: relative; flex: none; }
+.canvas.framed .card { display: block; position: absolute; }
+.canvas.framed .chrome:not([hidden]) { display: block; position: absolute; left: 0; top: 0; width: 100%; }
+.canvas.framed .stage { position: absolute; left: 0; aspect-ratio: auto; max-width: none; max-height: none; box-shadow: none; }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
 .overlay.text-tool { cursor: text; }
 .overlay.pen-tool { cursor: crosshair; }
@@ -617,24 +671,29 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 @media (max-width: 560px) {
   .browser .titlebar { padding-left: 12px; }
   .toolbar { gap: 8px; padding: 0 12px; }
-  .zoom { display: none; }   /* ⌘0 still zooms */
   .swatch { width: 16px; height: 16px; }
   .swatches { gap: 4px; }
-  .copy kbd, .copy-only kbd, .capture-go kbd { display: none; }
+  .capture-go kbd { display: none; }
 }
 /* The footer gives way as the window narrows, the least missed first. The
-   size readout shrinks (above); the zoom menu and the key hints go at 560px
-   with the rest of the tightening; and the Close button last, since the
-   window's own close button, ⌘W and Escape all remain. The Steps button is
+   size readout shrinks (above); the zoom menu and the key hints go at 620px;
+   then the Close button, since the window's own close button, ⌘W and Escape
+   all remain; and in the narrowest windows Share, Save and Copy Text, which
+   ⌘S, ⇧⌘S and ⇧⌘T still reach. Frame never goes: nothing else reaches it. The Steps button is
    the widest thing in the row, so with it showing the row runs short sooner:
    its word goes, though VoiceOver still reads it, then the zoom menu and key
-   hints, then Close, and in the narrowest windows Share and Save, which ⌘S
-   and ⇧⌘S still reach. Each width leaves room for a count in two digits. */
-@media (max-width: 680px) { .steps-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } }
-@media (max-width: 640px) { footer:has(.steps-toggle:not([hidden])) :is(.zoom, kbd) { display: none; } }
-@media (max-width: 500px) { footer:has(.steps-toggle:not([hidden])) .close-capture { display: none; } }
-@media (max-width: 460px) { footer:has(.steps-toggle:not([hidden])) .exports { display: none; } }
-@media (max-width: 440px) { .close-capture { display: none; } }
+   hints, then Close, then Share, Save and Copy Text. Each width leaves room
+   for a count in two digits. */
+@media (max-width: 620px) {
+  .zoom { display: none; }   /* ⌘0 still zooms */
+  .copy kbd, .copy-only kbd { display: none; }
+}
+@media (max-width: 750px) { .steps-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } }
+@media (max-width: 680px) { footer:has(.steps-toggle:not([hidden])) :is(.zoom, kbd) { display: none; } }
+@media (max-width: 540px) { footer:has(.steps-toggle:not([hidden])) .close-capture { display: none; } }
+@media (max-width: 500px) { footer:has(.steps-toggle:not([hidden])) .exports { display: none; } }
+@media (max-width: 480px) { .close-capture { display: none; } }
+@media (max-width: 440px) { .exports { display: none; } }
 @media (max-width: 400px) { .toolbar { margin-left: 8px; margin-right: 8px; } }
 @media (prefers-reduced-motion: reduce) { .primary:active { transform: none; } }
 .chosen { color: var(--muted); font-size: 11px; white-space: nowrap; }
@@ -643,7 +702,7 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 .glassy.icon { padding: 0 11px; }
 .glassy.icon svg { display: block; width: 17px; height: 17px; }
 /* Close is round, a size down from the buttons with words in them. */
-.close-capture.icon { width: 30px; padding: 0; }
+.close-capture.icon, .frame-button.icon { width: 30px; padding: 0; }
 .close-capture.icon svg { width: 16px; height: 16px; }
 .styles, .fills { position: relative; display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); box-shadow: inset 0 1px 1px #0000000f; }
 

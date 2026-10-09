@@ -24,7 +24,7 @@ const COMPACT: [number, number] = [560, CHROME + RAIL_HEIGHT];
 const DEMO_SHORTCUT = DEFAULT_SHORTCUT;
 
 interface Capture { dataUrl: string; width: number; height: number; scale: number }
-interface Settings { appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates: boolean }
+interface Settings { appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates: boolean; frame?: unknown }
 
 const state = {
   capture: null as Capture | null, busy: false, error: null as string | null,
@@ -367,6 +367,10 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       case 'set_login': throw 'Opening at login is a Mac feature; this web preview can\'t.';
       case 'open_settings': openSettings(); return;
       case 'set_auto_update': state.settings = { ...state.settings, checkUpdates: Boolean(args.enabled) }; return state.settings;
+      // Kept for the visit, as the app keeps it for good: the next capture is framed the same.
+      case 'set_frame': state.settings = { ...state.settings, frame: args.frame }; return state.settings;
+      case 'recognize_text': throw 'Copy Text reads the image with the Mac\'s own text recognition, so it works in the Mac app.';
+      case 'scan_image': throw 'Hide Sensitive reads the image with the Mac\'s own text and face recognition, so it works in the Mac app.';
       case 'open_updates': showHint('The Mac app checks for updates and installs them. This web demo is always the newest version.'); return;
       // The window plugin, as the settings page uses it.
       case 'plugin:window|close': settingsWin.hidden = true; return;

@@ -4,6 +4,7 @@ mod macos;
 mod session;
 mod settings;
 mod updates;
+mod vision;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use tauri_plugin_dialog::DialogExt;
@@ -327,13 +328,33 @@ fn copy_capture(app: AppHandle, close: bool) -> Result<(), String> {
     if close { dismiss_editor(app) } else { Ok(()) }
 }
 
-/// The editor sends a flattened PNG only when something was drawn; an untouched
-/// capture still takes the copy_and_close path and keeps its original bytes.
-/// The numbered list, as plain text. Capped well past any real list of steps.
+/// Plain text for the clipboard: the steps as a list, or the words read off the
+/// image. Capped well past any real list, or any screenful of words.
 #[tauri::command]
 fn copy_text(text: String) -> Result<(), String> {
-    if text.len() > 64 * 1024 { return Err("That list is too long to copy.".into()); }
+    if text.len() > 256 * 1024 { return Err("That's too much text to copy.".into()); }
     macos::copy_text(&text)
+}
+
+/// Copy Text: every line of words in the image, with where each word is, read
+/// by Vision on the Mac. The editor sends the capture as it stands -- cropped,
+/// without its marks -- and decides what to copy and in what order. Off the
+/// main thread: reading a full screen takes a moment.
+#[tauri::command]
+async fn recognize_text(png: String) -> Result<Vec<vision::Line>, String> {
+    let (bytes, width, height) = decode_png_sized(&png)?;
+    tauri::async_runtime::spawn_blocking(move || vision::recognize(&bytes, width, height))
+        .await.map_err(|e| e.to_string())?
+}
+
+/// Hide Sensitive: the words and where they are, as for Copy Text, and the
+/// faces, in one reading of the image. The editor finds what in them should be
+/// hidden.
+#[tauri::command]
+async fn scan_image(png: String) -> Result<vision::Scan, String> {
+    let (bytes, width, height) = decode_png_sized(&png)?;
+    tauri::async_runtime::spawn_blocking(move || vision::scan(&bytes, width, height, true))
+        .await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -411,11 +432,14 @@ fn share_image(app: AppHandle, png: String, name: String) -> Result<(), String> 
 
 /// Base64 in, verified PNG bytes out. Everything leaving the editor as a file
 /// or to another app goes through here first.
-fn decode_png(png: &str) -> Result<Vec<u8>, String> {
+fn decode_png(png: &str) -> Result<Vec<u8>, String> { decode_png_sized(png).map(|(bytes, _, _)| bytes) }
+
+/// The same, with the image's size in pixels.
+fn decode_png_sized(png: &str) -> Result<(Vec<u8>, u32, u32), String> {
     if png.len() > 128 * 1024 * 1024 { return Err("That image is too large.".into()); }
     let bytes = STANDARD.decode(png.as_bytes()).map_err(|_| "The edited screenshot couldn't be read.")?;
-    capture::validate_png(&bytes)?;
-    Ok(bytes)
+    let (width, height) = capture::validate_png(&bytes)?;
+    Ok((bytes, width, height))
 }
 
 /// Command-Q from the editor, which sees keys before the app's hidden menu
@@ -553,6 +577,17 @@ fn set_shortcut(app: AppHandle, shortcut: String) -> Result<settings::Settings, 
     Ok(updated)
 }
 
+/// The editor's Frame panel, remembered so the next capture is framed the same.
+/// No settings-changed event: the editor is the only window that frames, and
+/// it already knows what it just chose.
+#[tauri::command]
+fn set_frame(app: AppHandle, frame: settings::Frame) -> Result<settings::Settings, String> {
+    let state = app.state::<Prefs>();
+    let updated = { let mut prefs = state.0.lock().unwrap(); prefs.frame = frame.sanitized(); prefs.clone() };
+    settings::save(&app, &updated)?;
+    Ok(updated)
+}
+
 #[tauri::command]
 fn login_enabled() -> bool { macos::login_item_status() == macos::LOGIN_ENABLED }
 
@@ -631,8 +666,8 @@ pub fn run() {
             }
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, capture_window, cancel_selection,
-            copy_capture, copy_edited, copy_text, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
-            get_settings, set_appearance, set_shortcut, login_enabled, set_login, open_settings, quit_app,
+            copy_capture, copy_edited, copy_text, recognize_text, scan_image, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
+            get_settings, set_appearance, set_shortcut, set_frame, login_enabled, set_login, open_settings, quit_app,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
             updates::set_auto_update, updates::open_updates])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))

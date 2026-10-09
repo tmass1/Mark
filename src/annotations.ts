@@ -1320,6 +1320,27 @@ export class AnnotationLayer {
     return this.copySelection().length ? this.paste() : [];
   }
 
+  /** Cover each area with a redaction, all as one step: what Hide Sensitive
+   *  finds goes down at once, and comes off at once with ⌘Z. Each is kept to
+   *  the image and pixelated there, at the size in hand, and the new marks are
+   *  left selected, so they can be looked over, moved or deleted together. */
+  addRedactions(areas: readonly { x: number; y: number; width: number; height: number }[]): Shape[] {
+    const marks = areas.flatMap(area => {
+      const x = Math.max(0, area.x), y = Math.max(0, area.y);
+      const width = Math.min(this.width, area.x + area.width) - x, height = Math.min(this.height, area.y + area.height) - y;
+      return width >= 1 && height >= 1 ? [{ x, y, width, height }] : [];
+    });
+    if (!marks.length) return [];
+    if (this.editing !== null) this.commit();
+    this.commitHistory();
+    const added: Shape[] = marks.map(area => ({ kind: 'redact', id: this.nextId++, ...area, color: this.style.color, weight: this.weight }));
+    this.items.push(...added);
+    this.chosen = new Set(added.map(mark => mark.id));
+    for (const mark of added) this.settle(mark);
+    this.render(); this.onChange();
+    return added;
+  }
+
   /** Change part of the style: for the next mark, and for the selection. Only
    *  the parts named are written, and only to marks that have them, so a colour
    *  change can never also change a mark's size, its arrow, or what it is --

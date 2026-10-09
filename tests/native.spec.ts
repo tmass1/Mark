@@ -46,7 +46,7 @@ test('an untouched capture is copied by reference, with closing asked for explic
   await page.goto('/');
 
   await clear(page);
-  await page.getByRole('button', { name: /^Copy/ }).first().click();
+  await page.getByRole('button', { name: /^Copy( ⌘C)?$/ }).click();
   expect(await waitFor(page, 'copy_capture')).toMatchObject({ args: { close: false } });
   await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
 
@@ -133,7 +133,7 @@ test('the footer fits every window width, giving way in order', async ({ page })
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto('/');
   await page.locator('.capture').waitFor();
-  const widths = [...Array.from({ length: 53 }, (_, i) => 900 - i * 10), 681, 641, 561, 501, 461, 441];
+  const widths = [...Array.from({ length: 53 }, (_, i) => 900 - i * 10), 751, 681, 621, 541, 501, 481, 441];
   const walk = async (steps: boolean) => {
     for (const width of widths) {
       await page.setViewportSize({ width, height: 800 });
@@ -147,13 +147,15 @@ test('the footer fits every window width, giving way in order', async ({ page })
           overflow: footer.scrollWidth - footer.clientWidth,
           copyAndCloseInside: document.querySelector('footer .copy')!.getBoundingClientRect().right <= edge + 0.5,
           close: shown('.close-capture'), exports: shown('footer .exports'), word: shown('.steps-word'),
+          frame: shown('.frame-button'),
         };
       });
       expect(seen, `${width}px, ${steps ? 'with' : 'without'} steps`).toEqual({
         overflow: 0, copyAndCloseInside: true,
-        close: width > (steps ? 500 : 440),
-        exports: !steps || width > 460,
-        word: steps && width > 680,
+        close: width > (steps ? 540 : 480),
+        exports: width > (steps ? 500 : 440),
+        word: steps && width > 750,
+        frame: true,
       });
     }
   };

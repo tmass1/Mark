@@ -5,6 +5,10 @@ import { DEFAULT_SHORTCUT, prettyShortcut } from './shortcut';
 // own or the copy the web demo runs in a frame.
 import markIcon from './mark-icon.png';
 import { copyThenDismiss } from './model';
+import { readingOrder, within, type Area, type TextLine } from './text';
+import { describeHidden, findSensitive } from './sensitive';
+import { BACKGROUNDS, BAR_COLOURS, DEFAULT_FRAME, LIGHTS_SVG, backgroundOf, cssBackground, darkTop, frameGeometry, paintFrame,
+         sanitizeFrame, type FrameStyle } from './frame';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, LOOKS, hexColour, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
          FONT, arrowPaint, badgeAt, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isShape, numbered,
@@ -273,6 +277,11 @@ app.innerHTML = `
         aria-checked="${fill === 'outline'}" title="${FILL_NAMES[fill]} shape"><svg viewBox="0 0 20 20"
         aria-hidden="true">${fillPreview(fill)}</svg><span class="sr">${FILL_NAMES[fill]}</span></button>`).join('')}
     </div>
+    <button class="hide-sensitive glassy" type="button" hidden
+      title="Find and pixelate email addresses, phone and card numbers, keys and faces (⇧⌘R)">
+      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 10s2.6-4.9 7.2-4.9 7.2 4.9 7.2 4.9-2.6 4.9-7.2 4.9S2.8 10 2.8 10z"/><circle cx="10" cy="10" r="2.1"/><path d="M4 16 16 4"/></svg>
+      <span class="hide-word">Hide Sensitive</span>
+    </button>
     <label class="size"><span class="size-word">Size</span>
       <input class="weight" type="range" min="0.1" max="2.5" step="0.05" value="1" aria-label="Size" />
     </label>
@@ -300,10 +309,13 @@ app.innerHTML = `
       <div class="tool-menu" role="menu" hidden></div>
     </nav>
   <main class="canvas" aria-label="Screenshot editor">
-    <div class="stage" hidden>
-      <img class="capture" alt="Captured screenshot" draggable="false" />
-      <svg class="overlay" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Arrow annotations"></svg>
-    </div>
+    <div class="backdrop"><div class="card">
+      <div class="chrome" aria-hidden="true" hidden></div>
+      <div class="stage" hidden>
+        <img class="capture" alt="Captured screenshot" draggable="false" />
+        <svg class="overlay" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Arrow annotations"></svg>
+      </div>
+    </div></div>
     <section class="empty" hidden>
       <!-- The icon itself, so what greets you on launch is exactly what sits in
            the Dock. It used to be redrawn from paths, which is how the two came
@@ -366,12 +378,20 @@ app.innerHTML = `
     </label>
     <span class="push"></span>
     <button class="choose glassy" type="button" hidden>Choose image…</button>
+    <button class="frame-button glassy icon" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Frame"
+      title="Frame: a background, room and rounded corners around the image">
+      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="3.2" width="14.8" height="13.6" rx="3.4"/><rect x="6.2" y="6.8" width="7.6" height="6.4" rx="1.3" fill="currentColor" fill-opacity=".28"/></svg>
+    </button>
     <span class="exports">
     <button class="share glassy icon" type="button" title="Share (⌘⇧S)" aria-label="Share">
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.8v9M6.8 6l3.2-3.2L13.2 6"/><path d="M5 10.6H4.2a1.4 1.4 0 0 0-1.4 1.4v4.2a1.4 1.4 0 0 0 1.4 1.4h11.6a1.4 1.4 0 0 0 1.4-1.4V12a1.4 1.4 0 0 0-1.4-1.4H15"/></svg>
     </button>
     <button class="save glassy icon" type="button" title="Save to a file (⌘S)" aria-label="Save to a file">
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.8v9M6.8 8.6 10 11.8l3.2-3.2"/><path d="M3.4 14v2.2a1.4 1.4 0 0 0 1.4 1.4h10.4a1.4 1.4 0 0 0 1.4-1.4V14"/></svg>
+    </button>
+    <button class="copy-text glassy icon" type="button" aria-label="Copy text"
+      title="Copy the text in the image, or in the selected box (⇧⌘T)">
+      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.6V4.8A1.8 1.8 0 0 1 4.8 3h1.8M13.4 3h1.8A1.8 1.8 0 0 1 17 4.8v1.8M17 13.4v1.8a1.8 1.8 0 0 1-1.8 1.8h-1.8M6.6 17H4.8A1.8 1.8 0 0 1 3 15.2v-1.8"/><path d="M6.8 7.6h6.4M6.8 10.2h6.4M6.8 12.8h3.8"/></svg>
     </button>
     </span>
     <button class="steps-toggle glassy" type="button" hidden aria-expanded="false"
@@ -387,10 +407,30 @@ app.innerHTML = `
     <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘C</kbd></button>
     <button class="copy primary" type="button">Copy and Close <kbd>⌥⌘C</kbd></button>
   </footer>
+  <aside class="frame-panel" role="dialog" aria-label="Frame" hidden>
+    <div class="frame-head">
+      <span class="frame-title">Frame</span>
+      <button class="frame-switch" type="button" role="switch" aria-checked="false" aria-label="Frame the image"></button>
+    </div>
+    <div class="backgrounds" role="radiogroup" aria-label="Background">
+      ${BACKGROUNDS.map(background => `<button class="background" type="button" role="radio" aria-checked="false"
+        data-background="${background.id}" title="${background.name}" aria-label="${background.name}"
+        style="--background: ${cssBackground(background)}"></button>`).join('')}
+    </div>
+    ${([['padding', 'Padding'], ['radius', 'Corners'], ['shadow', 'Shadow']] as const).map(([key, name]) =>
+      `<label class="frame-slider"><span>${name}</span><input type="range" min="0" max="1" step="0.01" data-frame="${key}" /></label>`).join('')}
+    <label class="frame-check"><input type="checkbox" data-frame="chrome" /><span>Title bar</span></label>
+  </aside>
   <input class="file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
 `;
 const image = app.querySelector<HTMLImageElement>('.capture')!;
 const stage = app.querySelector<HTMLElement>('.stage')!;
+const backdrop = app.querySelector<HTMLElement>('.backdrop')!;
+const card = app.querySelector<HTMLElement>('.card')!;
+const chrome = app.querySelector<HTMLElement>('.chrome')!;
+const frameButton = app.querySelector<HTMLButtonElement>('.frame-button')!;
+const framePanel = app.querySelector<HTMLElement>('.frame-panel')!;
+const frameSwitch = framePanel.querySelector<HTMLButtonElement>('.frame-switch')!;
 const overlay = app.querySelector<SVGSVGElement>('.overlay')!;
 const toolbar = app.querySelector<HTMLElement>('.toolbar')!;
 const rail = app.querySelector<HTMLElement>('.rail')!;
@@ -416,12 +456,14 @@ const customColours: string[] = [];
 const noteModes = app.querySelector<HTMLElement>('.steps-show .segments')!;
 const fills = app.querySelector<HTMLElement>('.fills')!;
 const removeButton = app.querySelector<HTMLButtonElement>('.remove')!;
+const hideButton = app.querySelector<HTMLButtonElement>('.hide-sensitive')!;
 const empty = app.querySelector<HTMLElement>('.empty')!;
 const copy = app.querySelector<HTMLButtonElement>('.copy')!;
 const copyOnly = app.querySelector<HTMLButtonElement>('.copy-only')!;
 const closeButton = app.querySelector<HTMLButtonElement>('.close-capture')!;
 const shareButton = app.querySelector<HTMLButtonElement>('.share')!;
 const saveButton = app.querySelector<HTMLButtonElement>('.save')!;
+const copyTextButton = app.querySelector<HTMLButtonElement>('.copy-text')!;
 const start = app.querySelector<HTMLButtonElement>('.start')!;
 const choose = app.querySelector<HTMLButtonElement>('.choose')!;
 const input = app.querySelector<HTMLInputElement>('.file-input')!;
@@ -441,6 +483,10 @@ const cropApply = app.querySelector<HTMLButtonElement>('.crop-apply')!;
 const abort = new AbortController();
 const cleanups: (() => void)[] = [];
 let capture: CapturePreview | null = null;
+/** How a capture is framed: kept by Rust in the app, for the session in the preview. */
+let frame: FrameStyle = { ...DEFAULT_FRAME };
+/** Whether the current capture's top edge is dark, so its title bar would be. */
+let barDark = false;
 let busy = false;
 let copyPending = false;
 let disposed = false;
@@ -686,8 +732,8 @@ const PANEL_SNAP = 28;
  *  panel belongs over the capture, so that is what it is kept inside: the
  *  window would let it sit on the tool rail, where it covers the tools. */
 function panelRoom() {
-  const frame = app.getBoundingClientRect(), canvas = stage.parentElement!.getBoundingClientRect();
-  return { left: canvas.left - frame.left, top: canvas.top - frame.top,
+  const outer = app.getBoundingClientRect(), canvas = canvasArea.getBoundingClientRect();
+  return { left: canvas.left - outer.left, top: canvas.top - outer.top,
            width: canvas.width, height: canvas.height };
 }
 function placePanel(left: number, top: number) {
@@ -909,6 +955,8 @@ function syncTools() {
   const shapes = picked.filter(fillable);
   const shaping = source ? fillable(source) : layer.tool === 'box' || layer.tool === 'ellipse';
   fills.hidden = !shaping;
+  // With Redact in hand, the one that finds what to redact by itself.
+  hideButton.hidden = layer.tool !== 'redact';
   if (source && fillable(source)) layer.style.fill = fillOf(source);
   // Selecting a numbered mark puts its slot on the numbered variant, so the rail
   // goes on describing the next edit the way the toolbar's pickers do.
@@ -1010,7 +1058,11 @@ function render() {
     image.removeAttribute('src');
   }
   drawRecents();
-  app.querySelector('.dimensions')!.textContent = capture ? `${capture.width} × ${capture.height} px` : '';
+  // Framed, the size is the size of what will be copied.
+  const framedSize = capture && frame.on ? frameGeometry(capture.width, capture.height, capture.scale ?? 1, frame) : null;
+  app.querySelector('.dimensions')!.textContent = !capture ? ''
+    : framedSize ? `${framedSize.width} × ${framedSize.height} px, framed` : `${capture.width} × ${capture.height} px`;
+  if (!capture) closeFramePanel();
   // With nothing captured every control in the footer is hidden, which left an
   // empty band of chrome across the bottom of the empty state.
   app.querySelector<HTMLElement>('footer')!.hidden = !capture;
@@ -1018,7 +1070,7 @@ function render() {
   copyOnly.hidden = closeButton.hidden = !capture;
   shareButton.hidden = saveButton.hidden = !capture || !isTauri;
   app.querySelector<HTMLElement>('.exports')!.hidden = !capture || !isTauri;
-  shareButton.disabled = saveButton.disabled = busy || copyPending;
+  shareButton.disabled = saveButton.disabled = copyTextButton.disabled = busy || copyPending;
   zoomSelect.parentElement!.hidden = !capture;
   applyZoom();
   copy.disabled = busy || copyPending;
@@ -1047,16 +1099,24 @@ async function dismiss() {
   capture = null; showMessage(null); render(); start.focus();
 }
 
-/** Flatten the capture and its arrows at natural resolution. */
+/** Flatten the capture and its arrows at natural resolution -- framed, when
+ *  Frame is on, in the same numbers the canvas showed it in. */
 async function flatten(): Promise<HTMLCanvasElement> {
   const source = new Image();
   source.src = capture!.dataUrl;
   await source.decode();
+  const { width, height } = capture!;
+  const geometry = frame.on ? frameGeometry(width, height, capture!.scale ?? 1, frame) : null;
   const canvas = document.createElement('canvas');
-  canvas.width = capture!.width; canvas.height = capture!.height;
+  canvas.width = geometry?.width ?? width; canvas.height = geometry?.height ?? height;
   const context = canvas.getContext('2d')!;
-  context.drawImage(source, 0, 0, canvas.width, canvas.height);
-  drawAnnotations(context, layer.annotations, { source, notes: layer.notes, density: layer.density });
+  const draw = () => {
+    context.drawImage(source, 0, 0, width, height);
+    // The image's own size, which badges are kept inside: not the frame's.
+    drawAnnotations(context, layer.annotations, { source, notes: layer.notes, density: layer.density, width, height });
+  };
+  if (geometry) paintFrame(context, geometry, frame, { width, height, dark: darkTop(source, width, height) }, draw);
+  else draw();
   return canvas;
 }
 
@@ -1082,6 +1142,53 @@ async function exportImage(via: 'save_image' | 'share_image') {
   finally { copyPending = false; render(); }
 }
 
+/** A box, ellipse or highlight on its own in the selection: Copy Text then
+ *  copies only the words inside it. A redaction hides its words, so not that. */
+function textArea(): { x: number; y: number; width: number; height: number } | null {
+  const picked = layer.selection;
+  const shape = picked.length === 1 ? picked[0] : null;
+  if (!shape || (shape.kind !== 'box' && shape.kind !== 'ellipse' && shape.kind !== 'highlight')) return null;
+  return { x: Math.min(shape.x, shape.x + shape.width), y: Math.min(shape.y, shape.y + shape.height),
+           width: Math.abs(shape.width), height: Math.abs(shape.height) };
+}
+
+/** Copy Text: the words in the capture -- as it stands, cropped, without the
+ *  marks drawn on it -- read on the Mac and copied in reading order. With a box
+ *  selected, only the words inside it. */
+async function copyText() {
+  if (!capture || busy || copyPending) return;
+  if (!isTauri) { flash('Copy Text reads the image on your Mac, so it works in the Mac app.'); return; }
+  const area = textArea();
+  copyPending = true; render(); flash(area ? 'Reading the text in the box…' : 'Reading the text…');
+  try {
+    const lines = await command<TextLine[]>('recognize_text', { png: capture.dataUrl.split(',')[1] });
+    const text = readingOrder(area ? within(lines, area) : lines);
+    if (!text) { flash(area ? 'No text inside the box.' : 'No text in the image.'); return; }
+    await command('copy_text', { text });
+    const count = text.split('\n').length;
+    flash(`Copied ${count} ${count === 1 ? 'line' : 'lines'} of text${area ? ' from the box' : ''}.`);
+  } catch (error) { report(error); }
+  finally { copyPending = false; render(); }
+}
+
+/** Hide Sensitive: read the capture on the Mac, find the email addresses,
+ *  phone and card numbers, keys and faces in it, and pixelate each one -- as
+ *  one step, so ⌘Z takes them all back, and selected, to be looked over. */
+async function hideSensitive() {
+  if (!capture || busy || copyPending) return;
+  if (!isTauri) { flash('Hide Sensitive reads the image on your Mac, so it works in the Mac app.'); return; }
+  copyPending = true; render(); flash('Looking for anything sensitive…');
+  try {
+    const scan = await command<{ lines: TextLine[]; faces: Area[] }>('scan_image', { png: capture.dataUrl.split(',')[1] });
+    const found = findSensitive(scan?.lines ?? [], scan?.faces ?? []);
+    const added = layer.addRedactions(found.map(item => item.area));
+    flash(added.length
+      ? `${describeHidden(found)} ⌘Z puts ${added.length === 1 ? 'it' : 'them'} back.`
+      : 'Nothing sensitive found: no email addresses, phone or card numbers, keys or faces.');
+  } catch (error) { report(error); }
+  finally { copyPending = false; render(); }
+}
+
 async function copyCapture(close = true) {
   if (!capture || busy || copyPending) return;
   // The image is what goes to the clipboard, whatever is selected. Anything
@@ -1092,13 +1199,14 @@ async function copyCapture(close = true) {
   try {
     if (isTauri) {
       // An untouched capture keeps its original bytes; only a drawing re-encodes.
-      // A crop makes the original bytes wrong, so it forces a re-encode too.
-      if (layer.empty && !mustFlatten) await command('copy_capture', { close });
+      // A crop makes the original bytes wrong, so it forces a re-encode too, and
+      // so does a frame, which is new pixels all round the old ones.
+      if (layer.empty && !mustFlatten && !frame.on) await command('copy_capture', { close });
       else await command('copy_edited', { png: (await flatten()).toDataURL('image/png').split(',')[1], close });
       if (close) capture = null; else flash(`Copied to clipboard.${heldHint(held)}${listHint()}`);
     } else {
       // Start clipboard.write inside the gesture; Safari accepts a promised Blob.
-      const png = layer.empty
+      const png = layer.empty && !frame.on
         ? fetch(capture.dataUrl).then(response => response.blob())
         : flatten().then(canvas => new Promise<Blob>((resolve, reject) =>
             canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('The image could not be encoded.'))), 'image/png')));
@@ -1120,6 +1228,8 @@ on(copyOnly, 'click', () => { void copyCapture(false); });
 // ⌘W's button: out without copying, and nothing lost, since what closes waits in Recent.
 on(closeButton, 'click', () => { void dismiss().catch(report); });
 on(saveButton, 'click', () => { void exportImage('save_image'); });
+on(copyTextButton, 'click', () => { void copyText(); });
+on(hideButton, 'click', () => { void hideSensitive(); });
 on(shareButton, 'click', () => { void exportImage('share_image'); });
 on(start, 'click', () => startCapture('region'));
 on(app.querySelector<HTMLButtonElement>('.capture-go')!, 'click', () => startCapture('region'));
@@ -1455,7 +1565,8 @@ function startingZoom(next: CapturePreview): 'fit' | number {
   const room = canvasArea.getBoundingClientRect();
   if (!room.width || !room.height) return 1;      // before first layout
   const ratio = 1 / (next.scale || 1);
-  const fits = next.width * ratio <= room.width - 52 && next.height * ratio <= room.height - 52;
+  const size = frame.on ? frameGeometry(next.width, next.height, next.scale ?? 1, frame) : next;
+  const fits = size.width * ratio <= room.width - 52 && size.height * ratio <= room.height - 52;
   return fits ? 1 : 'fit';
 }
 
@@ -1463,7 +1574,8 @@ function applyZoom() {
   const fitted = zoom === 'fit';
   stage.classList.toggle('zoomed', !fitted);
   canvasArea.classList.toggle('scrolls', !fitted);
-  if (!fitted && capture) {
+  if (layoutFrame()) { /* framed: laid out, stage and all, in pixels */ }
+  else if (!fitted && capture) {
     const ratio = pixelRatio(zoom as number);
     stage.style.width = `${Math.round(capture.width * ratio)}px`;
     stage.style.height = `${Math.round(capture.height * ratio)}px`;
@@ -1473,6 +1585,127 @@ function applyZoom() {
   zoomSelect.value = fitted ? 'fit' : String(zoom);
   layer.measure();
 }
+
+/** The frame on the canvas, in the numbers the export draws it in, scaled to
+ *  the screen: at Fit, the whole framed image fits the canvas and is never
+ *  shown larger than its own pixels, as an unframed capture never is; at a
+ *  zoom, it is scaled as the capture is. The stage stays the image's own box
+ *  inside it, so drawing, measuring and pointing work exactly as unframed.
+ *  Says whether it laid the stage out; off, the backdrop and the card are no
+ *  boxes at all and the stage is left to lay out as it always has. */
+function layoutFrame(): boolean {
+  const on = frame.on && !!capture;
+  canvasArea.classList.toggle('framed', on);
+  if (!on) {
+    for (const element of [backdrop, card, chrome]) element.removeAttribute('style');
+    stage.style.removeProperty('top'); stage.style.removeProperty('border-radius');
+    chrome.hidden = true;
+    return false;
+  }
+  const { width, height } = capture!;
+  const geometry = frameGeometry(width, height, capture!.scale ?? 1, frame);
+  const k = zoom === 'fit'
+    ? Math.min(1, canvasArea.clientWidth / geometry.width, canvasArea.clientHeight / geometry.height)
+    : pixelRatio(zoom);
+  const px = (value: number) => `${value * k}px`;
+  const corner = px(geometry.radius);
+  backdrop.style.width = px(geometry.width); backdrop.style.height = px(geometry.height);
+  backdrop.style.background = cssBackground(backgroundOf(frame.background));
+  Object.assign(card.style, {
+    left: px(geometry.pad), top: px(geometry.pad), width: px(width), height: px(height + geometry.bar), borderRadius: corner,
+    boxShadow: geometry.shadow.alpha
+      ? `0 ${px(geometry.shadow.y)} ${px(geometry.shadow.blur)} rgba(0, 0, 0, ${geometry.shadow.alpha.toFixed(3)})` : 'none',
+  });
+  chrome.hidden = !geometry.bar;
+  if (geometry.bar) {
+    const colours = barDark ? BAR_COLOURS.dark : BAR_COLOURS.light;
+    const line = Math.max(1, Math.round(geometry.bar / 28));
+    Object.assign(chrome.style, {
+      height: px(geometry.bar), borderRadius: `${corner} ${corner} 0 0`,
+      background: `${LIGHTS_SVG} left center / auto 100% no-repeat, ${colours.fill}`,
+      boxShadow: `inset 0 -${px(line)} 0 ${colours.line}`,
+    });
+  }
+  Object.assign(stage.style, {
+    top: px(geometry.bar), width: px(width), height: px(height),
+    borderRadius: geometry.bar ? `0 0 ${corner} ${corner}` : corner,
+  });
+  return true;
+}
+
+// At Fit a framed capture is sized from the canvas, so it follows the window.
+const canvasWatch = new ResizeObserver(() => { if (frame.on && capture && zoom === 'fit') { layoutFrame(); layer.measure(); } });
+canvasWatch.observe(canvasArea);
+cleanups.push(() => canvasWatch.disconnect());
+on(image, 'load', () => { barDark = darkTop(image, image.naturalWidth, image.naturalHeight); layoutFrame(); });
+
+/** The panel says what the frame is; the footer button says whether there is one. */
+function syncFramePanel() {
+  frameSwitch.setAttribute('aria-checked', String(frame.on));
+  frameButton.classList.toggle('on', frame.on);
+  for (const swatch of framePanel.querySelectorAll<HTMLButtonElement>('.background')) {
+    swatch.setAttribute('aria-checked', String(swatch.dataset.background === frame.background));
+  }
+  for (const input of framePanel.querySelectorAll<HTMLInputElement>('input[data-frame]')) {
+    const value = frame[input.dataset.frame as keyof FrameStyle];
+    if (input.type === 'checkbox') input.checked = value === true;
+    else input.value = String(value);
+  }
+}
+
+/** Change the frame, show it, and -- unless a slider is still moving -- keep it
+ *  for the next capture and the next launch. */
+function setFrame(change: Partial<FrameStyle>, keep = true) {
+  frame = { ...frame, ...change };
+  syncFramePanel();
+  render();
+  if (keep && isTauri) void command('set_frame', { frame }).catch(report);
+}
+
+function placeFramePanel() {
+  const button = frameButton.getBoundingClientRect(), box = framePanel.getBoundingClientRect();
+  const left = Math.min(Math.max(8, button.right - box.width), innerWidth - box.width - 8);
+  Object.assign(framePanel.style, { left: `${left}px`, bottom: `${innerHeight - button.top + 10}px` });
+}
+function openFramePanel() {
+  framePanel.hidden = false;
+  frameButton.setAttribute('aria-expanded', 'true');
+  placeFramePanel();
+}
+function closeFramePanel(refocus = false) {
+  if (framePanel.hidden) return;
+  framePanel.hidden = true;
+  frameButton.setAttribute('aria-expanded', 'false');
+  if (refocus) frameButton.focus();
+}
+
+on(frameButton, 'click', () => {
+  if (!framePanel.hidden) { closeFramePanel(); return; }
+  // Asking for Frame is asking for a frame: it comes on as the panel opens,
+  // and the switch at its top is there to take it off again.
+  if (!frame.on) setFrame({ on: true });
+  openFramePanel();
+});
+on(frameSwitch, 'click', () => setFrame({ on: !frame.on }));
+on(framePanel, 'click', event => {
+  const swatch = (event.target as Element).closest<HTMLButtonElement>('.background');
+  if (swatch?.dataset.background) setFrame({ background: swatch.dataset.background, on: true });
+});
+for (const input of framePanel.querySelectorAll<HTMLInputElement>('input[data-frame]')) {
+  const key = input.dataset.frame as 'padding' | 'radius' | 'shadow' | 'chrome';
+  if (input.type === 'checkbox') on(input, 'change', () => setFrame({ chrome: input.checked, on: true }));
+  else {
+    // Shown as it moves; kept once it is let go.
+    on(input, 'input', () => setFrame({ [key]: Number(input.value), on: true }, false));
+    on(input, 'change', () => setFrame({ [key]: Number(input.value), on: true }));
+  }
+}
+document.addEventListener('pointerdown', event => {
+  const target = event.target as Node;
+  if (!framePanel.hidden && !framePanel.contains(target) && !frameButton.contains(target)) closeFramePanel();
+}, { signal: abort.signal });
+window.addEventListener('resize', () => { if (!framePanel.hidden) placeFramePanel(); }, { signal: abort.signal });
+syncFramePanel();
 
 function setZoom(next: 'fit' | number) { zoom = next; applyZoom(); }
 
@@ -1651,6 +1884,11 @@ document.addEventListener('keydown', event => {
     closeLooksMenu(true);
     return;
   }
+  if (key === 'escape' && !framePanel.hidden) {
+    event.preventDefault();
+    closeFramePanel(true);
+    return;
+  }
   // A text field owns the keys that edit text. Without this, typing a note in
   // the steps panel meant ⌘C copied the screenshot, ⌘V pasted an annotation
   // rather than the clipboard's text -- and having been prevented, never
@@ -1713,6 +1951,10 @@ document.addEventListener('keydown', event => {
     event.preventDefault(); void copyList();
   } else if (capture && key === 's' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault(); void exportImage(event.shiftKey ? 'share_image' : 'save_image');
+  } else if (capture && key === 't' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault(); void copyText();
+  } else if (capture && key === 'r' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault(); void hideSensitive();
   } else if (capture && (event.metaKey || event.ctrlKey) && event.altKey
              && (event.code === 'KeyC' || key === 'c' || key === 'ç')) {
     // Copy and Close is ⌥⌘C: a copy that also puts the capture away sits one
@@ -1759,7 +2001,10 @@ async function init() {
     const gear = app.querySelector<HTMLButtonElement>('.settings-button')!;
     gear.hidden = false;
     on(gear, 'click', () => { void command('open_settings').catch(report); });
-    void command<{ shortcut: string }>('get_settings').then(s => showShortcut(s.shortcut)).catch(() => {});
+    void command<Partial<{ shortcut: string; frame: unknown }>>('get_settings').then(saved => {
+      frame = sanitizeFrame(saved?.frame); syncFramePanel(); render();
+      if (saved?.shortcut) showShortcut(saved.shortcut);
+    }).catch(() => {});
     cleanups.push(await watchSettings(s => showShortcut(s.shortcut)));
     // The menu's Copy and Close, for a ⌥⌘C that reached the app rather than the
     // page. The page does the copying either way: only it can draw the marks in.

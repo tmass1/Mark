@@ -604,6 +604,34 @@ test('no tool, colour or control is ever clipped out of reach, at any width', as
   }
 });
 
+// With Redact in hand the bar carries Hide Sensitive where the pickers would
+// be, and holds it whole at every width, as it holds them.
+test('Hide Sensitive is never clipped out of reach, at any width', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/');
+  await page.keyboard.press('x');
+  await drawArrow(page, [200, 200], [600, 420]);                       // a redaction, selected: the label shows too
+  await expect(page.locator('.chosen')).toBeVisible();
+  for (const width of [1200, 860, 800, 760, 720, 700, 680, 660, 640, 620, 600, 580, 560, 540, 520, 500, 480, 460, 440, 420, 400, 380]) {
+    await page.setViewportSize({ width, height: 600 });
+    const report = await page.evaluate(() => {
+      const bar = document.querySelector('.toolbar')!, box = bar.getBoundingClientRect();
+      const shown = (el: Element) => (el as HTMLElement).offsetParent !== null;
+      const inside = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        return r.left >= box.left - 1 && r.right <= box.right + 1 && r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
+      };
+      return {
+        barOverflow: bar.scrollWidth - bar.clientWidth,
+        clippedInBar: [...bar.querySelectorAll('button, .size')].filter(el => shown(el) && !inside(el))
+          .map(el => el.getAttribute('aria-label') || el.getAttribute('title') || el.className),
+        hide: shown(bar.querySelector('.hide-sensitive')!),
+      };
+    });
+    expect(report, `${width}px`).toEqual({ barOverflow: 0, clippedInBar: [], hide: true });
+  }
+});
+
 test('the active-tool pill is under the tool from the first frame, and after reopening', async ({ page }) => {
   const misplaced = () => page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.lens')].filter(l => !l.hidden).flatMap(l => {
     const a = l.parentElement!.querySelector('[aria-checked="true"]')!;
@@ -927,7 +955,7 @@ test('Copy keeps the capture open so you can carry on', async ({ page }) => {
   await page.goto('/');
   await drawArrow(page, [200, 200], [600, 300]);
   const writes = () => page.evaluate(() => (window as any).__writes);
-  await page.getByRole('button', { name: /^Copy/ }).first().click();
+  await page.getByRole('button', { name: /^Copy( ⌘C)?$/ }).click();
   await expect(page.getByRole('status')).toContainText('Copied to clipboard');
   await expect(page.getByRole('img', { name: /Captured screenshot/ })).toBeVisible();
   await expect(page.locator('.arrow')).toHaveCount(1);   // the drawing survives too
@@ -1639,7 +1667,7 @@ test('the list copies as text, and the words never reach the image', async ({ pa
   expect(await page.evaluate(() => (window as any).__text)).toBe('1. make the headline sticky\n2.');
 
   // The image copy is untouched, and says the list is there to be had.
-  await page.getByRole('button', { name: /^Copy/ }).first().click();
+  await page.getByRole('button', { name: /^Copy( ⌘C)?$/ }).click();
   await expect(page.getByRole('status')).toContainText('⌘⇧L copies the 2 steps');
   await expect(page.locator('body')).toHaveAttribute('data-copied-size', '1200x740');
 });

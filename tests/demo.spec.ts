@@ -81,7 +81,7 @@ test('annotating and copying produce a PNG for the clipboard, and closing return
   await page.mouse.move(image.x + image.width * .7, image.y + image.height * .3, { steps: 8 }); await page.mouse.up();
   await expect(editor.locator('.arrow')).toHaveCount(1);
 
-  await editor.getByRole('button', { name: /^Copy/, exact: false }).first().click();
+  await editor.getByRole('button', { name: /^Copy( ⌘C)?$/ }).click();
   await expect(editor.getByRole('status')).toContainText('Copied');
   expect(await page.evaluate(() => (window as any).__copied.length)).toBe(1);
   expect(await page.evaluate(() => (window as any).__copied[0])).toBeGreaterThan(1000);   // a real PNG, not an empty blob
@@ -147,7 +147,7 @@ test('a copy shows the very image that was copied, and offers it as a file', asy
   const image = (await editor.locator('.overlay').boundingBox())!;
   await page.mouse.move(image.x + image.width * .2, image.y + image.height * .7); await page.mouse.down();
   await page.mouse.move(image.x + image.width * .7, image.y + image.height * .3, { steps: 8 }); await page.mouse.up();
-  await editor.getByRole('button', { name: /^Copy/, exact: false }).first().click();
+  await editor.getByRole('button', { name: /^Copy( ⌘C)?$/ }).click();
   const clip = page.locator('.clip');
   await expect(clip).toBeVisible();
   await expect(clip.locator('strong')).toHaveText('On your clipboard');
@@ -166,7 +166,7 @@ test('a copy shows the very image that was copied, and offers it as a file', asy
   await clip.getByRole('button', { name: 'Dismiss' }).click();
   await expect(clip).toBeHidden();
   // The next selection clears the desktop of it, so it cannot end up in a capture.
-  await editor.getByRole('button', { name: /^Copy/, exact: false }).first().click();
+  await editor.getByRole('button', { name: /^Copy( ⌘C)?$/ }).click();
   await expect(clip).toBeVisible();
   await startSelection(page);
   await expect(clip).toBeHidden();

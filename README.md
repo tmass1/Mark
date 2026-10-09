@@ -261,6 +261,16 @@ notarization; an Apple Development certificate is only good for this Mac.
      control sets how coarse. This is pixelation rather than blur on purpose:
      a blur can be partly undone and still leaks the shape of what is under it.
 
+     **Hide Sensitive** (⇧⌘R), in the toolbar while Redact is in hand, does the
+     looking for you: it reads the capture on the Mac -- the same recognition
+     as Copy Text, and faces too -- and pixelates every email address, phone
+     number, card number (by its check digit), key or token (by how the
+     well-known ones start, or by looking generated) and face it finds. All of
+     them go down as one step, selected, so they can be looked over, and ⌘Z
+     takes them all back; the status line says what was hidden. It errs towards
+     hiding -- a harmless number pixelated costs a ⌘Z -- and leaves dates,
+     prices, versions, commit hashes and the like alone.
+
    Shift-click gathers several annotations, and ⌘A takes the lot; they then
    move, restyle and delete together. The toolbar says what is selected, so a
    colour or size change never lands somewhere unannounced.
@@ -335,12 +345,33 @@ notarization; an Apple Development certificate is only good for this Mac.
    ⌥⌘C typed while writing on the image still brings the writing along.
 
    A capture you did not draw on is copied as the original bytes macOS
-   produced; only a drawing is flattened and re-encoded.
+   produced; only a drawing, a crop or a frame is flattened and re-encoded.
 7. **Save** (⌘S) asks where to put a PNG, suggesting the name macOS would give
    a screenshot. **Share** (⌘⇧S) hands the image to macOS's own share sheet —
    Mail, Messages, AirDrop, whatever is installed — and leaves the capture open
    afterwards. Both send the flattened image, so a file is what is on screen,
-   crop and annotations included.
+   crop, annotations and frame included.
+
+   **Frame**, the button before Share and Save, sets the capture on a
+   background for showing to someone: six gradients and six solids, or none,
+   for a PNG with clear corners. Padding, rounded corners and a shadow have a
+   slider each, and **Title bar** adds a window's, its three lights and all,
+   dark over a dark screenshot. The canvas shows the frame as it will be
+   copied, saved and shared, and the footer gives the framed size. Padding,
+   corners and shadow are shares of the capture's own size, so a small one
+   and a large one come out alike; the title bar is a real one's height in the
+   capture's points. Opening Frame turns it on and the switch at its top turns
+   it off; whichever it is, and how, is kept for the next capture and the next
+   launch. Recent keeps captures unframed, as they were drawn.
+
+   **Copy Text** (⇧⌘T), beside Share and Save, copies the words in the
+   capture: read on the Mac by the same text recognition as Live Text, so the
+   image never leaves it to be read. It reads the capture as it stands --
+   cropped, without what is drawn on it -- and copies in reading order: rows
+   top to bottom, and what shares a row left to right with a tab between, so
+   a table pastes as a table and a label stays beside its value. Select a
+   box, ellipse or highlight first and only the words inside it are copied;
+   a word the edge cuts through goes with whichever side has most of it.
 8. A capture opens at **100%**, meaning the size it was on screen. That is not
    the same as one screen pixel per image pixel: a Retina grab has twice the
    pixels of the region it came from, so a literal 1:1 view would show every

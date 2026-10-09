@@ -1,14 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "editor",
-  "description": "Only Mark's local editor can capture, annotate, copy, save and share.",
+  "description": "Only Mark's local editor can capture, annotate, frame, read text from, copy, save and share.",
   "windows": ["editor"], "platforms": ["macOS"],
   "permissions": [
     "allow-current-capture", "allow-capture-region", "allow-capture-display",
-    "allow-copy-capture", "allow-copy-edited", "allow-copy-text", "allow-save-image", "allow-share-image",
+    "allow-copy-capture", "allow-copy-edited", "allow-copy-text", "allow-recognize-text", "allow-scan-image", "allow-save-image", "allow-share-image",
     "allow-dismiss-editor", "allow-open-screen-settings", "allow-quit-app",
     "allow-glass-available", "allow-set-glass",
-    "allow-get-settings", "allow-open-settings",
+    "allow-get-settings", "allow-set-frame", "allow-open-settings",
     "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize",
     "core:event:allow-listen", "core:event:allow-unlisten"
   ]

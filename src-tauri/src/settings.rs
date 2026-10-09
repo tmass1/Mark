@@ -1,8 +1,9 @@
 //! What the user has chosen, kept in one small file under Application Support.
 //!
 //! Which appearance the windows take, which keys start a capture, whether Mark
-//! looks for updates by itself and which version it was told to skip, and --
-//! read from macOS rather than stored -- whether Mark opens at login. The file
+//! looks for updates by itself and which version it was told to skip, how a
+//! capture is framed, and -- read from macOS rather than stored -- whether Mark
+//! opens at login. The file
 //! is written only when a setting changes, so a Mark that has never been
 //! configured has written nothing.
 
@@ -26,16 +27,58 @@ pub struct Settings {
     /// it; a check asked for by hand still offers it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skipped_version: Option<String>,
+    /// How the editor frames a capture, kept so the next one looks the same.
+    pub frame: Frame,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { appearance: "dark".into(), shortcut: DEFAULT_SHORTCUT.into(), check_updates: true, skipped_version: None }
+        Settings { appearance: "dark".into(), shortcut: DEFAULT_SHORTCUT.into(), check_updates: true, skipped_version: None,
+                   frame: Frame::default() }
     }
 }
 
 impl Settings {
     pub fn appearance_is_valid(name: &str) -> bool { matches!(name, "dark" | "light" | "system") }
+}
+
+/// A background, room around the capture, rounded corners, a shadow and a
+/// title bar, as the editor's Frame panel sets them. The editor owns what the
+/// numbers mean -- each is 0 to 1 here -- and which backgrounds exist; this
+/// only keeps what it is given within those bounds.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Frame {
+    pub on: bool,
+    pub background: String,
+    pub padding: f64,
+    pub radius: f64,
+    pub shadow: f64,
+    pub chrome: bool,
+}
+
+impl Default for Frame {
+    fn default() -> Self {
+        Frame { on: false, background: "sky".into(), padding: 0.5, radius: 0.4, shadow: 0.5, chrome: false }
+    }
+}
+
+impl Frame {
+    /// Numbers held to 0 to 1, and a background name that could be one: the
+    /// editor falls back on its own default for a name it does not know.
+    pub fn sanitized(self) -> Frame {
+        let defaults = Frame::default();
+        let share = |value: f64, fallback: f64| if value.is_finite() { value.clamp(0.0, 1.0) } else { fallback };
+        let named = !self.background.is_empty() && self.background.len() <= 32
+            && self.background.chars().all(|c| c.is_ascii_lowercase() || c == '-');
+        Frame {
+            background: if named { self.background } else { defaults.background },
+            padding: share(self.padding, defaults.padding),
+            radius: share(self.radius, defaults.radius),
+            shadow: share(self.shadow, defaults.shadow),
+            ..self
+        }
+    }
 }
 
 fn path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -53,6 +96,7 @@ pub fn parse(bytes: &[u8]) -> Option<Settings> {
     let mut settings: Settings = serde_json::from_slice(bytes).ok()?;
     if !Settings::appearance_is_valid(&settings.appearance) { settings.appearance = Settings::default().appearance; }
     if settings.shortcut.trim().is_empty() { settings.shortcut = DEFAULT_SHORTCUT.into(); }
+    settings.frame = settings.frame.sanitized();
     Some(settings)
 }
 
@@ -83,6 +127,7 @@ mod tests {
         let settings = Settings {
             appearance: "light".into(), shortcut: "Control+Alt+Super+Digit4".into(),
             check_updates: false, skipped_version: Some("0.5.0".into()),
+            frame: Frame { on: true, background: "midnight".into(), padding: 0.25, radius: 0.75, shadow: 0.0, chrome: true },
         };
         let json = serde_json::to_vec(&settings).unwrap();
         assert_eq!(parse(&json).unwrap(), settings);
@@ -110,5 +155,20 @@ mod tests {
         assert_eq!(settings.skipped_version, None);
         // And nothing is written for a skip that never happened.
         assert!(!String::from_utf8(serde_json::to_vec(&Settings::default()).unwrap()).unwrap().contains("skipped"));
+    }
+
+    #[test]
+    fn a_file_from_before_frames_is_unframed() {
+        let settings = parse(br#"{"appearance":"light","shortcut":"Super+Digit4","checkUpdates":true}"#).unwrap();
+        assert_eq!(settings.frame, Frame::default());
+        assert!(!settings.frame.on);
+    }
+
+    #[test]
+    fn a_hand_edited_frame_is_kept_within_bounds() {
+        let settings = parse(br#"{"frame":{"on":true,"background":"<script>","padding":7,"radius":-2,"shadow":0.3}}"#).unwrap();
+        assert_eq!(settings.frame, Frame { on: true, padding: 1.0, radius: 0.0, shadow: 0.3, ..Frame::default() });
+        // Half a frame keeps what it says and takes the defaults for the rest.
+        assert_eq!(parse(br#"{"frame":{"chrome":true}}"#).unwrap().frame, Frame { chrome: true, ..Frame::default() });
     }
 }

@@ -27,6 +27,10 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSImage", "NSRunningApplication", "NSWorkspace", "NSApplication", "NSWindow", "NSResponder", "NSView", "NSSharingService", "NSGlassEffectView", "NSGraphics"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSString", "NSURL", "NSArray", "NSGeometry", "NSDictionary", "NSValue"] }
 tauri-plugin-updater = "2"
+# Copy Text and Hide Sensitive: macOS's own text and face recognition, on the
+# Mac, so a capture never leaves it to be read.
+objc2-vision = { version = "0.3", default-features = false, features = ["std", "VNRequest", "VNRecognizeTextRequest", "VNDetectFaceRectanglesRequest", "VNRequestHandler", "VNObservation", "VNTypes", "objc2-core-foundation"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
 
 [features]
 # A build made only to test updating end to end: when its own check finds a
