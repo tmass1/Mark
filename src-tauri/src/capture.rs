@@ -42,8 +42,15 @@ impl Target {
     /// The shot's size in points: its pixels divided by these are the density
     /// it was taken at, and the editor opens to fit it.
     pub fn size(&self) -> (f64, f64) {
-        let (Target::Region(rect) | Target::Window { bounds: rect, .. }) = self;
+        let rect = self.rect();
         (rect.width, rect.height)
+    }
+
+    /// Where on the desktop it was, in global points: which display a
+    /// thumbnail of it belongs on.
+    pub fn rect(&self) -> Rect {
+        let (Target::Region(rect) | Target::Window { bounds: rect, .. }) = self;
+        *rect
     }
 }
 

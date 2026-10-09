@@ -1,23 +1,77 @@
 mod capture;
 mod glass;
 mod macos;
+pub mod mcp;
 mod session;
 mod settings;
+mod thumbnail;
 mod updates;
 mod vision;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use tauri_plugin_dialog::DialogExt;
-use session::{Session, Snapshot, State};
-use std::{path::Path, sync::{Mutex, atomic::Ordering}, time::Duration};
+use session::{Reply, Session, Snapshot, State};
+use std::{path::Path, sync::{Arc, Mutex, atomic::Ordering, mpsc}, time::Duration};
 use tauri::{AppHandle, Emitter, Manager, menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu}, tray::TrayIconBuilder};
 
 /// Kept so the tick can be corrected when macOS disagrees with what was asked.
 struct LoginToggle(CheckMenuItem<tauri::Wry>);
-/// Kept so its accelerator can follow the shortcut the user chooses.
-struct CaptureItem(MenuItem<tauri::Wry>);
+/// The menu's four ways in, kept so each shows the shortcut chosen for it.
+struct CaptureItems([MenuItem<tauri::Wry>; 4]);
+
+/// The four ways into a capture, each of which can have a shortcut.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Way { Region, Window, Display, Timed }
+
+impl Way {
+    const ALL: [Way; 4] = [Way::Region, Way::Window, Way::Display, Way::Timed];
+    fn named(mode: Option<&str>) -> Result<Way, String> {
+        match mode {
+            None | Some("region") => Ok(Way::Region),
+            Some("window") => Ok(Way::Window),
+            Some("display") => Ok(Way::Display),
+            Some("timed") => Ok(Way::Timed),
+            Some(other) => Err(format!("{other} isn't a way to capture.")),
+        }
+    }
+    fn name(self) -> &'static str {
+        match self { Way::Region => "Capture Region", Way::Window => "Capture Window", Way::Display => "Capture Whole Screen", Way::Timed => "Timed Region" }
+    }
+    /// Its shortcut, if it has one.
+    fn shortcut(self, prefs: &settings::Settings) -> Option<&str> {
+        match self {
+            Way::Region => Some(prefs.shortcut.as_str()),
+            Way::Window => prefs.shortcuts.window.as_deref(),
+            Way::Display => prefs.shortcuts.display.as_deref(),
+            Way::Timed => prefs.shortcuts.timed.as_deref(),
+        }
+    }
+    fn start(self, app: &AppHandle) -> Result<(), String> {
+        match self {
+            Way::Region => capture_region(app.clone(), None, None),
+            Way::Window => capture_region(app.clone(), None, Some(true)),
+            Way::Display => capture_display(app.clone(), None),
+            Way::Timed => capture_region(app.clone(), Some(5), None),
+        }
+    }
+}
+
+/// Every shortcut that is set, parsed, with the way in it starts.
+fn bindings(prefs: &settings::Settings) -> Result<Vec<(Shortcut, Way)>, String> {
+    Way::ALL.iter().filter_map(|way| way.shortcut(prefs).map(|text| (text, *way)))
+        .map(|(text, way)| Shortcut::from_str(text).map(|shortcut| (shortcut, way)).map_err(|e| e.to_string()))
+        .collect()
+}
+
+/// Two ways that would answer to one key, if any: the first of them, and the second.
+fn clash(prefs: &settings::Settings) -> Option<(Way, Way)> {
+    let all = bindings(prefs).ok()?;
+    all.iter().enumerate().find_map(|(i, (shortcut, way))| all[i + 1..].iter().find(|(other, _)| other == shortcut).map(|(_, second)| (*way, *second)))
+}
 /// The settings as last loaded or saved; every window reads from here.
 struct Prefs(Mutex<settings::Settings>);
+/// The socket AI tools reach this Mark through, if it has it, so it goes when Mark does.
+struct Socket(Option<std::path::PathBuf>);
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use std::str::FromStr;
 
@@ -48,6 +102,9 @@ const RAIL_HEIGHT: f64 = TOOLS_HEIGHT + 8.0 + RAIL + 6.0;
 /// minimum, which the rail sets rather than the empty state; the empty state
 /// has room to spare at this size and the footer is not there anyway.
 const COMPACT: (f64, f64) = (560.0, CHROME + RAIL_HEIGHT);
+/// The bar an AI tool's ask is shown in, and the gap under it, kept clear at
+/// the top of the canvas while one waits. Mirrors .request-bar in style.css.
+const REQUEST_BAR: f64 = 44.0 + 10.0;
 
 /// Size the window to its contents: the capture at actual size where the screen
 /// allows, and small when there is nothing to show. A screenshot editor whose
@@ -55,8 +112,9 @@ const COMPACT: (f64, f64) = (560.0, CHROME + RAIL_HEIGHT);
 /// too big for the empty state, the wrong shape for the next capture.
 fn fit_window(app: &AppHandle, to: Option<(f64, f64)>) {
     let Some(window) = app.get_webview_window(EDITOR) else { return };
+    let asked = app.state::<State>().lock().unwrap().request.is_some();
     let (mut width, mut height) = match to {
-        Some((w, h)) => (w + SIDES + RAIL, h + CHROME),
+        Some((w, h)) => (w + SIDES + RAIL, h + CHROME + if asked { REQUEST_BAR } else { 0.0 }),
         None => COMPACT,
     };
     // Never larger than the screen it will appear on, less a margin so the
@@ -75,6 +133,8 @@ fn changed(app: &AppHandle) {
 }
 
 fn present(app: &AppHandle) {
+    // The editor takes over from a thumbnail, by whichever way it was opened.
+    thumbnail::put_down(app);
     if let Some(window) = app.get_webview_window(EDITOR) {
         if let Err(error) = window.show().and_then(|_| window.set_focus()) { eprintln!("[Mark] {error}"); }
     }
@@ -130,6 +190,8 @@ fn ready_to_capture(app: &AppHandle) -> bool {
             session.previous_pid = Some(pid);
         }
     }
+    // A thumbnail still up would be in the shot; the new capture replaces it anyway.
+    thumbnail::put_down(app);
     if !macos::screen_access() {
         app.state::<State>().lock().unwrap().busy = false;
         report(app, "Allow Mark's screen access in System Settings, then try Capture Region again. macOS may ask you to quit and reopen Mark.".into());
@@ -271,6 +333,8 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32) {
         let handle = app.clone();
         if let Err(error) = app.run_on_main_thread(move || {
             let mut wanted: Option<(f64, f64)> = None;
+            let thumbnail_wanted = handle.state::<Prefs>().0.lock().unwrap().thumbnail();
+            let mut thumb: Option<(Vec<u8>, u32, u32, f64)> = None;
             let show = {
                 let state = handle.state::<State>();
                 let mut session = state.lock().unwrap();
@@ -283,10 +347,17 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32) {
                         let (width, height) = target.size();
                         if width >= 1.0 { capture.scale = f64::from(capture.width) / width; }
                         wanted = Some((width, height));
+                        // Taken from another app with the thumbnail chosen, and no AI
+                        // tool waiting on it: the corner, not the editor.
+                        if thumbnail_wanted && session.request.is_none() && !session.editor_was_visible {
+                            thumb = Some((capture.png.clone(), capture.width, capture.height, capture.scale));
+                        }
                         session.capture = Some(capture);
                         true
                     }
-                    Ok(None) => session.editor_was_visible,
+                    // Nothing taken: the editor comes back if it was there, or if
+                    // an AI tool's ask is waiting in it.
+                    Ok(None) => session.editor_was_visible || session.request.is_some(),
                     Err(error) => { session.error = Some(error); true }
                 }
             };
@@ -294,6 +365,15 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32) {
             // Resize before showing, so the window arrives at its size rather
             // than being seen to grow into it.
             if wanted.is_some() { fit_window(&handle, wanted); }
+            if let Some((png, width, height, scale)) = thumb {
+                // Copied at once, so it is on the clipboard whether or not
+                // anyone opens it. If either fails, the editor says so, with
+                // the capture in it.
+                let floated = macos::copy_png(&png)
+                    .and_then(|()| thumbnail::show(&handle, png, width, height, scale, target.rect()));
+                if let Err(error) = floated { report(&handle, error); }
+                return;
+            }
             if show { present(&handle); }
         }) { eprintln!("[Mark] {error}"); }
     });
@@ -308,7 +388,9 @@ fn cancel_selection(app: AppHandle) -> Result<(), String> {
             let state = handle.state::<State>();
             let mut session = state.lock().unwrap();
             session.busy = false;
-            (session.editor_was_visible, session.previous_pid)
+            // Backing out of the overlay isn't backing out of an AI tool's ask:
+            // the editor comes back with it, to capture again or decline.
+            (session.editor_was_visible || session.request.is_some(), session.previous_pid)
         };
         changed(&handle);
         if restore { present(&handle); } else { macos::restore_focus(previous); }
@@ -374,18 +456,207 @@ fn copy_edited(app: AppHandle, png: String, close: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn dismiss_editor(app: AppHandle) -> Result<(), String> {
+fn dismiss_editor(app: AppHandle) -> Result<(), String> { put_away(&app, None) }
+
+/// The editor out of sight and empty, and the focus back where it was: with
+/// the app named, or else the AI tool whose ask is closed unanswered, or else
+/// the app in front before the capture. Closing the editor is a no to an ask
+/// still waiting in it -- ⌘W, Escape, the close button and the menu all come
+/// here -- so the tool hears that rather than waiting on.
+fn put_away(app: &AppHandle, focus: Option<i32>) -> Result<(), String> {
     let state = app.state::<State>();
     let mut session = state.lock().unwrap();
     if session.busy { return Err("Press Escape to cancel the selection first.".into()); }
     if let Some(window) = app.get_webview_window(EDITOR) { window.hide().map_err(|e| e.to_string())?; }
     session.capture = None; session.error = None;
+    let asked_from = session.request.as_ref().and_then(|request| request.return_to);
+    session.end_request(Reply::Declined);
     let previous = session.previous_pid.take();
     drop(session);
     // Back to the empty state, so back to the small window.
-    fit_window(&app, None);
-    changed(&app); macos::restore_focus(previous);
+    fit_window(app, None);
+    changed(app); macos::restore_focus(focus.or(asked_from).or(previous));
     Ok(())
+}
+
+/// The capture out of the editor, as Copy and Close takes it, but with the
+/// editor left as it is -- out of sight -- and the focus too: the thumbnail
+/// that showed it has gone, and it waits in Recent, which the editor's own
+/// render keeps as a capture leaves.
+fn release_capture(app: &AppHandle) {
+    {
+        let state = app.state::<State>();
+        let mut session = state.lock().unwrap();
+        // A capture under way replaces it anyway.
+        if session.busy { return; }
+        session.capture = None; session.error = None; session.previous_pid = None;
+    }
+    fit_window(app, None);
+    changed(app);
+}
+
+/// Send: the capture, as the editor flattened it for the AI tool that asked,
+/// with what to say about it. Then the editor is put away as Copy and Close
+/// puts it away, except that the focus goes back to the tool -- the app that
+/// asked, not the app that was captured. A sync command, so it runs on the
+/// main thread and must not wait: it hands the answer over and returns.
+#[tauri::command]
+fn send_capture(app: AppHandle, id: u64, png: String, text: String) -> Result<(), String> {
+    // The size, the marks and the words read off it: generous, well short of a
+    // tool's own limit on what a call may return.
+    if text.len() > 160 * 1024 { return Err("The note to send with the screenshot is too long.".into()); }
+    decode_png(&png)?;
+    let return_to = {
+        let state = app.state::<State>();
+        let mut session = state.lock().unwrap();
+        if session.busy { return Err("Finish selecting the region first.".into()); }
+        session.answer(id, Reply::Sent { png, text })?
+    };
+    put_away(&app, return_to)
+}
+
+/// Don't Send: the tool is told no, and the editor stays as it is, capture and
+/// all. An ask that has already ended needs no answer.
+#[tauri::command]
+fn decline_request(app: AppHandle, id: u64) {
+    let _ = app.state::<State>().lock().unwrap().answer(id, Reply::Declined);
+    changed(&app);
+}
+
+/// The running app, as AI tools reach it through the socket.
+struct AppHost(AppHandle);
+
+impl mcp::Host for AppHost {
+    fn ask(&self, ask: mcp::Ask) -> Result<(u64, mpsc::Receiver<Reply>), String> {
+        let app = &self.0;
+        if !app.state::<Prefs>().0.lock().unwrap().mcp {
+            return Err("The user has turned off screenshots for AI tools in Mark's Settings.".into());
+        }
+        // The selftest build answers with a fixture, so it needs no screen access.
+        if !cfg!(feature = "mcp-selftest") && !macos::screen_access_granted() {
+            return Err("Mark can't capture the screen until the user allows it in System Settings, under Privacy & \
+                        Security, Screen & System Audio Recording.".into());
+        }
+        // Whatever arrives on the socket is cleaned here, once, so the editor
+        // and anything after it only ever see text fit to show.
+        let client = mcp::clean(&ask.client, 40);
+        let prompt = mcp::clean(&ask.prompt, 200);
+        if prompt.is_empty() { return Err("The request didn't say what to show.".into()); }
+        let client = if client.is_empty() { "An AI tool".into() } else { client };
+        let mode = if matches!(ask.mode.as_str(), "window" | "display") { ask.mode } else { "region".into() };
+        // A tool that will give up says how soon; the editor counts down to it.
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        let deadline = ask.wait.map(|seconds| now + (seconds * 1000.0) as u64);
+        let (reply, answer) = mpsc::channel();
+        let id = app.state::<State>().lock().unwrap().ask(client, prompt, mode, deadline, reply)?;
+        let handle = app.clone();
+        if let Err(error) = app.run_on_main_thread(move || show_request(&handle, id)) {
+            app.state::<State>().lock().unwrap().withdraw(id);
+            return Err(error.to_string());
+        }
+        #[cfg(feature = "mcp-selftest")]
+        selftest::answer(app.clone(), id);
+        Ok((id, answer))
+    }
+
+    fn withdraw(&self, id: u64) {
+        let Some(client) = self.0.state::<State>().lock().unwrap().withdraw(id) else { return };
+        let handle = self.0.clone();
+        let _ = self.0.run_on_main_thread(move || {
+            changed(&handle);
+            let _ = handle.emit_to(EDITOR, "request-withdrawn", client);
+        });
+    }
+}
+
+/// An AI tool's ask, on screen: the editor, in front, with the ask in its bar
+/// and the empty state or the capture under it -- unless a capture is under
+/// way, which opens in the editor with the bar when it is done. The app that
+/// asked is noted now, while it is still in front, to go back to on Send.
+fn show_request(app: &AppHandle, id: u64) {
+    let own = std::process::id() as i32;
+    let (busy, shown) = {
+        let state = app.state::<State>();
+        let mut session = state.lock().unwrap();
+        if let Some(request) = session.request.as_mut().filter(|request| request.id == id) {
+            request.return_to = macos::frontmost_pid().filter(|pid| *pid != own);
+        }
+        let shown = session.capture.as_ref().map(|capture| (f64::from(capture.width) / capture.scale, f64::from(capture.height) / capture.scale));
+        (session.busy, shown)
+    };
+    changed(app);
+    if busy { return; }
+    let Some(window) = app.get_webview_window(EDITOR) else { return };
+    // Opening, it fits what it shows and the bar; already open, it is left
+    // the size the user has it.
+    if !window.is_visible().unwrap_or(false) { fit_window(app, shown); }
+    if let Err(error) = window.show() { eprintln!("[Mark] {error}"); }
+    if let Ok(handle) = window.ns_window() { macos::bring_forward(handle); }
+    let _ = window.set_focus();
+}
+
+/// Which Mark this is, to an AI tool: the command for Claude Code and the entry
+/// for Claude Desktop that start this copy of it as their bridge.
+#[tauri::command]
+fn mcp_setup() -> Result<mcp::Setup, String> {
+    mcp::setup(&std::env::current_exe().map_err(|e| e.to_string())?)
+}
+
+/// A build for testing the bridge end to end, with no screen access and no
+/// one at the keyboard: it answers each ask itself a moment after showing it.
+/// A prompt with "decline" in it is declined, and one with "wait" is left
+/// waiting, so a test can withdraw it or quit under it.
+#[cfg(feature = "mcp-selftest")]
+mod selftest {
+    use super::*;
+    pub fn answer(app: AppHandle, id: u64) {
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(1500));
+            let (client, prompt) = app.state::<State>().lock().unwrap().request.as_ref()
+                .map(|r| (r.client.clone(), r.prompt.clone())).unwrap_or_default();
+            eprintln!("[Mark] selftest: request {id} from {client:?} to see {prompt:?}");
+            if prompt.contains("wait") { eprintln!("[Mark] selftest: leaving request {id} waiting"); return; }
+            let reply = if prompt.contains("decline") { Reply::Declined } else {
+                Reply::Sent { png: STANDARD.encode(include_bytes!("../tests/text.png")), text: "Selftest: the text fixture.".into() }
+            };
+            let answered = app.state::<State>().lock().unwrap().answer(id, reply);
+            eprintln!("[Mark] selftest: answered request {id}: {:?}", answered.as_ref().map(|_| ()));
+            let handle = app.clone();
+            let _ = app.run_on_main_thread(move || { let _ = put_away(&handle, answered.ok().flatten()); });
+        });
+    }
+
+    /// With MARK_SELFTEST_THUMBNAIL set to "x,y": the fixture, floated as a
+    /// capture taken at that point would be -- without the clipboard, which is
+    /// the user's -- and whether showing it moved the focus, and whether it
+    /// went by itself, written to stderr. Where it went is the window server's
+    /// to say.
+    pub fn thumbnail(app: AppHandle) {
+        let Some(point) = std::env::var("MARK_SELFTEST_THUMBNAIL").ok() else { return };
+        let (x, y) = point.split_once(',').and_then(|(x, y)| Some((x.trim().parse::<f64>().ok()?, y.trim().parse::<f64>().ok()?)))
+            .unwrap_or((400.0, 350.0));
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(1500));
+            let handle = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let before = macos::frontmost_pid();
+                let png = include_bytes!("../tests/text.png").to_vec();
+                let from = capture::Rect { x: x - 200.0, y: y - 150.0, width: 400.0, height: 300.0 };
+                let shown = thumbnail::show(&handle, png, 800, 600, 2.0, from);
+                let after = macos::frontmost_pid();
+                eprintln!("[Mark] selftest: thumbnail for a capture at {x},{y} shown: {shown:?}; frontmost before {before:?}, after {after:?}");
+            });
+            for second in [3, 7] {
+                std::thread::sleep(Duration::from_secs(if second == 3 { 3 } else { 4 }));
+                let handle = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    let visible = handle.get_webview_window(thumbnail::LABEL).and_then(|w| w.is_visible().ok());
+                    let held = handle.state::<State>().lock().unwrap().thumb.is_some();
+                    eprintln!("[Mark] selftest: {second}s after: visible {visible:?}, thumbnail held {held}");
+                });
+            }
+        });
+    }
 }
 
 /// Keep a suggested filename to a filename: no separators, no traversal, and a
@@ -525,18 +796,29 @@ pub fn pretty_shortcut(shortcut: &str) -> String {
     format!("{symbols}{key}")
 }
 
-/// Replace whichever shortcut is registered with this one. If the new one
-/// cannot be taken, the old one is put back, so a failed change never leaves
-/// Mark with no shortcut at all.
-fn register_shortcut(app: &AppHandle, shortcut: &str) -> Result<(), String> {
-    let parsed = Shortcut::from_str(shortcut).map_err(|e| e.to_string())?;
-    let previous = app.try_state::<Prefs>().map(|p| p.0.lock().unwrap().shortcut.clone());
+/// Replace whichever shortcuts are registered with these. If any one cannot be
+/// taken, the ones before are put back, so a failed change never leaves Mark
+/// with fewer shortcuts than it had.
+fn register_shortcuts(app: &AppHandle, wanted: &settings::Settings, before: Option<&settings::Settings>) -> Result<(), String> {
+    let shortcuts = bindings(wanted)?;
     app.global_shortcut().unregister_all().map_err(|e| e.to_string())?;
-    if let Err(error) = app.global_shortcut().register(parsed) {
-        if let Some(old) = previous.and_then(|old| Shortcut::from_str(&old).ok()) { let _ = app.global_shortcut().register(old); }
-        return Err(error.to_string());
+    for (shortcut, _) in &shortcuts {
+        if let Err(error) = app.global_shortcut().register(*shortcut) {
+            let _ = app.global_shortcut().unregister_all();
+            for (old, _) in before.and_then(|before| bindings(before).ok()).unwrap_or_default() { let _ = app.global_shortcut().register(old); }
+            return Err(error.to_string());
+        }
     }
     Ok(())
+}
+
+/// The menu's four ways in, each showing its shortcut, and the menu bar
+/// item's tooltip Capture Region's.
+fn show_shortcuts(app: &AppHandle, prefs: &settings::Settings) {
+    if let Some(items) = app.try_state::<CaptureItems>() {
+        for (item, way) in items.0.iter().zip(Way::ALL) { let _ = item.set_accelerator(way.shortcut(prefs)); }
+    }
+    if let Some(tray) = app.tray_by_id("mark") { let _ = tray.set_tooltip(Some(tooltip(&prefs.shortcut))); }
 }
 
 /// Dark and light are the window's own; system hands the choice back to macOS.
@@ -563,18 +845,35 @@ fn set_appearance(app: AppHandle, appearance: String) -> Result<settings::Settin
     Ok(updated)
 }
 
+/// A shortcut for one way in: Capture Region's when no mode is named, as it was
+/// before there were others. An empty shortcut clears one -- all but Capture
+/// Region's, which every launch shows and which always has one.
 #[tauri::command]
-fn set_shortcut(app: AppHandle, shortcut: String) -> Result<settings::Settings, String> {
-    register_shortcut(&app, &shortcut).map_err(|error| {
+fn set_shortcut(app: AppHandle, shortcut: String, mode: Option<String>) -> Result<settings::Settings, String> {
+    let way = Way::named(mode.as_deref())?;
+    let state = app.state::<Prefs>();
+    let before = state.0.lock().unwrap().clone();
+    let mut wanted = before.clone();
+    let chosen = (!shortcut.trim().is_empty()).then_some(shortcut);
+    match way {
+        Way::Region => wanted.shortcut = chosen.ok_or("Capture Region always has a shortcut.")?,
+        Way::Window => wanted.shortcuts.window = chosen,
+        Way::Display => wanted.shortcuts.display = chosen,
+        Way::Timed => wanted.shortcuts.timed = chosen,
+    }
+    // One key, one way: two that shared a key would race for it.
+    if let Some((first, second)) = clash(&wanted) {
+        let other = if first == way { second } else { first };
+        return Err(format!("{} already uses {}.", other.name(), pretty_shortcut(way.shortcut(&wanted).unwrap_or_default())));
+    }
+    register_shortcuts(&app, &wanted, Some(&before)).map_err(|error| {
         if error.contains("already") || error.contains("in use") { "Something else on this Mac already uses that shortcut.".to_string() } else { error }
     })?;
-    let state = app.state::<Prefs>();
-    let updated = { let mut prefs = state.0.lock().unwrap(); prefs.shortcut = shortcut; prefs.clone() };
-    settings::save(&app, &updated)?;
-    let _ = app.state::<CaptureItem>().0.set_accelerator(Some(updated.shortcut.as_str()));
-    if let Some(tray) = app.tray_by_id("mark") { let _ = tray.set_tooltip(Some(tooltip(&updated.shortcut))); }
-    let _ = app.emit("settings-changed", &updated);
-    Ok(updated)
+    *state.0.lock().unwrap() = wanted.clone();
+    settings::save(&app, &wanted)?;
+    show_shortcuts(&app, &wanted);
+    let _ = app.emit("settings-changed", &wanted);
+    Ok(wanted)
 }
 
 /// The editor's Frame panel, remembered so the next capture is framed the same.
@@ -585,6 +884,31 @@ fn set_frame(app: AppHandle, frame: settings::Frame) -> Result<settings::Setting
     let state = app.state::<Prefs>();
     let updated = { let mut prefs = state.0.lock().unwrap(); prefs.frame = frame.sanitized(); prefs.clone() };
     settings::save(&app, &updated)?;
+    Ok(updated)
+}
+
+/// Open the editor after a capture, or float a thumbnail in the corner.
+#[tauri::command]
+fn set_after_capture(app: AppHandle, value: String) -> Result<settings::Settings, String> {
+    if !settings::Settings::after_capture_is_valid(&value) { return Err(format!("{value} isn't something Mark does after a capture.")); }
+    let state = app.state::<Prefs>();
+    let updated = { let mut prefs = state.0.lock().unwrap(); prefs.after_capture = value; prefs.clone() };
+    settings::save(&app, &updated)?;
+    let _ = app.emit("settings-changed", &updated);
+    Ok(updated)
+}
+
+/// Whether AI tools may ask. Turned off, an ask already waiting is ended too,
+/// and its tool told why.
+#[tauri::command]
+fn set_mcp(app: AppHandle, enabled: bool) -> Result<settings::Settings, String> {
+    let state = app.state::<Prefs>();
+    let updated = { let mut prefs = state.0.lock().unwrap(); prefs.mcp = enabled; prefs.clone() };
+    settings::save(&app, &updated)?;
+    let ended = !enabled && app.state::<State>().lock().unwrap()
+        .end_request(Reply::Failed("The user has turned off screenshots for AI tools in Mark's Settings.".into()));
+    if ended { changed(&app); }
+    let _ = app.emit("settings-changed", &updated);
     Ok(updated)
 }
 
@@ -610,7 +934,7 @@ fn set_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
 fn open_settings(app: AppHandle) -> Result<(), String> {
     let window = match app.get_webview_window(SETTINGS) {
         Some(window) => window,
-        None => panel(&app, SETTINGS, "settings.html", "Mark Settings", 460.0, 378.0, true)?,
+        None => panel(&app, SETTINGS, "settings.html", "Mark Settings", 460.0, 716.0, true)?,
     };
     macos::activate_self();
     window.show().and_then(|_| window.set_focus()).map_err(|e| e.to_string())
@@ -637,8 +961,10 @@ pub(crate) fn panel(app: &AppHandle, label: &str, page: &str, title: &str, width
 
 fn menu_action(app: &AppHandle, id: &str) {
     match id {
-        "capture" => { if let Err(e) = capture_region(app.clone(), None, None) { report(app, e); } }
-        "window" => { if let Err(e) = capture_region(app.clone(), None, Some(true)) { report(app, e); } }
+        "capture" => { if let Err(e) = Way::Region.start(app) { report(app, e); } }
+        "window" => { if let Err(e) = Way::Window.start(app) { report(app, e); } }
+        "display" => { if let Err(e) = Way::Display.start(app) { report(app, e); } }
+        "timed" => { if let Err(e) = Way::Timed.start(app) { report(app, e); } }
         "show" => present(app),
         // The editor copies: it alone can flatten the drawing into the image.
         // Copying the capture from here would copy it without its marks.
@@ -659,15 +985,22 @@ pub fn run() {
         .manage(Mutex::new(Session::default()))
         .manage(updates::Pending::default())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_nspanel::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
-            if event.state() == ShortcutState::Pressed {
-                if let Err(e) = capture_region(app.clone(), None, None) { report(app, e); }
-            }
+        .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, pressed, event| {
+            if event.state() != ShortcutState::Pressed { return; }
+            // Whichever way the key belongs to; Capture Region, before settings are in.
+            let way = app.try_state::<Prefs>()
+                .and_then(|prefs| bindings(&prefs.0.lock().unwrap()).ok())
+                .and_then(|all| all.into_iter().find(|(shortcut, _)| shortcut == pressed).map(|(_, way)| way))
+                .unwrap_or(Way::Region);
+            if let Err(e) = way.start(app) { report(app, e); }
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, capture_window, cancel_selection,
             copy_capture, copy_edited, copy_text, recognize_text, scan_image, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
-            get_settings, set_appearance, set_shortcut, set_frame, login_enabled, set_login, open_settings, quit_app,
+            send_capture, decline_request, mcp_setup,
+            thumbnail::thumbnail_image, thumbnail::open_thumbnail, thumbnail::close_thumbnail, thumbnail::drag_thumbnail,
+            get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, login_enabled, set_login, open_settings, quit_app,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
             updates::set_auto_update, updates::open_updates])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
@@ -681,8 +1014,10 @@ pub fn run() {
         .setup(|app| {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let prefs = settings::load(app.handle());
-            let capture = MenuItem::with_id(app, "capture", "Capture Region", true, Some(prefs.shortcut.as_str()))?;
-            let window = MenuItem::with_id(app, "window", "Capture Window", true, None::<&str>)?;
+            let capture = MenuItem::with_id(app, "capture", Way::Region.name(), true, Way::Region.shortcut(&prefs))?;
+            let window = MenuItem::with_id(app, "window", Way::Window.name(), true, Way::Window.shortcut(&prefs))?;
+            let display = MenuItem::with_id(app, "display", Way::Display.name(), true, Way::Display.shortcut(&prefs))?;
+            let timed = MenuItem::with_id(app, "timed", Way::Timed.name(), true, Way::Timed.shortcut(&prefs))?;
             let show = MenuItem::with_id(app, "show", "Show Editor", true, None::<&str>)?;
             let preferences = MenuItem::with_id(app, "settings", "Settings…", true, Some("Super+Comma"))?;
             let quit = MenuItem::with_id(app, "quit", "Quit Mark", true, Some("Super+Q"))?;
@@ -691,15 +1026,15 @@ pub fn run() {
             let login = CheckMenuItem::with_id(app, "login", "Open at Login", true,
                 macos::login_item_status() == macos::LOGIN_ENABLED, None::<&str>)?;
             app.manage(LoginToggle(login.clone()));
-            app.manage(CaptureItem(capture.clone()));
-            let tray_menu = Menu::with_items(app, &[&capture, &window, &show, &separator, &login, &preferences, &check, &PredefinedMenuItem::separator(app)?, &quit])?;
+            app.manage(CaptureItems([capture.clone(), window.clone(), display.clone(), timed.clone()]));
+            let tray_menu = Menu::with_items(app, &[&capture, &window, &display, &timed, &show, &separator, &login, &preferences, &check, &PredefinedMenuItem::separator(app)?, &quit])?;
             TrayIconBuilder::with_id("mark")
                 .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
                 .icon_as_template(true).tooltip(tooltip(&prefs.shortcut))
                 .menu(&tray_menu).build(app)?;
             let copy = MenuItem::with_id(app, "copy", "Copy and Close", true, Some("Alt+Super+C"))?;
             let close = MenuItem::with_id(app, "close", "Close", true, Some("Super+W"))?;
-            let main = Submenu::with_items(app, "Mark", true, &[&capture, &window, &show, &separator, &login, &preferences, &check, &separator, &quit])?;
+            let main = Submenu::with_items(app, "Mark", true, &[&capture, &window, &display, &timed, &show, &separator, &login, &preferences, &check, &separator, &quit])?;
             // Never shown, since an accessory app has no menu bar, but still
             // where AppKit sends a key the page leaves alone. That is how a text
             // field gets its editing keys: the page lets ⌘C, ⌘X, ⌘V, ⌘A and ⌘Z
@@ -716,10 +1051,25 @@ pub fn run() {
             app.set_menu(Menu::with_items(app, &[&main, &edit])?)?;
             install_glass(app.handle());
             apply_appearance(app.handle(), &prefs.appearance);
-            if let Err(error) = register_shortcut(app.handle(), &prefs.shortcut) {
-                report(app.handle(), format!("The capture shortcut is unavailable ({error}). Use Capture Region in Mark's menu."));
+            if let Err(error) = register_shortcuts(app.handle(), &prefs, None) {
+                report(app.handle(), format!("A capture shortcut is unavailable ({error}). Use Mark's menu to capture, or choose another in Settings."));
             }
             app.manage(Prefs(Mutex::new(prefs)));
+            // AI tools reach Mark through a socket only this user can open, for
+            // as long as Mark runs. A Mark that can't have it -- another one is
+            // answering already -- runs on without.
+            let socket = match mcp::folder().and_then(|folder| mcp::bind(&folder)) {
+                Ok(bound) => {
+                    let path = bound.path().to_path_buf();
+                    mcp::serve(bound, Arc::new(AppHost(app.handle().clone())));
+                    Some(path)
+                }
+                Err(error) => { eprintln!("[Mark] AI tools can't reach this Mark: {error}"); None }
+            };
+            app.manage(Socket(socket));
+            std::thread::spawn(thumbnail::sweep);
+            #[cfg(feature = "mcp-selftest")]
+            selftest::thumbnail(app.handle().clone());
             updates::watch(app.handle().clone());
             // Say up front that capture will not work, rather than letting the
             // first Capture Region be the thing that discovers it.
@@ -734,7 +1084,9 @@ pub fn run() {
             // the window, which is the harmless direction to be wrong in.
             let at_login = macos::login_item_status() == macos::LOGIN_ENABLED
                 && macos::seconds_since_boot() < 300.0;
-            if !at_login { present(app.handle()); }
+            // Opened by an AI tool's bridge, the ask it brings is what to show.
+            let for_request = std::env::args().any(|arg| arg == "--for-request");
+            if !at_login && !for_request { present(app.handle()); }
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -744,6 +1096,12 @@ pub fn run() {
             // something. Without this the editor stays hidden and re-opening
             // Mark looks exactly like a launch that failed.
             if let tauri::RunEvent::Reopen { .. } = event { present(app); }
+            if let tauri::RunEvent::Exit = event {
+                // A tool still waiting hears why no screenshot is coming, and the
+                // socket goes with the app that answered on it.
+                app.state::<State>().lock().unwrap().end_request(Reply::Failed(mcp::QUIT.into()));
+                if let Some(path) = app.try_state::<Socket>().and_then(|socket| socket.0.clone()) { let _ = std::fs::remove_file(path); }
+            }
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 // Only a shutter already in flight is worth delaying a quit for.
                 // A selection still on screen just goes away.
@@ -763,7 +1121,33 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{capture, pretty_shortcut, safe_name, selector_globals};
+    use super::{bindings, capture, clash, pretty_shortcut, safe_name, selector_globals, settings, Way};
+
+    /// Each shortcut that is set starts its own way in; one that is not, none.
+    #[test]
+    fn each_shortcut_belongs_to_its_way_in() {
+        let mut prefs = settings::Settings::default();
+        prefs.shortcuts.window = Some("Alt+Super+Digit4".into());
+        prefs.shortcuts.timed = Some("Shift+Super+KeyT".into());
+        let ways: Vec<Way> = bindings(&prefs).unwrap().into_iter().map(|(_, way)| way).collect();
+        assert_eq!(ways, [Way::Region, Way::Window, Way::Timed]);
+        assert_eq!(Way::named(None), Ok(Way::Region));
+        assert_eq!(Way::named(Some("display")), Ok(Way::Display));
+        assert!(Way::named(Some("video")).is_err());
+    }
+
+    /// Two ways may not share a key, however each is written.
+    #[test]
+    fn two_ways_cannot_share_a_key() {
+        let mut prefs = settings::Settings::default();
+        assert_eq!(clash(&prefs), None);
+        prefs.shortcuts.display = Some("Super+Digit4".into());                  // Capture Region's own
+        assert_eq!(clash(&prefs), Some((Way::Region, Way::Display)));
+        prefs.shortcuts.display = Some("Command+Digit4".into());                // the same key, spelled otherwise
+        assert_eq!(clash(&prefs), Some((Way::Region, Way::Display)));
+        prefs.shortcuts.display = Some("Alt+Super+Digit4".into());
+        assert_eq!(clash(&prefs), None);
+    }
 
     /// The overlay's whole picture of the screen arrives as this one script; a
     /// slip in it and the overlay knows nothing -- not even where its display is.
@@ -788,21 +1172,31 @@ mod tests {
     /// declared here must be registered in build.rs, wired into the invoke
     /// handler, and granted to at least one window; anything else is a
     /// feature that quietly does nothing.
+    /// Every file of a kind in one of the crate's folders, read now, so a
+    /// module or a window added later is checked without anyone listing it here.
+    fn every(folder: &str, extension: &str) -> Vec<String> {
+        let mut files: Vec<_> = std::fs::read_dir(format!("{}/{folder}", env!("CARGO_MANIFEST_DIR"))).unwrap()
+            .map(|entry| entry.unwrap().path()).filter(|path| path.extension().is_some_and(|e| e == extension)).collect();
+        files.sort();
+        files.iter().map(|path| std::fs::read_to_string(path).unwrap()).collect()
+    }
+
     #[test]
     fn every_command_is_registered_wired_and_granted() {
-        let source = include_str!("lib.rs");
+        let sources = every("src", "rs").join("\n");
         let build = include_str!("../build.rs");
-        let capabilities = [include_str!("../capabilities/editor.json"), include_str!("../capabilities/selector.json"),
-                            include_str!("../capabilities/settings.json")].concat();
-        let handler = source.split("generate_handler![").nth(1).and_then(|rest| rest.split("])").next()).expect("an invoke handler");
-        let lines: Vec<&str> = source.lines().collect();
+        let capabilities = every("capabilities", "json").concat();
+        let handler = include_str!("lib.rs").split("generate_handler![").nth(1).and_then(|rest| rest.split("])").next()).expect("an invoke handler");
+        let lines: Vec<&str> = sources.lines().collect();
         let mut problems = Vec::new();
         let mut seen = 0;
         for (i, line) in lines.iter().enumerate() {
             if line.trim() != "#[tauri::command]" { continue; }
-            let signature = lines[i + 1..].iter().find(|l| l.trim_start().starts_with("fn ") || l.trim_start().starts_with("async fn "))
+            let bare = |l: &&str| l.trim_start().trim_start_matches("pub(crate) ").trim_start_matches("pub ").to_string();
+            let signature = lines[i + 1..].iter().map(bare).find(|l| l.starts_with("fn ") || l.starts_with("async fn "))
                 .expect("a function after the attribute");
-            let name = signature.trim_start().trim_start_matches("async ").trim_start_matches("fn ").split('(').next().unwrap();
+            let name = signature.trim_start_matches("async ").trim_start_matches("fn ").split('(').next().unwrap().to_string();
+            let name = name.as_str();
             seen += 1;
             if !build.contains(&format!("\"{name}\"")) { problems.push(format!("{name}: not in build.rs, so no permission exists for it")); }
             if !handler.contains(name) { problems.push(format!("{name}: not in the invoke handler")); }

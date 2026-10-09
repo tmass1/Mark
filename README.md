@@ -20,6 +20,11 @@ screenshot.
 
 ![Three notes framed with their numbers in red pills, each with a white border and a soft shadow, pointing at a dashboard](docs/framed-steps.png)
 
+**Or let an AI ask.** Claude Code and Claude Desktop can ask Mark for a
+screenshot: Mark shows you what they want to see, you capture it and mark it up
+as usual, and **Send** gives it to them, numbered steps and all. Nothing is
+taken or sent without that Send. See [AI tools](#ai-tools).
+
 **[Download Mark](https://github.com/tmass1/Mark/releases/latest)**, signed and
 notarized for Apple silicon and Intel, for macOS 13 or later.
 
@@ -99,7 +104,11 @@ notarization; an Apple Development certificate is only good for this Mac.
    away with no overlay — and **Timed**, which opens the overlay with a five
    second delay already armed. The **Capture** button in the editor's title
    bar offers the same four, and stays put while a capture is open, so a
-   second shot does not mean closing the first.
+   second shot does not mean closing the first. Each of the four can have a
+   shortcut of its own, chosen in **Settings** (⌘,): Region's is ⌘4, and the
+   others have none until you pick one, since a key taken for the whole Mac
+   is a key taken from every other app. Two ways can't share a key, and ⌫ in
+   a recorder clears its shortcut — Region's goes back to ⌘4.
 3. Grant Screen Recording access when macOS asks. This permission is also used
    for still screenshots; Mark does not capture audio or video.
 4. Drag to select a region. Guides run the full width and height of the display
@@ -387,7 +396,22 @@ notarization; an Apple Development certificate is only good for this Mac.
    six, drawing and all, so closing one by accident costs a click rather than
    the shot. It lives in memory only and does not survive quitting Mark:
    it is an undo for closing, not a library.
-10. **Updates** come to Mark by themselves. It looks for a new version shortly
+10. **A thumbnail instead of the editor.** With **Show a thumbnail instead of
+    the editor** on in Settings, a capture taken from another app is copied at
+    once and waits in the corner of the screen it came from, as macOS's own
+    screenshot thumbnail does. Click it to open the editor on it. Drag it into
+    Finder, Slack, Mail or an upload field to drop the PNG there, named as Save
+    would name it. Swipe it to the right, or press its **×**, to send it away;
+    left alone, it goes after about five seconds, and stays while the pointer
+    is on it. Gone any way but a click, the capture waits in Recent and stays
+    on the clipboard.
+
+    It is a panel that never takes the focus, so clicking or dragging it
+    leaves the app you are working in as it was, and it shows over a
+    full-screen app too. A capture taken while the editor is open, or one an
+    AI tool asked for, opens in the editor as before. What the thumbnail copies
+    and drags is the capture as taken: framing is the editor's.
+11. **Updates** come to Mark by themselves. It looks for a new version shortly
     after it opens and once a day after that, and when there is one, Software
     Update says what changed and offers **Install and Relaunch**, **Remind Me
     Later** or **Skip This Version**. Installing downloads the new version,
@@ -398,6 +422,53 @@ notarization; an Apple Development certificate is only good for this Mac.
 
 Escape, ⌘W, or the red traffic-light button closes without copying. Starting a
 new capture hides the old editor; cancel restores it and success replaces it.
+
+## AI tools
+
+Claude Code, Claude Desktop and other MCP apps can ask you for a screenshot.
+Mark comes forward with the ask in a bar across the top of the editor —
+**Claude Code** asks to see “the error dialog in Xcode” — and nothing more
+happens until you act. Bring the thing on screen and capture it the usual way:
+the tile for the way the tool suggested is the highlighted one. Mark it up if
+it helps, and press **Send to Claude Code** (⌥⌘C). The image goes back at the
+size Claude looks at, 2576 pixels on the long edge at most, and with it, as
+text: what you marked on it and where, in the image's own pixels, numbered
+marks first with the note beside each; and the words in it, read on your Mac
+off the picture as sent, so a model has exact error messages rather than ones
+read out of pixels, and nothing you redacted comes back as words. The frame
+stays behind, being for people. **Don’t Send**, Escape, ⌘W or closing the
+editor tells the tool no, and that it should not ask again unless you say so.
+
+To set it up, open **Settings › AI tools**:
+
+- **Copy Claude Code Command** copies a command for Terminal that adds Mark to
+  Claude Code in every project:
+
+  ```bash
+  claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp
+  ```
+
+- **Copy Claude Desktop Config** copies the entry for
+  `~/Library/Application Support/Claude/claude_desktop_config.json`. Add it
+  under `mcpServers`, then quit and reopen Claude.
+
+Both point at the Mark that is running, so move Mark to Applications first.
+**Let AI tools ask for screenshots** turns asking off without removing
+anything; a tool that asks then hears that it is off.
+
+Claude Code waits as long as you need: Mark tells it every ten seconds that it
+is still waiting, and a long wait moves into its background tasks. Claude
+Desktop, like most apps built on the MCP SDK, gives a tool one minute, which
+being told it is still waiting does not extend, so the bar counts that minute
+down for any app but Claude Code. An app that turns out to wait longer just
+loses the count; one that gives up takes its bar with it.
+
+The tool starts Mark's own binary with `--mcp` as its MCP server. That process,
+the bridge, takes nothing itself: it relays the ask over a Unix socket in
+Mark's folder under Application Support, which only your account can open, to
+the Mark in the menu bar — opening Mark first if it is not running. One ask
+waits at a time, and text from a tool is shown as text, with the characters
+that could disguise it removed.
 
 ## The mark
 
@@ -468,7 +539,24 @@ default anyway.
   runtime rather than a binding crate, and reports `notFound` rather than
   `notRegistered` until the app has been registered once, so status is compared
   against `enabled` rather than tested for absence.
-- `src-tauri/src/session.rs` owns the single in-memory capture session.
+- `src-tauri/src/session.rs` owns the single in-memory capture session, and
+  the one AI tool's ask that may be waiting in it, answered once by id: Send,
+  Don't Send, closing the editor or the tool giving up, whichever comes first.
+- `src-tauri/src/mcp.rs` is the MCP side: the bridge that `mark --mcp` runs,
+  hand-written JSON-RPC over stdin and stdout with nothing else ever written to
+  stdout, and the Unix socket it reaches the app through. The socket is
+  `mcp.sock` in Mark's Application Support folder, made 0700, with the socket
+  0600 and each connection's user checked; only the holder of a lock beside it
+  may clear away an old socket and bind, so two copies of Mark never take it
+  from each other. The bridge uses no AppKit, so it never registers as a
+  running Mark, and opens Mark with `open` rather than as its own child, so
+  Mark is judged for Screen Recording as itself.
+- `src-tauri/src/thumbnail.rs` is the floating thumbnail: a small window of
+  its own, made a non-activating `NSPanel` with `tauri-nspanel`, in the corner of
+  the work area of the display the capture came from. Its web view sees the
+  pointer only in a key window, which the panel never is, so a tracking area
+  in `macos.rs` tells the page when the pointer comes and goes; a drag starts
+  a native dragging session with the PNG as a file, offered for copy only.
 - `src-tauri/src/lib.rs` wires the tray, shortcut, window, commands, and app
   lifecycle, and sizes the editor to what it is showing: the capture at actual
   size where the screen allows, and a compact window when there is nothing to
@@ -563,8 +651,10 @@ notarization if Mark ever goes to someone else's.
 
 `demo.html` is Mark running in a browser: the editor, the selection overlay and
 settings are the real pages, each in a frame, against a page that plays lib.rs
-and a picture of a desktop. `site.html` is the landing page, which frames the
-demo and takes its version, shortcut and mark from the app itself. Both are
+and a picture of a desktop. `site.html` is the landing page, which opens on
+the demo itself, framed where a picture of the app would be, and takes its
+version, shortcut and mark from the app itself. A phone gets the picture
+instead, and never loads the demo. Both are
 pages of the same Vite build, so `pnpm dev` serves them at
 `http://127.0.0.1:1420/demo.html` and `/site.html`. A copy in the demo shows
 the very image that went to the clipboard, in a card at the bottom right, with

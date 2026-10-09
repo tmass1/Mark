@@ -15,6 +15,8 @@ export async function installBridge(page: Page, snapshot: {
   capture?: { dataUrl: string; width: number; height: number } | null;
   error?: string | null;
   busy?: boolean;
+  /** An AI tool's ask, waiting, as Rust's snapshot carries it. */
+  request?: { id: number; client: string; prompt: string; mode: string; deadline?: number | null } | null;
   fails?: Record<string, string>;
   /** Canned replies, for commands whose return value the editor acts on. */
   returns?: Record<string, unknown>;
@@ -25,6 +27,7 @@ export async function installBridge(page: Page, snapshot: {
     capture: snapshot.capture === undefined ? CAPTURE : snapshot.capture,
     error: snapshot.error ?? null,
     busy: snapshot.busy ?? false,
+    request: snapshot.request ?? null,
     fails: snapshot.fails ?? {},
     returns: snapshot.returns ?? {},
     holds: snapshot.holds ?? [],
@@ -32,6 +35,8 @@ export async function installBridge(page: Page, snapshot: {
   await page.addInitScript(([state]) => {
     const sent: Sent[] = [];
     (window as any).__sent = sent;
+    // Rust's side of things, for a test to change mid-way, as Rust would.
+    (window as any).__bridge = state;
     let next = 1;
     (window as any).__TAURI_INTERNALS__ = {
       transformCallback: (callback: unknown) => { (window as any)[`__cb${++next}`] = callback; return next; },
@@ -52,12 +57,18 @@ export async function installBridge(page: Page, snapshot: {
         if (state.holds.includes(cmd)) return new Promise(() => {});
         if (state.fails[cmd]) throw state.fails[cmd];
         if (cmd === 'current_capture') {
-          return { capture: state.capture, error: state.error, busy: state.busy };
+          return { capture: state.capture, error: state.error, busy: state.busy, request: state.request };
         }
         return cmd in state.returns ? state.returns[cmd] : undefined;
       },
     };
   }, [state] as const);
+}
+
+/** Change what Rust would say next time it is asked, as a test's way of
+ *  playing something happening there: an ask ending, a capture arriving. */
+export function setBridge(page: Page, change: Record<string, unknown>): Promise<void> {
+  return page.evaluate(change => { Object.assign((window as any).__bridge, change); }, change);
 }
 
 /** Everything the editor has asked Rust to do, in order. */

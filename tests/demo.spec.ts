@@ -128,11 +128,21 @@ test('⌘4 starts a capture, as in the app, and the shortcut is recordable', asy
 
   await editor.getByRole('button', { name: 'Settings' }).click();
   const settings = page.frameLocator('.win.settings iframe');
-  await settings.locator('.recorder').click();
+  await settings.locator('.recorder[data-way="region"]').click();
   await page.keyboard.press('Meta+Shift+m');
-  await expect(settings.locator('.recorder kbd')).toHaveText('⇧⌘M');
+  await expect(settings.locator('.recorder[data-way="region"] kbd')).toHaveText('⇧⌘M');
   await expect(editor.locator('.start kbd')).toHaveText('⇧⌘M');            // the editor followed
   await expect(page.locator('.tray-menu [data-act="capture"] kbd')).toHaveText('⇧⌘M');
+
+  // A shortcut of its own for a window opens the overlay already picking one.
+  await settings.locator('.recorder[data-way="window"]').click();
+  await page.keyboard.press('Meta+Alt+5');
+  await expect(settings.locator('.recorder[data-way="window"] kbd')).toHaveText('⌥⌘5');
+  await expect(page.locator('.tray-menu [data-act="window"] kbd')).toHaveText('⌥⌘5');
+  await page.locator('.win.settings .light.close').click();
+  await page.locator('.caption').click();
+  await page.keyboard.press('Meta+Alt+5');
+  await expect(page.frameLocator('.overlay').locator('.hint')).toHaveText(/^Click a window to capture it/);
 });
 
 test('a copy shows the very image that was copied, and offers it as a file', async ({ page }) => {
@@ -221,4 +231,49 @@ test('a phone gets a picture of the editor and none of the frames', async ({ pag
   await expect(page.locator('html')).not.toHaveClass(/poster-page/);
   await page.setViewportSize({ width: 390, height: 800 });
   await expect(page.locator('.stage')).toHaveCount(1);
+});
+
+// The site's "Let Claude ask": the demo plays the AI tool, and the visitor
+// answers it with the real editor, request bar, Send and all.
+test('Claude asks, the visitor captures and points, and the card shows what Claude received', async ({ page }) => {
+  const editor = await open(page);
+  await page.evaluate(() => window.postMessage('mark-demo:ask', location.origin));
+  const bar = editor.locator('.request-bar');
+  await expect(bar).toContainText('Claude asks to see “the chart’s peak”');
+  await expect(page.locator('.hint')).toContainText('Claude asked to see the chart’s peak');
+
+  // Capture a region, the usual way.
+  await editor.locator('[data-start="region"]').click();
+  await expect(page.frameLocator('.overlay').locator('.veil')).toBeVisible();
+  const stage = (await page.locator('.stage').boundingBox())!;
+  await page.mouse.move(stage.x + 300, stage.y + 200); await page.mouse.down();
+  await page.mouse.move(stage.x + 700, stage.y + 420, { steps: 8 }); await page.mouse.up();
+  await page.frameLocator('.overlay').getByRole('button', { name: 'Capture', exact: true }).click();
+  await expect(editor.locator('.capture')).toBeVisible();
+  await expect(bar).toBeVisible();                                   // still asking, over the capture
+
+  // A numbered step, with a note: the arrow slot's numbered way, from its menu.
+  await editor.locator('.tool[data-slot="0"]').click({ button: 'right' });
+  await editor.locator('.tool-menu button', { hasText: 'Numbered arrow' }).click();
+  const box = (await editor.locator('.overlay').boundingBox())!;
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+  await page.keyboard.type('the peak');
+
+  await editor.getByRole('button', { name: /^Send to Claude/ }).click();
+  const card = page.getByRole('complementary', { name: 'What Claude received' });
+  await expect(card).toBeVisible();
+  await expect(card.locator('.sent-text')).toContainText("The user's screenshot, captured with Mark at");
+  await expect(card.locator('.sent-text')).toContainText('1. a badge at (');
+  await expect(card.locator('.sent-text')).toContainText('“the peak”');
+  expect(await card.locator('.sent-image').evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect(page.locator('.win.editor')).toBeHidden();             // put away, as Send does
+});
+
+test('Don’t Send tells Claude no and keeps the capture', async ({ page }) => {
+  const editor = await open(page);
+  await page.evaluate(() => window.postMessage('mark-demo:ask', location.origin));
+  await expect(editor.locator('.request-bar')).toBeVisible();
+  await editor.getByRole('button', { name: 'Don’t Send' }).click();
+  await expect(editor.locator('.request-bar')).toBeHidden();
+  await expect(page.locator('.hint')).toContainText('Claude was told no');
 });

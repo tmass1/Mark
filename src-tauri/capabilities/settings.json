@@ -1,10 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
-  "description": "The settings window may read and change the preferences, ask for an update check, and close itself.",
+  "description": "The settings window may read and change the preferences, copy the lines that point an AI tool at Mark, ask for an update check, and close itself.",
   "windows": ["settings"], "platforms": ["macOS"],
   "permissions": [
-    "allow-get-settings", "allow-set-appearance", "allow-set-shortcut",
+    "allow-get-settings", "allow-set-appearance", "allow-set-shortcut", "allow-set-after-capture", "allow-set-mcp", "allow-mcp-setup", "allow-copy-text",
     "allow-login-enabled", "allow-set-login", "allow-set-auto-update", "allow-open-updates",
     "core:window:allow-close", "core:window:allow-inner-size", "core:window:allow-scale-factor", "core:window:allow-set-size", "core:app:allow-version"
   ]

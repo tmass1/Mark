@@ -3,12 +3,30 @@ import { command, isTauri } from './platform';
 import { fitWindowTo } from './fit';
 import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent, shortcutProblem } from './shortcut';
 
-/** Mark's settings window: four things, each applied the moment it changes,
- *  with nothing to save. Appearance, the shortcut and updates are Mark's own;
- *  login is read from and written to macOS, which is the only source of truth
- *  for it. */
+/** Mark's settings window: each thing applied the moment it changes, with
+ *  nothing to save. Appearance, the shortcuts, what follows a capture, AI
+ *  tools and updates are Mark's own; login is read from and written to macOS,
+ *  which is the only source of truth for it. */
 
-interface Settings { appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates?: boolean }
+type Way = 'region' | 'window' | 'display' | 'timed';
+interface Settings {
+  appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates?: boolean;
+  /** The other ways in; each has one only once it is chosen. */
+  shortcuts?: Partial<Record<Exclude<Way, 'region'>, string>>;
+  afterCapture?: 'editor' | 'thumbnail';
+  mcp?: boolean;
+}
+/** What points an AI tool at this Mark, made by Rust from where it really is. */
+interface Setup { claudeCode: string; claudeDesktop: string }
+
+/** The four ways into a capture, each with a shortcut of its own. Capture
+ *  Region always has one; the rest start without, since a key taken globally
+ *  is taken from every other app. */
+const WAYS: { way: Way; name: string }[] = [
+  { way: 'region', name: 'Region' }, { way: 'window', name: 'Window' },
+  { way: 'display', name: 'Whole Screen' }, { way: 'timed', name: 'Timed Region' },
+];
+const shortcutOf = (settings: Settings, way: Way) => way === 'region' ? settings.shortcut : settings.shortcuts?.[way] ?? '';
 
 const APPEARANCES: { id: Settings['appearance']; name: string }[] = [
   { id: 'dark', name: 'Dark' }, { id: 'light', name: 'Light' }, { id: 'system', name: 'Match System' },
@@ -28,9 +46,27 @@ root.innerHTML = `
   <section class="pref">
     <h2 class="pref-label">Capture</h2>
     <div class="pref-control">
-      <button class="recorder glassy" type="button" aria-label="Capture shortcut" aria-describedby="recorder-hint"><kbd>${prettyShortcut(DEFAULT_SHORTCUT)}</kbd></button>
-      <p class="pref-hint" id="recorder-hint">Click, then press the keys you want. ⌫ puts back ${prettyShortcut(DEFAULT_SHORTCUT)}.</p>
+      <div class="ways">
+        ${WAYS.map(({ way, name }) => `<span class="way-name" id="way-${way}">${name}</span>
+          <button class="recorder glassy" type="button" data-way="${way}" aria-labelledby="way-${way}" aria-describedby="recorder-hint"><kbd>${way === 'region' ? prettyShortcut(DEFAULT_SHORTCUT) : 'None'}</kbd></button>`).join('')}
+      </div>
+      <p class="pref-hint" id="recorder-hint">Click one, then press the keys you want. ⌫ clears it; Region’s goes back to ${prettyShortcut(DEFAULT_SHORTCUT)}.</p>
       <p class="pref-note shortcut-note" role="status" hidden></p>
+      <label class="check"><input class="thumbnail-after" type="checkbox" aria-describedby="thumbnail-hint" /> Show a thumbnail instead of the editor</label>
+      <p class="pref-hint" id="thumbnail-hint">Copied at once, it waits in the corner: click it to mark it up, or drag it into any app.</p>
+      <p class="pref-note after-note" role="status" hidden></p>
+    </div>
+  </section>
+  <section class="pref">
+    <h2 class="pref-label">AI tools</h2>
+    <div class="pref-control">
+      <label class="check"><input class="mcp" type="checkbox" checked aria-describedby="mcp-hint" /> Let AI tools ask for screenshots</label>
+      <p class="pref-hint" id="mcp-hint">Claude Code, Claude and other MCP apps can ask; nothing is sent until you press Send.</p>
+      <div class="setup-buttons">
+        <button class="copy-command glassy" type="button">Copy Claude Code Command</button>
+        <button class="copy-entry glassy" type="button">Copy Claude Desktop Config</button>
+      </div>
+      <p class="pref-note mcp-note" role="status" hidden></p>
     </div>
   </section>
   <section class="pref">
@@ -50,14 +86,26 @@ root.innerHTML = `
   <p class="pref-preview" hidden>Browser preview: settings apply in the Mac app.</p>
   <p class="pref-version" hidden></p>`;
 
-const recorder = root.querySelector<HTMLButtonElement>('.recorder')!;
-const recorderKey = recorder.querySelector('kbd')!;
+const recorders = [...root.querySelectorAll<HTMLButtonElement>('.recorder')];
 const shortcutNote = root.querySelector<HTMLElement>('.shortcut-note')!;
 const login = root.querySelector<HTMLInputElement>('.login')!;
 const loginNote = root.querySelector<HTMLElement>('.login-note')!;
 const autoUpdate = root.querySelector<HTMLInputElement>('.auto-update')!;
+const thumbnailAfter = root.querySelector<HTMLInputElement>('.thumbnail-after')!;
+const afterNote = root.querySelector<HTMLElement>('.after-note')!;
+const mcp = root.querySelector<HTMLInputElement>('.mcp')!;
+const mcpNote = root.querySelector<HTMLElement>('.mcp-note')!;
 let current: Settings = { appearance: 'dark', shortcut: DEFAULT_SHORTCUT };
-let recording = false;
+/** The recorder listening for keys, if one is. */
+let recording: HTMLButtonElement | null = null;
+
+/** What a recorder shows: its shortcut the way a Mac prints it, or None. */
+function label(recorder: HTMLButtonElement) {
+  const shortcut = shortcutOf(current, recorder.dataset.way as Way);
+  const key = recorder.querySelector('kbd')!;
+  key.textContent = shortcut ? prettyShortcut(shortcut) : 'None';
+  recorder.classList.toggle('unset', !shortcut);
+}
 
 function show(settings: Settings) {
   current = settings;
@@ -66,14 +114,18 @@ function show(settings: Settings) {
     button.setAttribute('aria-checked', String(active));
     button.classList.toggle('active', active);
   }
-  if (!recording) recorderKey.textContent = prettyShortcut(settings.shortcut);
+  for (const recorder of recorders) if (recorder !== recording) label(recorder);
   autoUpdate.checked = settings.checkUpdates !== false;
+  thumbnailAfter.checked = settings.afterCapture === 'thumbnail';
+  mcp.checked = settings.mcp !== false;
   placeLens();
 }
 
-function note(element: HTMLElement, text: string | null) {
+/** A line under a control: what went wrong, or -- `done` -- what was done. */
+function note(element: HTMLElement, text: string | null, done = false) {
   element.hidden = !text;
   element.textContent = text ?? '';
+  element.classList.toggle('done', done);
 }
 
 /** The same sliding pill as the editor's pickers, under the chosen appearance. */
@@ -98,20 +150,27 @@ root.addEventListener('click', event => {
   }
 });
 
-function startRecording() {
-  recording = true;
+function startRecording(recorder: HTMLButtonElement) {
+  if (recording) stopRecording();
+  recording = recorder;
   recorder.classList.add('recording');
-  recorderKey.textContent = 'Press keys…';
+  recorder.querySelector('kbd')!.textContent = 'Press keys…';
   note(shortcutNote, null);
 }
 function stopRecording() {
-  recording = false;
-  recorder.classList.remove('recording');
-  recorderKey.textContent = prettyShortcut(current.shortcut);
+  const was = recording;
+  recording = null;
+  if (!was) return;
+  was.classList.remove('recording');
+  label(was);
 }
+/** Capture Region's goes as it always has, with no way named; the others say
+ *  which they are. An empty shortcut clears one. */
 async function adopt(shortcut: string) {
+  const way = recording?.dataset.way as Way | undefined;
+  if (!way) return;
   try {
-    show(await command<Settings>('set_shortcut', { shortcut }));
+    show(await command<Settings>('set_shortcut', way === 'region' ? { shortcut } : { shortcut, mode: way }));
     stopRecording();
   } catch (error) {
     stopRecording();
@@ -119,8 +178,10 @@ async function adopt(shortcut: string) {
   }
 }
 
-recorder.addEventListener('click', () => { if (recording) stopRecording(); else startRecording(); });
-recorder.addEventListener('blur', () => { if (recording) stopRecording(); });
+for (const recorder of recorders) {
+  recorder.addEventListener('click', () => { if (recording === recorder) stopRecording(); else startRecording(recorder); });
+  recorder.addEventListener('blur', () => { if (recording === recorder) stopRecording(); });
+}
 window.addEventListener('keydown', event => {
   if (!recording) {
     // ⌘W and Escape close the window, as they do everywhere else on the Mac.
@@ -129,7 +190,7 @@ window.addEventListener('keydown', event => {
   }
   event.preventDefault();
   if (event.key === 'Escape') { stopRecording(); return; }
-  if (event.key === 'Backspace' || event.key === 'Delete') { void adopt(DEFAULT_SHORTCUT); return; }
+  if (event.key === 'Backspace' || event.key === 'Delete') { void adopt(recording.dataset.way === 'region' ? DEFAULT_SHORTCUT : ''); return; }
   const problem = shortcutProblem(event);
   if (problem) { if (!/then press a key/.test(problem)) note(shortcutNote, problem); return; }
   void adopt(shortcutFromEvent(event)!);
@@ -143,6 +204,34 @@ login.addEventListener('change', async () => {
     note(loginNote, String(error));
     login.checked = await command<boolean>('login_enabled').catch(() => false);
   }
+});
+
+thumbnailAfter.addEventListener('change', () => {
+  note(afterNote, null);
+  void command<Settings>('set_after_capture', { value: thumbnailAfter.checked ? 'thumbnail' : 'editor' }).then(show)
+    .catch(error => { note(afterNote, String(error)); thumbnailAfter.checked = current.afterCapture === 'thumbnail'; });
+});
+
+mcp.addEventListener('change', () => {
+  note(mcpNote, null);
+  void command<Settings>('set_mcp', { enabled: mcp.checked }).then(show)
+    .catch(error => { note(mcpNote, String(error)); mcp.checked = current.mcp !== false; });
+});
+
+/** Copy what points a tool at this Mark, and say where it goes. */
+async function copySetup(which: keyof Setup, where: string) {
+  note(mcpNote, null);
+  try {
+    const setup = await command<Setup>('mcp_setup');
+    await command('copy_text', { text: setup[which] });
+    note(mcpNote, where, true);
+  } catch (error) { note(mcpNote, String(error)); }
+}
+root.querySelector<HTMLButtonElement>('.copy-command')!.addEventListener('click', () => {
+  void copySetup('claudeCode', 'Copied. Paste it into Terminal and press Return; Claude Code can then ask in any project.');
+});
+root.querySelector<HTMLButtonElement>('.copy-entry')!.addEventListener('click', () => {
+  void copySetup('claudeDesktop', 'Copied. Add it to claude_desktop_config.json, in Library/Application Support/Claude, then quit and reopen Claude.');
 });
 
 autoUpdate.addEventListener('change', () => {

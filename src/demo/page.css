@@ -91,7 +91,25 @@ body { display: flex; flex-direction: column; align-items: center; padding: 16px
 .clip.refused .clip-save:hover { background: #359aff; }
 .clip-close { width: 28px; padding: 0; font-size: 16px; line-height: 1; background: transparent; color: #9ca3af; }
 .clip-close:hover { background: #ffffff14; color: #f3f3f3; }
-@media (prefers-reduced-motion: reduce) { .clip.in, .hint.swap { animation: none; } }
+/* What Claude received: the picture as sent, and the words with it, in a card
+   at the right, made like the clipboard's. */
+.sent { position: absolute; right: 20px; top: 44px; z-index: 26; width: 340px; max-height: calc(100% - 108px); padding: 12px;
+  display: flex; flex-direction: column; gap: 10px; border-radius: 16px;
+  background: #1b212af0; color: #f3f3f3; -webkit-backdrop-filter: blur(24px) saturate(1.4); backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow: 0 20px 50px #0000008c, 0 0 0 .5px #0a84ff80, inset 0 1px 0 #ffffff1f;
+}
+.sent[hidden] { display: none; }
+.sent.in { animation: clip-in .5s cubic-bezier(.22, 1, .36, 1); }
+.sent-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+.sent-head strong { font-weight: 600; }
+.sent-image { display: block; width: 100%; max-height: 170px; object-fit: contain; border-radius: 6px; background: #0e1118; box-shadow: 0 0 0 .5px #ffffff26; }
+.sent-text { flex: 1 1 auto; min-height: 0; margin: 0; overflow: auto; padding: 10px 12px; border-radius: 8px; background: #0e1118;
+  font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #d1d5db; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sent-note { margin: 0; color: #9ca3af; font-size: 11.5px; line-height: 1.45; }
+.sent-close { width: 28px; height: 28px; padding: 0; border: none; border-radius: 999px; font: inherit; font-size: 16px; line-height: 1;
+  background: transparent; color: #9ca3af; cursor: default; }
+.sent-close:hover { background: #ffffff14; color: #f3f3f3; }
+@media (prefers-reduced-motion: reduce) { .clip.in, .sent.in, .hint.swap { animation: none; } }
 
 /* ---- the poster, on a phone ------------------------------------------------------ */
 html.poster-page body { justify-content: center; padding: 24px 16px; }

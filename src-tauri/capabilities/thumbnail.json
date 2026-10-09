@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "thumbnail",
+  "description": "The floating thumbnail may read the capture it shows, open it in the editor, put itself away, and start a drag of the capture as a file.",
+  "windows": ["thumbnail"], "platforms": ["macOS"],
+  "permissions": [
+    "allow-thumbnail-image", "allow-open-thumbnail", "allow-close-thumbnail", "allow-drag-thumbnail",
+    "core:event:allow-listen", "core:event:allow-unlisten"
+  ]
+}

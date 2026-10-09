@@ -137,6 +137,7 @@ button { font: inherit; cursor: default; color: inherit; }
 button:disabled { opacity: .4; }
 button:focus-visible { outline: 2.5px solid var(--blue); outline-offset: 2px; }
 kbd { font: inherit; font-size: 11px; opacity: .5; margin-left: 9px; letter-spacing: .3px; }
+kbd:empty { display: none; }
 
 /* The window is itself a slab of glass: the material shows through the scrim,
    and its edge catches light -- brightest along the top, a hairline the rest of
@@ -567,6 +568,33 @@ footer > * { flex: none; }
 .crop-shapes .segment { padding: 4px 9px; font-size: 11.5px; }
 .crop-apply:disabled { opacity: .45; }
 
+/* An AI tool's ask, for as long as it waits: who asked and for what, and Don't
+   Send, across the top of the canvas and clear of the rail -- placed from the
+   window's own numbers (the 46 title row, the 48 toolbar and its 10 gap, the
+   12 margins, the 44 rail and its 10 gap), as fit_window counts them. The
+   canvas keeps its top free for it: REQUEST_BAR in lib.rs is this height and
+   that gap. Change both. */
+.request-bar {
+  position: absolute; z-index: 6; top: 104px; left: 66px; right: 12px; margin-inline: auto;
+  width: max-content; max-width: calc(100% - 78px); height: 44px;
+  display: flex; align-items: center; gap: 10px; padding: 0 6px 0 13px; border-radius: 22px;
+  background: var(--glass); font-size: 12.5px;
+  -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: 0 12px 34px var(--shadow), 0 0 0 .5px var(--control-line);
+}
+/* With nothing captured there is neither toolbar nor rail above and beside it. */
+.toolbar[hidden] ~ .request-bar { top: 46px; left: 12px; max-width: calc(100% - 24px); }
+.request-glyph { flex: none; width: 18px; height: 18px; color: var(--blue); }
+.request-text { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.request-client { font-weight: 600; }
+.request-decline { flex: none; height: 32px; padding: 0 13px; }
+/* How long a tool that gives up has left; amber as it runs out. */
+.request-wait { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.request-wait.soon { color: #ff9f0a; }
+.requesting .canvas { padding-top: 54px; }
+/* Send names the tool; a long name gives way before anything else in the row. */
+.copy-label { min-width: 0; max-width: 210px; overflow: hidden; text-overflow: ellipsis; }
+
 /* ---- the capture -------------------------------------------------------- */
 
 /* No well and no padding of its own: the canvas is the ground, and the panes
@@ -798,6 +826,8 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 .pref-control { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
 .pref-hint { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
 .pref-note { margin: 0; color: var(--brand); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.pref-note.done { color: var(--muted); }
+.setup-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .pref-preview, .pref-version { margin: 8px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
 .pref-version { margin-top: 4px; opacity: .8; font-variant-numeric: tabular-nums; }
 
@@ -812,6 +842,10 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 .recorder kbd { margin: 0; opacity: 1; font-size: 13px; letter-spacing: .5px; }
 .recorder.recording { border-color: var(--blue); box-shadow: 0 0 0 3px #007aff33, inset 0 1px 0 var(--rim); }
 .recorder.recording kbd { color: var(--muted); letter-spacing: 0; }
+/* The four ways in, each beside its shortcut; one not chosen reads None, quietly. */
+.ways { display: grid; grid-template-columns: auto auto; justify-content: start; align-items: center; gap: 8px 14px; }
+.way-name { color: var(--ink); font-size: 13px; }
+.recorder.unset kbd { color: var(--muted); font-size: 12px; letter-spacing: 0; }
 
 .check { display: inline-flex; align-items: center; gap: 8px; padding-top: 6px; font-size: 13px; }
 .check input { margin: 0; width: 15px; height: 15px; accent-color: var(--blue); }

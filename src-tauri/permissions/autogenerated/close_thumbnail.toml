@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-thumbnail"
+description = "Enables the close_thumbnail command without any pre-configured scope."
+commands.allow = ["close_thumbnail"]
+
+[[permission]]
+identifier = "deny-close-thumbnail"
+description = "Denies the close_thumbnail command without any pre-configured scope."
+commands.deny = ["close_thumbnail"]

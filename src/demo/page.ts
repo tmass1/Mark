@@ -11,6 +11,7 @@ import './page.css';
 import pkg from '../../package.json';
 import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent } from '../shortcut';
 import type { DemoFrame, DemoHost } from './bridge';
+import type { Asked } from '../platform';
 
 // ---- geometry, mirroring lib.rs ------------------------------------------
 const CHROME = 46 + 48 + 10 + 10 + 60;
@@ -24,10 +25,19 @@ const COMPACT: [number, number] = [560, CHROME + RAIL_HEIGHT];
 const DEMO_SHORTCUT = DEFAULT_SHORTCUT;
 
 interface Capture { dataUrl: string; width: number; height: number; scale: number }
-interface Settings { appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates: boolean; frame?: unknown }
+interface Settings {
+  appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates: boolean; frame?: unknown;
+  shortcuts?: { window?: string; display?: string; timed?: string };
+  afterCapture?: 'editor' | 'thumbnail'; mcp?: boolean;
+}
+type Way = 'region' | 'window' | 'display' | 'timed';
+const WAY_NAMES: Record<Way, string> = { region: 'Capture Region', window: 'Capture Window', display: 'Capture Whole Screen', timed: 'Timed Region' };
+const shortcutOf = (way: Way) => way === 'region' ? state.settings.shortcut : state.settings.shortcuts?.[way] ?? '';
 
 const state = {
   capture: null as Capture | null, busy: false, error: null as string | null,
+  /** Claude's ask, while one waits: the demo plays the AI tool. */
+  request: null as Asked | null,
   settings: { appearance: 'dark', shortcut: DEMO_SHORTCUT, checkUpdates: true } as Settings,
   armedDelay: 0,
   armedMode: 'region' as 'region' | 'window',
@@ -62,7 +72,9 @@ document.body.innerHTML = `
       </span>
       <div class="tray-menu" role="menu" hidden>
         <button role="menuitem" data-act="capture">Capture Region <kbd></kbd></button>
-        <button role="menuitem" data-act="window">Capture Window</button>
+        <button role="menuitem" data-act="window">Capture Window <kbd></kbd></button>
+        <button role="menuitem" data-act="display">Capture Whole Screen <kbd></kbd></button>
+        <button role="menuitem" data-act="timed">Timed Region <kbd></kbd></button>
         <button role="menuitem" data-act="show">Show Editor</button>
         <hr />
         <button role="menuitem" data-act="settings">Settings… <kbd>⌘,</kbd></button>
@@ -78,6 +90,12 @@ document.body.innerHTML = `
       <iframe class="frame" title="Mark Settings"></iframe>
     </div>
     <div class="hint"><span></span></div>
+    <aside class="sent" hidden aria-live="polite" aria-label="What Claude received">
+      <header class="sent-head"><strong>What Claude received</strong><button class="sent-close" type="button" aria-label="Dismiss">×</button></header>
+      <img class="sent-image" alt="The image Claude received" />
+      <pre class="sent-text"></pre>
+      <p class="sent-note">On the Mac, the words in the picture go with it too, read off it by macOS.</p>
+    </aside>
     <aside class="clip" hidden aria-live="polite">
       <img class="clip-image" alt="The image that was copied" />
       <div class="clip-text"><strong></strong><small class="clip-meta"></small></div>
@@ -196,6 +214,32 @@ function suggestedName(): string {
 }
 clip.querySelector('.clip-save')!.addEventListener('click', () => download(clipPng, suggestedName()));
 clip.querySelector('.clip-close')!.addEventListener('click', () => { clip.hidden = true; });
+// ---- what Claude received --------------------------------------------------
+/** The demo plays the AI tool, so what it was sent can be seen: the picture,
+ *  and the words that went with it -- what was marked, and where. */
+const sent = $<HTMLElement>('.sent');
+sent.querySelector('.sent-close')!.addEventListener('click', () => { sent.hidden = true; });
+function showSent(png: string, text: string) {
+  sent.querySelector<HTMLImageElement>('.sent-image')!.src = `data:image/png;base64,${png}`;
+  sent.querySelector('.sent-text')!.textContent = text;
+  sent.hidden = false;
+  sent.classList.remove('in'); void sent.offsetWidth; sent.classList.add('in');
+}
+let asks = 0;
+/** Claude asking for a screenshot, as an AI tool asks the app through its MCP
+ *  server: the editor comes forward with the ask, and the rest is the user's. */
+function askAsClaude() {
+  if (state.busy) return;
+  state.request = { id: ++asks, client: 'Claude', prompt: 'the chart’s peak', mode: 'region', deadline: null };
+  sent.hidden = true; clip.hidden = true;
+  editorWanted = true; showEditor(true); emitTo(editorFrame, 'capture-changed'); stopTips();
+  showHint('Claude asked to see the chart’s peak. Capture it, point at the peak, then press Send to Claude.');
+}
+// The site's "Let Claude ask", from the page this demo is framed in.
+window.addEventListener('message', event => {
+  if (event.origin === location.origin && event.data === 'mark-demo:ask') askAsClaude();
+});
+
 async function copied(png: string, close: boolean) {
   let refused: string | null = null;
   try { await toClipboard(png); } catch (error) { refused = String(error); }
@@ -244,6 +288,20 @@ async function beginSelection(delay: number, window = false) {
 }
 function endSelection() { overlay?.remove(); overlay = null; state.busy = false; }
 
+/** The whole display, straight away or after a delay, as lib.rs's capture_display. */
+async function captureDisplay(delay: number) {
+  state.busy = true; emitTo(editorFrame, 'capture-changed'); showEditor(false);
+  await tick(delay);
+  const whole = await crop(0, 0, stage.offsetWidth, stage.offsetHeight);
+  state.busy = false; await took(whole);
+}
+
+/** Each way in, as a shortcut or the menu starts it. */
+function startWay(way: Way): Promise<void> {
+  if (way === 'display') return captureDisplay(0);
+  return beginSelection(way === 'timed' ? 5 : 0, way === 'window');
+}
+
 async function tick(seconds: number) {
   for (let left = seconds; left > 0; left--) {
     countdown.hidden = false; countdown.textContent = `${left}`;
@@ -257,7 +315,8 @@ async function took(capture: Capture) {
   editorWanted = true;
   showEditor(true);
   emitTo(editorFrame, 'capture-changed');
-  startTips();
+  if (state.request) showHint('Point at what matters: an arrow, or a numbered step with a note. Then press Send to Claude.');
+  else startTips();
 }
 
 // ---- files -----------------------------------------------------------------
@@ -299,19 +358,16 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
   beginDrag(label, x, y) { beginDrag(label === 'settings' ? settingsWin : editorWin, x, y); },
   endDrag,
   key(e) {
-    if (shortcutFromEvent(e) !== state.settings.shortcut) return false;
-    void beginSelection(0); return true;
+    const pressed = shortcutFromEvent(e);
+    const way = pressed ? (Object.keys(WAY_NAMES) as Way[]).find(w => shortcutOf(w) === pressed) : undefined;
+    if (!way) return false;
+    void startWay(way); return true;
   },
   async invoke(command, args) {
     switch (command) {
-      case 'current_capture': return { capture: state.capture, error: state.error, busy: state.busy };
+      case 'current_capture': return { capture: state.capture, error: state.error, busy: state.busy, request: state.request };
       case 'capture_region': await beginSelection(Number(args.delay ?? 0), Boolean(args.window)); return;
-      case 'capture_display': {
-        state.busy = true; emitTo(editorFrame, 'capture-changed'); showEditor(false);
-        await tick(Number(args.delay ?? 0));
-        const whole = await crop(0, 0, stage.offsetWidth, stage.offsetHeight);
-        state.busy = false; await took(whole); return;
-      }
+      case 'capture_display': await captureDisplay(Number(args.delay ?? 0)); return;
       case 'capture_rect': {
         overlay?.remove(); overlay = null;
         await tick(Number(args.delay ?? 0));
@@ -341,9 +397,12 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       }
       case 'dismiss_editor': {
         if (state.busy) throw 'Press Escape to cancel the selection first.';
-        state.capture = null; state.error = null; editorWanted = false;
+        // As in the app, closing the editor is a no to an ask still waiting.
+        const declined = state.request !== null;
+        state.capture = null; state.error = null; state.request = null; editorWanted = false;
         showEditor(false); emitTo(editorFrame, 'capture-changed'); stopTips();
-        showHint(`Closed. Click the Mark icon in the menu bar, or press ${prettyShortcut(state.settings.shortcut)}, to capture again.`);
+        showHint(declined ? 'Closed, which tells Claude no.'
+          : `Closed. Click the Mark icon in the menu bar, or press ${prettyShortcut(state.settings.shortcut)}, to capture again.`);
         return;
       }
       case 'open_screen_settings': return;
@@ -359,8 +418,15 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         applyAppearance(); emit('settings-changed', state.settings); return state.settings;
       }
       case 'set_shortcut': {
-        state.settings = { ...state.settings, shortcut: String(args.shortcut) };
-        trayMenu.querySelector('[data-act="capture"] kbd')!.textContent = prettyShortcut(state.settings.shortcut);
+        // As lib.rs: Capture Region's with no way named, the others by name, an
+        // empty shortcut clearing one, and no two ways sharing a key.
+        const way = (args.mode ?? 'region') as Way, shortcut = String(args.shortcut ?? '');
+        if (way === 'region' && !shortcut) throw 'Capture Region always has a shortcut.';
+        const other = (Object.keys(WAY_NAMES) as Way[]).find(w => w !== way && shortcut && shortcutOf(w) === shortcut);
+        if (other) throw `${WAY_NAMES[other]} already uses ${prettyShortcut(shortcut)}.`;
+        state.settings = way === 'region' ? { ...state.settings, shortcut }
+          : { ...state.settings, shortcuts: { ...state.settings.shortcuts, [way]: shortcut || undefined } };
+        showTrayShortcuts();
         emit('settings-changed', state.settings); return state.settings;
       }
       case 'login_enabled': return false;
@@ -369,6 +435,27 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       case 'set_auto_update': state.settings = { ...state.settings, checkUpdates: Boolean(args.enabled) }; return state.settings;
       // Kept for the visit, as the app keeps it for good: the next capture is framed the same.
       case 'set_frame': state.settings = { ...state.settings, frame: args.frame }; return state.settings;
+      // What follows a capture, and AI tools: the Mac app's. The demo keeps
+      // opening the editor, and nothing outside this page can reach it.
+      case 'set_after_capture':
+        if (args.value === 'thumbnail') throw 'The thumbnail floats over your other apps, so it is the Mac app\'s. This web demo always opens the editor.';
+        state.settings = { ...state.settings, afterCapture: 'editor' }; return state.settings;
+      case 'set_mcp': state.settings = { ...state.settings, mcp: Boolean(args.enabled) }; return state.settings;
+      case 'mcp_setup': throw 'AI tools reach Mark on your Mac, so the lines to set them up are in the Mac app\'s settings.';
+      case 'send_capture': {
+        if (state.request?.id !== Number(args.id)) throw 'That request has ended, so nothing was sent.';
+        state.request = null;
+        showSent(String(args.png), String(args.text));
+        state.capture = null; state.error = null; editorWanted = false;
+        showEditor(false); emitTo(editorFrame, 'capture-changed'); stopTips();
+        showHint('Sent. On the right is what Claude received: the picture, and in words what you marked and where.');
+        return;
+      }
+      case 'decline_request':
+        if (state.request?.id === Number(args.id)) state.request = null;
+        emitTo(editorFrame, 'capture-changed');
+        showHint('Claude was told no, and not to ask again unless you say so.');
+        return;
       case 'recognize_text': throw 'Copy Text reads the image with the Mac\'s own text recognition, so it works in the Mac app.';
       case 'scan_image': throw 'Hide Sensitive reads the image with the Mac\'s own text and face recognition, so it works in the Mac app.';
       case 'open_updates': showHint('The Mac app checks for updates and installs them. This web demo is always the newest version.'); return;
@@ -401,7 +488,15 @@ function tickClock() {
   $<HTMLElement>('.clock').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 tickClock(); setInterval(tickClock, 15_000);
-trayMenu.querySelector('[data-act="capture"] kbd')!.textContent = prettyShortcut(state.settings.shortcut);
+/** The tray menu's four ways in, each showing its shortcut if it has one. */
+function showTrayShortcuts() {
+  const acts: Record<Way, string> = { region: 'capture', window: 'window', display: 'display', timed: 'timed' };
+  for (const way of Object.keys(acts) as Way[]) {
+    const shortcut = shortcutOf(way);
+    trayMenu.querySelector(`[data-act="${acts[way]}"] kbd`)!.textContent = shortcut ? prettyShortcut(shortcut) : '';
+  }
+}
+showTrayShortcuts();
 
 function toggleTray(open?: boolean) {
   const show = open ?? trayMenu.hidden;
@@ -411,8 +506,10 @@ tray.addEventListener('click', () => toggleTray());
 trayMenu.addEventListener('click', event => {
   const act = (event.target as Element).closest<HTMLButtonElement>('[data-act]')?.dataset.act;
   toggleTray(false);
-  if (act === 'capture') void beginSelection(0);
-  if (act === 'window') void beginSelection(0, true);
+  if (act === 'capture') void startWay('region');
+  if (act === 'window') void startWay('window');
+  if (act === 'display') void startWay('display');
+  if (act === 'timed') void startWay('timed');
   if (act === 'show') { editorWanted = true; showEditor(true); showHint(null); emitTo(editorFrame, 'capture-changed'); }
   if (act === 'settings') openSettings();
   if (act === 'quit') void host.invoke('quit_app', {}, window, 'page');

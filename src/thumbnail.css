@@ -1,0 +1,43 @@
+/* The floating thumbnail: the capture, rounded and lifted off whatever is
+   behind it, in a window just large enough for it and its shadow. Its own
+   small sheet -- the editor's would be most of its weight. The 16 round it is
+   MARGIN in thumbnail.rs; change both. */
+
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body {
+  font: 12px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  -webkit-user-select: none; user-select: none; cursor: default;
+}
+#thumbnail { position: fixed; inset: 16px; }
+
+/* It comes in from the right and goes out the same way, as macOS's does. */
+.thumb {
+  position: relative; margin: 0; width: 100%; height: 100%;
+  transform: translateX(calc(100% + 40px)); opacity: 0;
+  transition: transform .34s cubic-bezier(.22, 1, .36, 1), opacity .2s ease;
+}
+.thumb.in { transform: none; opacity: 1; }
+.thumb.out { transform: translateX(calc(100% + 40px)); opacity: 0; transition-duration: .22s; }
+
+.thumb-image {
+  display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 9px;
+  box-shadow: 0 0 0 .5px #00000047, 0 8px 22px #00000052, 0 1px 3px #0000002e;
+  -webkit-user-drag: element;
+}
+/* What is being dragged is the file; the thumbnail stays, dimmed, until it lands. */
+.dragging .thumb-image { opacity: .45; }
+
+/* Closing it is there while the pointer is: top left, as a window's is. */
+.thumb-close {
+  position: absolute; top: -7px; left: -7px; width: 22px; height: 22px; padding: 0;
+  display: grid; place-items: center; border: none; border-radius: 50%;
+  background: #28282ceb; color: #fff;
+  box-shadow: 0 0 0 .5px #ffffff40, 0 2px 6px #0000004d;
+  opacity: 0; transform: scale(.8); transition: opacity .12s, transform .12s; pointer-events: none;
+}
+.hover .thumb-close { opacity: 1; transform: none; pointer-events: auto; }
+.thumb-close svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+
+@media (prefers-reduced-motion: reduce) {
+  .thumb, .thumb.out { transform: none; transition: opacity .15s ease; }
+}

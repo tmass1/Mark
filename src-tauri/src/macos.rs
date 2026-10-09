@@ -1,10 +1,12 @@
-use objc2::runtime::{AnyClass, AnyObject};
-use objc2::{msg_send, rc::Retained, AnyThread, MainThreadMarker};
+use objc2::runtime::{AnyClass, AnyObject, NSObject, NSObjectProtocol, ProtocolObject};
+use objc2::{define_class, msg_send, rc::Retained, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly};
 use objc2::rc::Retained as Rc;
-use objc2_app_kit::{NSApplication, NSImage, NSPasteboard, NSRunningApplication,
-                    NSApplicationActivationOptions, NSSharingServicePicker, NSWindow,
+use objc2_app_kit::{NSApplication, NSDragOperation, NSDraggingContext, NSDraggingItem, NSDraggingSession, NSDraggingSource,
+                    NSEvent, NSEventModifierFlags, NSEventType, NSImage, NSPasteboard, NSRunningApplication,
+                    NSApplicationActivationOptions, NSSharingServicePicker, NSTrackingArea, NSTrackingAreaOptions, NSWindow,
                     NSWindowCollectionBehavior, NSWorkspace};
 use objc2_foundation::{NSArray, NSData, NSDictionary, NSNumber, NSPoint, NSRect, NSRectEdge, NSSize, NSString, NSURL};
+use std::cell::RefCell;
 
 use crate::capture::{Listed, Rect};
 
@@ -177,6 +179,16 @@ pub fn raise_overlay(handle: *mut std::ffi::c_void) {
     );
 }
 
+/// In front of every other app's windows, whether or not Mark is the active
+/// app. An AI tool's ask arrives with no click or key of the user's behind it,
+/// and macOS may decline to make Mark active for that; the window must be seen
+/// all the same. A click on it then activates Mark as usual.
+pub fn bring_forward(handle: *mut std::ffi::c_void) {
+    if handle.is_null() || MainThreadMarker::new().is_none() { return; }
+    let window: &NSWindow = unsafe { &*(handle as *const NSWindow) };
+    window.orderFrontRegardless();
+}
+
 /// An accessory app gets no keyboard focus by default, so the overlay would not
 /// see Escape. Come forward for the length of the selection.
 pub fn activate_self() {
@@ -214,8 +226,151 @@ pub fn share_file(handle: *mut std::ffi::c_void, path: &std::path::Path) -> Resu
     Ok(())
 }
 
+
+// ---- the floating thumbnail -------------------------------------------------
+
+/// Told when the pointer comes onto a window and goes off it. A web view
+/// follows the pointer only in the key window, and the thumbnail is never
+/// key -- so that it never takes the keyboard from the app being worked in --
+/// so its page would not otherwise know it was being looked at.
+struct HoverIvars { changed: Box<dyn Fn(bool)> }
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "MarkHoverWatcher"]
+    #[ivars = HoverIvars]
+    struct HoverWatcher;
+
+    unsafe impl NSObjectProtocol for HoverWatcher {}
+
+    impl HoverWatcher {
+        #[unsafe(method(mouseEntered:))]
+        fn mouse_entered(&self, _event: &NSEvent) { (self.ivars().changed)(true); }
+
+        #[unsafe(method(mouseExited:))]
+        fn mouse_exited(&self, _event: &NSEvent) { (self.ivars().changed)(false); }
+    }
+);
+
+thread_local! {
+    /// A tracking area does not keep its owner, so this does, for as long as
+    /// the window it watches. The thumbnail's is made once and kept.
+    static WATCHERS: RefCell<Vec<Retained<HoverWatcher>>> = const { RefCell::new(Vec::new()) };
+    /// The drag under way, or the last one: a session is not documented to keep
+    /// its source, so this does, until the next drag replaces it.
+    static DRAG: RefCell<Option<Retained<DragSource>>> = const { RefCell::new(None) };
+}
+
+/// Say when the pointer comes onto the window and goes off it, whether or not
+/// Mark is the active app. Main thread only.
+pub fn watch_hover(handle: *mut std::ffi::c_void, changed: impl Fn(bool) + 'static) -> Result<(), String> {
+    let mtm = MainThreadMarker::new().ok_or("Hover can only be watched from the main thread.")?;
+    if handle.is_null() { return Err("The window isn't there to watch.".into()); }
+    let window: &NSWindow = unsafe { &*(handle as *const NSWindow) };
+    let view = window.contentView().ok_or("The window has no content view.")?;
+    let watcher = HoverWatcher::alloc(mtm).set_ivars(HoverIvars { changed: Box::new(changed) });
+    let watcher: Retained<HoverWatcher> = unsafe { msg_send![super(watcher), init] };
+    let options = NSTrackingAreaOptions::MouseEnteredAndExited | NSTrackingAreaOptions::ActiveAlways
+        | NSTrackingAreaOptions::InVisibleRect;
+    // SAFETY: the owner is kept alive in WATCHERS for as long as the area can
+    // message it; the rect is ignored, InVisibleRect making it the view's own.
+    let area = unsafe {
+        NSTrackingArea::initWithRect_options_owner_userInfo(NSTrackingArea::alloc(), view.bounds(), options, Some(&watcher), None)
+    };
+    view.addTrackingArea(&area);
+    WATCHERS.with(|kept| kept.borrow_mut().push(watcher));
+    Ok(())
+}
+
+/// Hears how a drag of the thumbnail ended. Copy is all it offers: a move
+/// would let Finder take the file away, and the next drag would find nothing.
+struct DragIvars { ended: Box<dyn Fn(bool)>, home: NSRect }
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "MarkDragSource"]
+    #[ivars = DragIvars]
+    struct DragSource;
+
+    unsafe impl NSObjectProtocol for DragSource {}
+
+    unsafe impl NSDraggingSource for DragSource {
+        #[unsafe(method(draggingSession:sourceOperationMaskForDraggingContext:))]
+        fn operations(&self, _session: &NSDraggingSession, _context: NSDraggingContext) -> NSDragOperation {
+            NSDragOperation::Copy
+        }
+
+        #[unsafe(method(draggingSession:endedAtPoint:operation:))]
+        fn ended(&self, _session: &NSDraggingSession, point: NSPoint, operation: NSDragOperation) {
+            let ivars = self.ivars();
+            (ivars.ended)(landed(operation, point, ivars.home));
+        }
+    }
+);
+
+/// Whether a drag put the file somewhere: an app took it, and not the
+/// thumbnail itself -- whose web view accepts any drop, and would otherwise
+/// count a drag let go back where it began as delivered.
+pub fn landed(operation: NSDragOperation, point: NSPoint, home: NSRect) -> bool {
+    let inside = point.x >= home.origin.x && point.x <= home.origin.x + home.size.width
+        && point.y >= home.origin.y && point.y <= home.origin.y + home.size.height;
+    operation != NSDragOperation::None && !inside
+}
+
+/// Drag a file out of a window, as Finder would: the file itself, so whatever
+/// it lands in -- a Finder window, a message, a mail, an upload field -- gets
+/// a real PNG. The drag picks up `image` from where it sits in the window --
+/// `rect`, in the page's points from the top left -- under the pointer.
+/// Nothing happens unless the button is still down: a drag begun after the
+/// mouse came up would follow a pointer no one is holding. Main thread only.
+pub fn drag_file(handle: *mut std::ffi::c_void, file: &std::path::Path, image: &[u8], rect: Rect,
+                 ended: impl Fn(bool) + 'static) -> Result<(), String> {
+    let mtm = MainThreadMarker::new().ok_or("A drag can only start on the main thread.")?;
+    if handle.is_null() { return Err("The thumbnail isn't there to drag from.".into()); }
+    if NSEvent::pressedMouseButtons() & 1 == 0 { return Err("The mouse button came up before the drag began.".into()); }
+    let window: &NSWindow = unsafe { &*(handle as *const NSWindow) };
+    let view = window.contentView().ok_or("The thumbnail has no content view.")?;
+    let path = file.to_str().ok_or("The file's path can't be dragged.")?;
+    // AppKit counts up from the bottom unless the view says otherwise.
+    let bottom = if view.isFlipped() { rect.y } else { view.bounds().size.height - rect.y - rect.height };
+    let frame = NSRect::new(NSPoint::new(rect.x, bottom), NSSize::new(rect.width, rect.height));
+    let picture = NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(image)).ok_or("The capture couldn't be drawn to drag.")?;
+    picture.setSize(frame.size);
+    let url = NSURL::fileURLWithPath(&NSString::from_str(path));
+    let item = NSDraggingItem::initWithPasteboardWriter(NSDraggingItem::alloc(), ProtocolObject::from_ref(&*url));
+    // SAFETY: an NSImage is what a dragging item's contents may be.
+    unsafe { item.setDraggingFrame_contents(frame, Some(&picture)) };
+    let items = NSArray::from_retained_slice(&[item]);
+    // The event that began this is gone by the time a page's call arrives, so
+    // the session starts from one made where the pointer is now, as Chromium
+    // starts its own drags.
+    let timestamp = NSApplication::sharedApplication(mtm).currentEvent().map_or(0.0, |event| event.timestamp());
+    let event = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+        NSEventType::LeftMouseDragged, window.mouseLocationOutsideOfEventStream(), NSEventModifierFlags::empty(),
+        timestamp, window.windowNumber(), None, 0, 1, 1.0).ok_or("The drag couldn't begin.")?;
+    let source = DragSource::alloc(mtm).set_ivars(DragIvars { ended: Box::new(ended), home: window.frame() });
+    let source: Retained<DragSource> = unsafe { msg_send![super(source), init] };
+    let _session = view.beginDraggingSessionWithItems_event_source(&items, &event, ProtocolObject::from_ref(&*source));
+    DRAG.with(|slot| *slot.borrow_mut() = Some(source));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    /// A drag counts as delivered only where something took it, away from the
+    /// thumbnail it started on.
+    #[test]
+    fn a_drag_has_landed_only_where_an_app_took_it() {
+        use objc2_app_kit::NSDragOperation;
+        use objc2_foundation::{NSPoint, NSRect, NSSize};
+        let home = NSRect::new(NSPoint::new(1000.0, 40.0), NSSize::new(252.0, 182.0));
+        assert!(super::landed(NSDragOperation::Copy, NSPoint::new(400.0, 600.0), home));
+        assert!(!super::landed(NSDragOperation::None, NSPoint::new(400.0, 600.0), home), "let go over nothing");
+        assert!(!super::landed(NSDragOperation::Copy, NSPoint::new(1100.0, 100.0), home), "back on the thumbnail");
+    }
+
     /// The window server's own list, read through the same calls a capture
     /// makes. Ignored by default, since what is on screen is up to the Mac it
     /// runs on: `cargo test -- --ignored` with a few windows open.

@@ -73,3 +73,17 @@ test('the browser preview says Copy Text is the Mac app\'s to do', async ({ page
   await page.keyboard.press('Meta+Shift+t');
   await expect(page.getByText('Copy Text reads the image on your Mac, so it works in the Mac app.')).toBeVisible();
 });
+
+// The first reading on a Mac takes seconds while macOS prepares to read text;
+// every one after takes half of one. The status stays up until the reading
+// is done, and says why, rather than leaving a capture that seems to ignore ⇧⌘T.
+test('a slow first reading says it is still reading, and why', async ({ page }) => {
+  await installBridge(page, { holds: ['recognize_text'] });
+  await page.goto('/');
+  await page.locator('.capture').waitFor();
+  await page.keyboard.press('Meta+Shift+t');
+  await expect(page.getByText('Reading the text…')).toBeVisible();
+  await page.waitForTimeout(2000);                                   // past where a passing message would have gone
+  await expect(page.getByText('Reading the text…', { exact: false })).toBeVisible();
+  await expect(page.getByText('Reading the text… The first time can take a few seconds.')).toBeVisible();
+});

@@ -1,5 +1,8 @@
 import './style.css';
-import { command, isTauri, watchCapture, watchMenuCopy, watchSettings, type CapturePreview, type Snapshot } from './platform';
+import { command, isTauri, watchCapture, watchMenuCopy, watchRequestWithdrawn, watchSettings, type Asked, type CapturePreview,
+         type SavedSettings, type Snapshot } from './platform';
+import { MAX_BASE64, describeMarks, resultText, sendSize } from './send';
+import { suggestedName } from './names';
 import { DEFAULT_SHORTCUT, prettyShortcut } from './shortcut';
 // The icon as an import, so its path is right whether this page is the app's
 // own or the copy the web demo runs in a frame.
@@ -220,6 +223,11 @@ const slotButton = (slot: Choice[], index: number) => {
     + `<span class="sr">${choice.name}</span></button>`;
 };
 
+/** What the empty state says under its heading: this, or, while an AI tool
+ *  waits on a screenshot, what to do about that. */
+const RESTING_HINT = 'A little less between seeing and sharing.';
+const ASKED_HINT = 'Bring it on screen, then capture it.';
+
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
   <header class="titlebar" data-tauri-drag-region>
@@ -236,7 +244,7 @@ app.innerHTML = `
       <div class="capture-menu" hidden>
         ${CAPTURE_MODES.map(item => `<button type="button" data-mode="${item.mode}">
           <svg viewBox="0 0 20 20" aria-hidden="true">${item.art}</svg>
-          <span>${item.name}</span>${item.hint ? `<kbd>${item.hint}</kbd>` : ''}
+          <span>${item.name}</span><kbd>${item.hint}</kbd>
         </button>`).join('')}
       </div>
     </div>
@@ -304,6 +312,14 @@ app.innerHTML = `
       <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.8 6.2h12.4M8.2 6.2V4.6a1 1 0 0 1 1-1h1.6a1 1 0 0 1 1 1v1.6M5.4 6.2l.7 9.4a1.4 1.4 0 0 0 1.4 1.3h5a1.4 1.4 0 0 0 1.4-1.3l.7-9.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
   </div>
+  <!-- An AI tool's ask, for as long as it waits: across the top of the canvas,
+       clear of the rail, in the empty state as over a capture. -->
+  <aside class="request-bar" aria-label="Request for a screenshot" hidden>
+    <svg class="request-glyph" viewBox="0 0 20 20" aria-hidden="true"><path d="M4.4 4.2h11.2a1.6 1.6 0 0 1 1.6 1.6v6.6a1.6 1.6 0 0 1-1.6 1.6H9.4l-3.6 2.9v-2.9H4.4a1.6 1.6 0 0 1-1.6-1.6V5.8a1.6 1.6 0 0 1 1.6-1.6z" ${STROKE}/><path d="M6.8 9.1h6.4" ${STROKE}/></svg>
+    <p class="request-text"><strong class="request-client"></strong> asks to see <span class="request-prompt"></span></p>
+    <span class="request-wait" hidden title="Most AI tools stop waiting after a minute. Claude Code waits as long as you need."></span>
+    <button class="request-decline glassy" type="button">Don’t Send</button>
+  </aside>
   <div class="workspace">
     <nav class="rail" aria-label="Tools" hidden>
       <div class="tools" role="radiogroup" aria-label="Tool">
@@ -325,7 +341,7 @@ app.innerHTML = `
            the Dock. It used to be redrawn from paths, which is how the two came
            to be different pictures. -->
       <img class="viewfinder" src="${markIcon}" alt="" width="72" height="72" />
-      <h1>Capture your screen</h1><p class="empty-hint">A little less between seeing and sharing.</p>
+      <h1>Capture your screen</h1><p class="empty-hint">${RESTING_HINT}</p>
       <!-- Every way in, side by side, as macOS's own screenshot toolbar lays
            them out, rather than one button with the rest behind a menu. A
            region, the one most reached for, is the blue one. -->
@@ -416,7 +432,7 @@ app.innerHTML = `
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6 6l8 8M14 6l-8 8"/></svg>
     </button>
     <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘C</kbd></button>
-    <button class="copy primary" type="button">Copy and Close <kbd>⌥⌘C</kbd></button>
+    <button class="copy primary" type="button"><span class="copy-label">Copy and Close</span> <kbd>⌥⌘C</kbd></button>
   </footer>
   <aside class="frame-panel" role="dialog" aria-label="Frame" hidden>
     <div class="frame-head">
@@ -469,7 +485,12 @@ const fills = app.querySelector<HTMLElement>('.fills')!;
 const removeButton = app.querySelector<HTMLButtonElement>('.remove')!;
 const hideButton = app.querySelector<HTMLButtonElement>('.hide-sensitive')!;
 const empty = app.querySelector<HTMLElement>('.empty')!;
+const emptyHint = app.querySelector<HTMLElement>('.empty-hint')!;
 const copy = app.querySelector<HTMLButtonElement>('.copy')!;
+const copyLabel = copy.querySelector<HTMLElement>('.copy-label')!;
+const requestBar = app.querySelector<HTMLElement>('.request-bar')!;
+const requestText = requestBar.querySelector<HTMLElement>('.request-text')!;
+const requestWait = requestBar.querySelector<HTMLElement>('.request-wait')!;
 const copyOnly = app.querySelector<HTMLButtonElement>('.copy-only')!;
 const closeButton = app.querySelector<HTMLButtonElement>('.close-capture')!;
 const shareButton = app.querySelector<HTMLButtonElement>('.share')!;
@@ -495,6 +516,8 @@ const cropApply = app.querySelector<HTMLButtonElement>('.crop-apply')!;
 const abort = new AbortController();
 const cleanups: (() => void)[] = [];
 let capture: CapturePreview | null = null;
+/** An AI tool's ask, while one waits for a screenshot. */
+let request: Asked | null = null;
 /** How a capture is framed: kept by Rust in the app, for the session in the preview. */
 let frame: FrameStyle = { ...DEFAULT_FRAME };
 /** Whether the current capture's top edge is dark, so its title bar would be. */
@@ -527,11 +550,14 @@ layer.onNumbered = id => offerNote(id);
 layer.setSource(image);
 image.addEventListener('load', () => layer.refreshRedactions());
 
-let flashTimer: ReturnType<typeof setTimeout>;
+/** Set while a flashed message is up, which a refresh with nothing to report
+ *  leaves alone: what an AI tool's ask ending says arrives with the refresh
+ *  that ending set off, and must outlast it. */
+let flashTimer: ReturnType<typeof setTimeout> | undefined;
 function flash(text: string) {
   showMessage(text);
   clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => { if (!disposed) showMessage(null); }, 1800);
+  flashTimer = setTimeout(() => { flashTimer = undefined; if (!disposed) showMessage(null); }, 1800);
 }
 
 function showMessage(text: string | null) {
@@ -1091,17 +1117,54 @@ function render() {
   for (const tile of modeTiles) { tile.disabled = busy; if (tile !== start) tile.hidden = !isTauri; }
   start.querySelector('.mode-name')!.textContent = isTauri ? (busy ? 'Selecting…' : 'Region') : 'Choose image…';
   start.querySelector('kbd')!.hidden = !isTauri;
+  // An AI tool's ask, while it waits: the bar says who asked and for what --
+  // as text, whatever the tool sent -- the way in it named is the one offered
+  // first, and the primary button sends rather than copies.
+  app.classList.toggle('requesting', !!request);
+  requestBar.hidden = !request;
+  if (request) {
+    requestBar.querySelector('.request-client')!.textContent = request.client;
+    requestBar.querySelector('.request-prompt')!.textContent = `“${request.prompt}”`;
+    requestText.dataset.tip = `${request.client} asks to see “${request.prompt}”`;
+  }
+  emptyHint.textContent = request ? ASKED_HINT : RESTING_HINT;
+  const offered = request?.mode ?? 'region';
+  for (const tile of modeTiles) {
+    const first = tile.dataset.start === offered;
+    tile.classList.toggle('primary', first);
+    tile.classList.toggle('glassy', !first);
+  }
+  copyLabel.textContent = request ? `Send to ${request.client}` : 'Copy and Close';
+  countDown();
   syncTools();
+}
+
+/** For a tool that gives up -- most stop waiting after a minute -- how long is
+ *  left, counted down in the bar. At nothing it goes: the tool has either let
+ *  go, and Rust will say so, or is waiting after all. */
+let waitTimer: number | undefined;
+function countDown() {
+  window.clearTimeout(waitTimer);
+  const deadline = request?.deadline;
+  const left = deadline ? deadline - Date.now() : 0;
+  requestWait.hidden = left <= 0;
+  if (left <= 0) return;
+  const seconds = Math.ceil(left / 1000);
+  requestWait.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left`;
+  requestWait.classList.toggle('soon', seconds <= 15);
+  // On the second, counted from the deadline, so the numbers change evenly.
+  waitTimer = window.setTimeout(countDown, left % 1000 || 1000);
 }
 
 let revision = 0;
 async function refresh() {
-  const request = ++revision;
+  const ticket = ++revision;
   try {
     const snapshot = await command<Snapshot>('current_capture');
-    if (disposed || request !== revision) return;
-    capture = snapshot.capture; busy = snapshot.busy;
-    showMessage(snapshot.error); render();
+    if (disposed || ticket !== revision) return;
+    capture = snapshot.capture; busy = snapshot.busy; request = snapshot.request ?? null;
+    if (snapshot.error || flashTimer === undefined) showMessage(snapshot.error);
+    render();
   } catch (error) { report(error); }
 }
 function report(error: unknown) { console.error('[Mark]', error); showMessage(String(error)); }
@@ -1113,16 +1176,22 @@ async function dismiss() {
 }
 
 /** Flatten the capture and its arrows at natural resolution -- framed, when
- *  Frame is on, in the same numbers the canvas showed it in. */
-async function flatten(): Promise<HTMLCanvasElement> {
+ *  Frame is on, in the same numbers the canvas showed it in. Unframed, it can
+ *  be drawn smaller, marks and all, as Send draws it for an AI tool. */
+async function flatten(framed = frame.on, size?: { width: number; height: number }): Promise<HTMLCanvasElement> {
   const source = new Image();
   source.src = capture!.dataUrl;
   await source.decode();
   const { width, height } = capture!;
-  const geometry = frame.on ? frameGeometry(width, height, capture!.scale ?? 1, frame) : null;
+  const geometry = framed ? frameGeometry(width, height, capture!.scale ?? 1, frame) : null;
   const canvas = document.createElement('canvas');
-  canvas.width = geometry?.width ?? width; canvas.height = geometry?.height ?? height;
+  const scaled = !geometry && size && (size.width !== width || size.height !== height) ? size : null;
+  canvas.width = geometry?.width ?? scaled?.width ?? width; canvas.height = geometry?.height ?? scaled?.height ?? height;
   const context = canvas.getContext('2d')!;
+  if (scaled) {
+    context.imageSmoothingQuality = 'high';
+    context.scale(scaled.width / width, scaled.height / height);
+  }
   const draw = () => {
     context.drawImage(source, 0, 0, width, height);
     // The image's own size, which badges are kept inside: not the frame's.
@@ -1131,15 +1200,6 @@ async function flatten(): Promise<HTMLCanvasElement> {
   if (geometry) paintFrame(context, geometry, frame, { width, height, dark: darkTop(source, width, height) }, draw);
   else draw();
   return canvas;
-}
-
-/** The name macOS itself would give a screenshot, so a saved file lands
- *  somewhere recognisable in a folder full of them. */
-function suggestedName(): string {
-  const now = new Date();
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `Mark ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-    + ` at ${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}.png`;
 }
 
 /** Saving and sharing always send the flattened image: a file should be what is
@@ -1165,6 +1225,16 @@ function textArea(): { x: number; y: number; width: number; height: number } | n
            width: Math.abs(shape.width), height: Math.abs(shape.height) };
 }
 
+/** Say what is being done until it is done, not for a moment: the first time
+ *  a Mac reads text for Mark it prepares its recognition, which takes seconds
+ *  rather than the half a second it takes every time after, and a message that
+ *  had gone by then would make it look as though nothing were happening. */
+function working(what: string): () => void {
+  showMessage(what);
+  const slow = window.setTimeout(() => showMessage(`${what} The first time can take a few seconds.`), 2500);
+  return () => window.clearTimeout(slow);
+}
+
 /** Copy Text: the words in the capture -- as it stands, cropped, without the
  *  marks drawn on it -- read on the Mac and copied in reading order. With a box
  *  selected, only the words inside it. */
@@ -1172,7 +1242,8 @@ async function copyText() {
   if (!capture || busy || copyPending) return;
   if (!isTauri) { flash('Copy Text reads the image on your Mac, so it works in the Mac app.'); return; }
   const area = textArea();
-  copyPending = true; render(); flash(area ? 'Reading the text in the box…' : 'Reading the text…');
+  copyPending = true; render();
+  const done = working(area ? 'Reading the text in the box…' : 'Reading the text…');
   try {
     const lines = await command<TextLine[]>('recognize_text', { png: capture.dataUrl.split(',')[1] });
     const text = readingOrder(area ? within(lines, area) : lines);
@@ -1181,7 +1252,7 @@ async function copyText() {
     const count = text.split('\n').length;
     flash(`Copied ${count} ${count === 1 ? 'line' : 'lines'} of text${area ? ' from the box' : ''}.`);
   } catch (error) { report(error); }
-  finally { copyPending = false; render(); }
+  finally { done(); copyPending = false; render(); }
 }
 
 /** Hide Sensitive: read the capture on the Mac, find the email addresses,
@@ -1190,7 +1261,8 @@ async function copyText() {
 async function hideSensitive() {
   if (!capture || busy || copyPending) return;
   if (!isTauri) { flash('Hide Sensitive reads the image on your Mac, so it works in the Mac app.'); return; }
-  copyPending = true; render(); flash('Looking for anything sensitive…');
+  copyPending = true; render();
+  const done = working('Looking for anything sensitive…');
   try {
     const scan = await command<{ lines: TextLine[]; faces: Area[] }>('scan_image', { png: capture.dataUrl.split(',')[1] });
     const found = findSensitive(scan?.lines ?? [], scan?.faces ?? []);
@@ -1199,7 +1271,7 @@ async function hideSensitive() {
       ? `${describeHidden(found)} ⌘Z puts ${added.length === 1 ? 'it' : 'them'} back.`
       : 'Nothing sensitive found: no email addresses, phone or card numbers, keys or faces.');
   } catch (error) { report(error); }
-  finally { copyPending = false; render(); }
+  finally { done(); copyPending = false; render(); }
 }
 
 async function copyCapture(close = true) {
@@ -1233,10 +1305,56 @@ async function copyCapture(close = true) {
   finally { copyPending = false; render(); }
 }
 
+/** Send: the capture with its marks -- not its frame, which is for people --
+ *  at the size Claude looks at, to the AI tool that asked, with the words to
+ *  go with it: what was drawn where, and the text in it. Rust puts the editor
+ *  away after, as Copy and Close does. */
+async function send() {
+  if (!capture || !request || busy || copyPending) return;
+  const asked = request, sending = capture;
+  copyPending = true; render(); showMessage(null);
+  let reading: (() => void) | null = null;
+  try {
+    let size = sendSize(sending.width, sending.height);
+    let png = (await flatten(false, size)).toDataURL('image/png').split(',')[1];
+    // A capture full of photographs can still be large at that size: smaller
+    // again, until it is within what one image may be.
+    while (png.length > MAX_BASE64 && size.width > 64 && size.height > 64) {
+      size = { width: Math.round(size.width * 0.8), height: Math.round(size.height * 0.8) };
+      png = (await flatten(false, size)).toDataURL('image/png').split(',')[1];
+    }
+    // The text in it, read off the very picture being sent -- so nothing a
+    // redaction hides can come back as words. A Mac that can't read it, or a
+    // browser that has nothing to read with, sends the picture without them.
+    reading = working('Reading the text to send with it…');
+    const words = await command<TextLine[]>('recognize_text', { png })
+      .then(lines => readingOrder(lines ?? [])).catch(() => '');
+    const marks = describeMarks(layer.annotations, size.width / sending.width);
+    const text = resultText({ capture: sending, sent: size, marks, words });
+    await command('send_capture', { id: asked.id, png, text });
+    capture = null; request = null;
+    showMessage(null);
+  } catch (error) { report(error); }
+  finally { reading?.(); copyPending = false; render(); }
+}
+
+/** The footer's primary button, ⌥⌘C and the menu's Copy and Close are one
+ *  action: it sends while an AI tool's ask waits, and copies and closes
+ *  otherwise. One function, so no way to it can do the other thing. */
+function primary() {
+  if (request) void send(); else void copyCapture(true);
+}
+
 function on<K extends keyof HTMLElementEventMap>(element: HTMLElement, name: K, handler: (event: HTMLElementEventMap[K]) => void) {
   element.addEventListener(name, handler, { signal: abort.signal });
 }
-on(copy, 'click', () => { void copyCapture(true); });
+on(copy, 'click', () => primary());
+// Don't Send: the tool is told no, and the capture stays, to copy or close.
+on(requestBar.querySelector<HTMLButtonElement>('.request-decline')!, 'click', () => {
+  if (!request) return;
+  const asked = request;
+  void command('decline_request', { id: asked.id }).then(() => flash(`Nothing was sent to ${asked.client}.`)).catch(report);
+});
 on(copyOnly, 'click', () => { void copyCapture(false); });
 // ⌘W's button: out without copying, and nothing lost, since what closes waits in Recent.
 on(closeButton, 'click', () => { void dismiss().catch(report); });
@@ -1577,8 +1695,16 @@ cleanups.push(() => observer.disconnect());
 
 /** Actual size, unless that would not fit: a capture bigger than the window is
  *  better met fitted than already scrolled. */
+/** The canvas's room for the capture: its size less its padding, which keeps
+ *  the top clear for an AI tool's ask while one waits. */
+function canvasRoom(): { width: number; height: number } {
+  const style = getComputedStyle(canvasArea);
+  const pad = (side: 'Top' | 'Right' | 'Bottom' | 'Left') => parseFloat(style[`padding${side}`]) || 0;
+  return { width: canvasArea.clientWidth - pad('Left') - pad('Right'), height: canvasArea.clientHeight - pad('Top') - pad('Bottom') };
+}
+
 function startingZoom(next: CapturePreview): 'fit' | number {
-  const room = canvasArea.getBoundingClientRect();
+  const room = canvasRoom();
   if (!room.width || !room.height) return 1;      // before first layout
   const ratio = 1 / (next.scale || 1);
   const size = frame.on ? frameGeometry(next.width, next.height, next.scale ?? 1, frame) : next;
@@ -1620,8 +1746,9 @@ function layoutFrame(): boolean {
   }
   const { width, height } = capture!;
   const geometry = frameGeometry(width, height, capture!.scale ?? 1, frame);
+  const room = canvasRoom();
   const k = zoom === 'fit'
-    ? Math.min(1, canvasArea.clientWidth / geometry.width, canvasArea.clientHeight / geometry.height)
+    ? Math.min(1, room.width / geometry.width, room.height / geometry.height)
     : pixelRatio(zoom);
   const px = (value: number) => `${value * k}px`;
   const corner = px(geometry.radius);
@@ -1979,7 +2106,7 @@ document.addEventListener('keydown', event => {
     // known by where it is as well as by what it types.
     event.preventDefault();
     if (layer.pendingCrop) { flash('Finish or cancel the crop first.'); return; }
-    void copyCapture(true);
+    primary();
   } else if (capture && key === 'c' && (event.metaKey || event.ctrlKey)) {
     // ⌘C copies the image and leaves the capture open, as the Copy button says,
     // whatever happens to be selected, and holds the selection for ⌘V besides;
@@ -2004,11 +2131,16 @@ document.addEventListener('keydown', event => {
   // itself still presses it, because that is what a focused button does.
 }, { signal: abort.signal });
 
-/** Everywhere the editor shows the capture shortcut. The setting is the truth;
- *  the markup only starts out with the default so the browser preview has one. */
-function showShortcut(shortcut: string) {
-  const pretty = prettyShortcut(shortcut);
-  for (const key of app.querySelectorAll<HTMLElement>('.start kbd, .capture-menu [data-mode="region"] kbd')) key.textContent = pretty;
+/** Everywhere the editor shows a way's shortcut: its tile and its line in the
+ *  Capture menu. The settings are the truth; the markup only starts out with
+ *  Region's default so the browser preview has one. A way with no shortcut
+ *  shows what it has instead -- Timed its delay -- or nothing. */
+function showShortcuts(saved: Partial<SavedSettings>) {
+  for (const item of CAPTURE_MODES) {
+    const chosen = item.mode === 'region' ? saved.shortcut : saved.shortcuts?.[item.mode];
+    const text = chosen ? prettyShortcut(chosen) : item.mode === 'region' ? item.hint : item.mode === 'timed' ? '5s' : '';
+    for (const key of app.querySelectorAll<HTMLElement>(`[data-start="${item.mode}"] kbd, .capture-menu [data-mode="${item.mode}"] kbd`)) key.textContent = text;
+  }
 }
 
 async function init() {
@@ -2017,18 +2149,21 @@ async function init() {
     const gear = app.querySelector<HTMLButtonElement>('.settings-button')!;
     gear.hidden = false;
     on(gear, 'click', () => { void command('open_settings').catch(report); });
-    void command<Partial<{ shortcut: string; frame: unknown }>>('get_settings').then(saved => {
+    void command<Partial<SavedSettings>>('get_settings').then(saved => {
       frame = sanitizeFrame(saved?.frame); syncFramePanel(); render();
-      if (saved?.shortcut) showShortcut(saved.shortcut);
+      if (saved) showShortcuts(saved);
     }).catch(() => {});
-    cleanups.push(await watchSettings(s => showShortcut(s.shortcut)));
+    cleanups.push(await watchSettings(showShortcuts));
     // The menu's Copy and Close, for a ⌥⌘C that reached the app rather than the
     // page. The page does the copying either way: only it can draw the marks in.
     cleanups.push(await watchMenuCopy(() => {
       if (layer.isEditing) layer.commit();
       if (layer.pendingCrop) { flash('Finish or cancel the crop first.'); return; }
-      void copyCapture(true);
+      primary();
     }));
+    // The tool that asked gave up before anything was sent. Rust has already
+    // taken the ask away; this says why the bar went.
+    cleanups.push(await watchRequestWithdrawn(client => flash(`${client} stopped waiting, so nothing was sent.`)));
     // On macOS 26 the panes sit on the system's own glass, laid under the web
     // view by lib.rs, so the stylesheet draws them bare there.
     document.documentElement.classList.toggle('native-glass', await command<boolean>('glass_available').catch(() => false));
