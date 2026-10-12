@@ -16,8 +16,13 @@ interface Settings {
   afterCapture?: 'editor' | 'thumbnail';
   mcp?: boolean;
 }
-/** What points an AI tool at this Mark, made by Rust from where it really is. */
-interface Setup { claudeCode: string; claudeDesktop: string }
+/** One AI tool Mark can be added to, and how -- made by Rust for the copy of
+ *  Mark that is running, so what is copied starts this very copy. */
+interface Agent {
+  name: string; group: string;
+  kind: 'command' | 'link' | 'config';
+  text?: string; url?: string; place?: string; restart?: boolean;
+}
 
 /** The four ways into a capture, each with a shortcut of its own. Capture
  *  Region always has one; the rest start without, since a key taken globally
@@ -61,10 +66,12 @@ root.innerHTML = `
     <h2 class="pref-label">AI tools</h2>
     <div class="pref-control">
       <label class="check"><input class="mcp" type="checkbox" checked aria-describedby="mcp-hint" /> Let AI tools ask for screenshots</label>
-      <p class="pref-hint" id="mcp-hint">Claude Code, Claude and other MCP apps can ask; nothing is sent until you press Send.</p>
-      <div class="setup-buttons">
-        <button class="copy-command glassy" type="button">Copy Claude Code Command</button>
-        <button class="copy-entry glassy" type="button">Copy Claude Desktop Config</button>
+      <p class="pref-hint" id="mcp-hint">Claude, Codex, Cursor, Grok Build and other AI tools can ask; nothing is sent until you press Send.</p>
+      <span class="add-label" id="agent-label">Add Mark to</span>
+      <div class="add-to">
+        <span class="agent-pick"><select class="agent" aria-labelledby="agent-label" disabled></select>
+          <svg class="chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 8.4 10 11.8l3.4-3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <button class="add-agent glassy" type="button" disabled>Copy Command</button>
       </div>
       <p class="pref-note mcp-note" role="status" hidden></p>
     </div>
@@ -218,20 +225,51 @@ mcp.addEventListener('change', () => {
     .catch(error => { note(mcpNote, String(error)); mcp.checked = current.mcp !== false; });
 });
 
-/** Copy what points a tool at this Mark, and say where it goes. */
-async function copySetup(which: keyof Setup, where: string) {
+// Adding Mark to an AI tool, in the tool's own way: a link that opens it to ask,
+// a command for Terminal, or the lines for its settings file.
+const agentPick = root.querySelector<HTMLSelectElement>('.agent')!;
+const addAgent = root.querySelector<HTMLButtonElement>('.add-agent')!;
+let agents: Agent[] = [];
+const chosenAgent = () => agents.find(agent => agent.name === agentPick.value);
+
+/** The button says what it will do for the tool chosen. */
+function labelAdd() {
+  const agent = chosenAgent();
+  addAgent.disabled = !agent;
+  addAgent.textContent = agent?.kind === 'link' ? `Add to ${agent.name}` : agent?.kind === 'config' ? 'Copy Config' : 'Copy Command';
+}
+
+async function loadAgents() {
+  try {
+    agents = await command<Agent[]>('mcp_setup');
+    agentPick.replaceChildren(...[...new Set(agents.map(agent => agent.group))].map(group => {
+      const list = document.createElement('optgroup');
+      list.label = group;
+      list.append(...agents.filter(agent => agent.group === group).map(agent => new Option(agent.name, agent.name)));
+      return list;
+    }));
+    agentPick.disabled = false;
+  } catch (error) { note(mcpNote, String(error)); }
+  labelAdd();
+}
+
+agentPick.addEventListener('change', () => { note(mcpNote, null); labelAdd(); });
+addAgent.addEventListener('click', async () => {
+  const agent = chosenAgent();
+  if (!agent) return;
   note(mcpNote, null);
   try {
-    const setup = await command<Setup>('mcp_setup');
-    await command('copy_text', { text: setup[which] });
-    note(mcpNote, where, true);
+    if (agent.kind === 'link') {
+      await command('add_to_agent', { name: agent.name });
+      note(mcpNote, `${agent.name} opens and asks whether to add Mark.`, true);
+    } else if (agent.kind === 'command') {
+      await command('copy_text', { text: agent.text });
+      note(mcpNote, 'Copied. Paste it into Terminal and press Return.', true);
+    } else {
+      await command('copy_text', { text: agent.text });
+      note(mcpNote, `Copied. Add it to ${agent.place}${agent.restart ? `, then quit and reopen ${agent.name}` : ''}.`, true);
+    }
   } catch (error) { note(mcpNote, String(error)); }
-}
-root.querySelector<HTMLButtonElement>('.copy-command')!.addEventListener('click', () => {
-  void copySetup('claudeCode', 'Copied. Paste it into Terminal and press Return; Claude Code can then ask in any project.');
-});
-root.querySelector<HTMLButtonElement>('.copy-entry')!.addEventListener('click', () => {
-  void copySetup('claudeDesktop', 'Copied. Add it to claude_desktop_config.json, in Library/Application Support/Claude, then quit and reopen Claude.');
 });
 
 autoUpdate.addEventListener('change', () => {
@@ -259,6 +297,7 @@ async function init() {
   }
   const [settings, enabled] = await Promise.all([command<Settings>('get_settings'), command<boolean>('login_enabled')]);
   show(settings);
+  void loadAgents();
   login.checked = enabled;
   // The first thing anyone testing a build is asked is which build.
   const { getVersion } = await import('@tauri-apps/api/app');

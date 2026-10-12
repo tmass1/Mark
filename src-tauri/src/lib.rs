@@ -595,11 +595,19 @@ fn show_request(app: &AppHandle, id: u64) {
     let _ = window.set_focus();
 }
 
-/// Which Mark this is, to an AI tool: the command for Claude Code and the entry
-/// for Claude Desktop that start this copy of it as their bridge.
+/// Every AI tool Mark can be added to, and how, for this copy of Mark.
 #[tauri::command]
-fn mcp_setup() -> Result<mcp::Setup, String> {
-    mcp::setup(&std::env::current_exe().map_err(|e| e.to_string())?)
+fn mcp_setup() -> Result<Vec<mcp::Agent>, String> {
+    mcp::agents(&std::env::current_exe().map_err(|e| e.to_string())?)
+}
+
+/// Open the link that adds Mark to a tool, which then asks the user. Only a
+/// link Mark made, for a tool named here, in a scheme Mark knows.
+#[tauri::command]
+fn add_to_agent(name: String) -> Result<(), String> {
+    let url = mcp::link_for(&std::env::current_exe().map_err(|e| e.to_string())?, &name)?;
+    let opened = std::process::Command::new("/usr/bin/open").arg(&url).status().map_err(|e| e.to_string())?;
+    if opened.success() { Ok(()) } else { Err(format!("{name} isn't installed, or couldn't be opened.")) }
 }
 
 /// A build for testing the bridge end to end, with no screen access and no
@@ -998,7 +1006,7 @@ pub fn run() {
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, capture_window, cancel_selection,
             copy_capture, copy_edited, copy_text, recognize_text, scan_image, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
-            send_capture, decline_request, mcp_setup,
+            send_capture, decline_request, mcp_setup, add_to_agent,
             thumbnail::thumbnail_image, thumbnail::open_thumbnail, thumbnail::close_thumbnail, thumbnail::drag_thumbnail,
             get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, login_enabled, set_login, open_settings, quit_app,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
@@ -1157,7 +1165,7 @@ mod tests {
         let windows = [capture::Window { id: 7, app: "Notes".into(), title: "\"Quotes\" </script> and \\".into(),
                                          x: 1500.0, y: 40.5, width: 800.0, height: 600.0 }];
         assert_eq!(selector_globals(display, 2.0, 5, &windows, true, Some((1600.25, 300.0))).unwrap(),
-            "window.__MARK_DISPLAY__={\"height\":1117.0,\"scale\":2.0,\"width\":1728.0,\"x\":1440.0,\"y\":-120.0};\
+            "window.__MARK_DISPLAY__={\"x\":1440.0,\"y\":-120.0,\"width\":1728.0,\"height\":1117.0,\"scale\":2.0};\
              window.__MARK_DELAY__=5;\
              window.__MARK_WINDOWS__=[{\"id\":7,\"app\":\"Notes\",\"title\":\"\\\"Quotes\\\" </script> and \\\\\",\"x\":1500.0,\"y\":40.5,\"width\":800.0,\"height\":600.0}];\
              window.__MARK_MODE__=\"window\";\

@@ -12,6 +12,7 @@
 //! protocol error in the tool.
 
 use crate::session::Reply;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -23,7 +24,7 @@ use std::time::Duration;
 /// The MCP revision the bridge speaks, and the older ones it answers in when a
 /// tool asks for one of them.
 pub const PROTOCOL: &str = "2025-11-25";
-const PROTOCOLS: [&str; 3] = ["2025-11-25", "2025-06-18", "2025-03-26"];
+const PROTOCOLS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 /// The line protocol between bridge and app. A bridge started before Mark
 /// updated itself keeps running the old code, so each side checks the other's.
 const WIRE: u64 = 1;
@@ -32,15 +33,40 @@ const TOOL: &str = "capture_screen";
 const ASK_LIMIT: u64 = 64 * 1024;
 /// The answer can carry a whole screenshot.
 const ANSWER_LIMIT: u64 = 96 * 1024 * 1024;
-/// How often a waiting call tells the tool it is still waiting. Claude Code
-/// gives a stdio server thirty quiet minutes; each of these starts them again.
-const PROGRESS_EVERY: Duration = Duration::from_secs(10);
+/// How often a waiting call tells the tool it is still waiting -- once at once,
+/// then on this beat. Claude Code gives a stdio server thirty quiet minutes and
+/// OpenCode a minute, and each of these starts them again; a tool set to give
+/// up sooner still hears before it would.
+const PROGRESS_EVERY: Duration = Duration::from_secs(5);
 /// How long the bridge waits for a Mark it had to open.
 const LAUNCH_WAIT: Duration = Duration::from_secs(15);
 /// How long a tool built on the MCP SDK waits for a call, unless it asks for
 /// longer: a minute, which progress does not extend. Claude Desktop is one.
-/// Claude Code is not: it waits a day, and progress keeps its idle limit off.
 const SDK_PATIENCE: f64 = 60.0;
+
+/// How long a tool waits for a call, by the name it gives itself, where its
+/// default is known; None for one that waits as long as it takes. A tool not
+/// known here is taken at the MCP SDK's word. Each is the tool's default, which
+/// its user may change: a count that runs out while the tool still waits just
+/// goes, and a tool that gives up sooner takes the ask with it.
+fn patience(name: Option<&str>) -> Option<f64> {
+    match name.unwrap_or_default() {
+        // A day; OpenCode's and Cursor's never run out while progress comes;
+        // Crush and VS Code don't give up at all.
+        "claude-code" | "opencode" | "cursor-vscode" | "crush" | "Visual Studio Code" | "Visual Studio Code - Insiders" => None,
+        // Grok Build: a hundred minutes.
+        name if name.starts_with("grok-shell-") => None,
+        // As long as the line Mark gives each to add it asks for.
+        "copilot-cli" | "github-copilot-developer" => Some(3600.0),
+        "Zed" => Some(600.0),
+        "codex-mcp-client" | "goose-cli" | "goose-desktop" => Some(300.0),
+        "gemini-cli-mcp-client" | "qwen-code-mcp-client" => Some(600.0),
+        "antigravity-client" => Some(180.0),
+        // Warp: half an hour, fixed.
+        "dev.warp.Warp-Stable" | "dev.warp.Warp-Preview" => Some(1800.0),
+        _ => Some(SDK_PATIENCE),
+    }
+}
 
 pub const DECLINED: &str = "The user chose not to send a screenshot. Don't ask again unless they say so.";
 pub const QUIT: &str = "Mark quit before a screenshot was sent.";
@@ -263,33 +289,132 @@ fn invisible(c: char) -> bool {
         | 0xE0000..=0xE0FFF)
 }
 
-/// What to paste where, for the Mark at this path: a command for Claude Code,
-/// and the entry for Claude Desktop's settings file.
+/// One AI tool Mark can be added to, and how: what the user does, in the
+/// tool's own way.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Setup { pub claude_code: String, pub claude_desktop: String }
+pub struct Agent {
+    /// The tool, as a person names it.
+    pub name: &'static str,
+    /// Where it is listed: a command line, an app, or an editor.
+    pub group: &'static str,
+    #[serde(flatten)]
+    pub how: How,
+}
 
-pub fn setup(binary: &Path) -> Result<Setup, String> {
-    let text = binary.to_str().ok_or("Mark's location can't be written down as text.")?;
-    if text.contains("/AppTranslocation/") {
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum How {
+    /// A command to paste into Terminal.
+    Command { text: String },
+    /// A link that opens the tool, which then asks whether to add Mark.
+    Link { url: String },
+    /// Text for the tool's settings, where it goes -- a file, or a place in
+    /// the tool -- and whether the tool must be opened again to read it.
+    Config { place: String, text: String, restart: bool },
+}
+
+/// The schemes Mark opens a link in. Only links Mark made itself are ever
+/// opened, and only in these.
+const LINK_SCHEMES: [&str; 2] = ["cursor", "vscode"];
+
+/// Every tool Mark can be added to, for the Mark at this path -- the running
+/// one, so what is copied starts this very copy. Each the way its own makers
+/// document: a link where it takes one, a command where it has one, and
+/// otherwise the lines for its settings. A tool that runs in the cloud, as
+/// Grok Bot does, can't start a program on this Mac, so it isn't here.
+pub fn agents(binary: &Path) -> Result<Vec<Agent>, String> {
+    let path = binary.to_str().ok_or("Mark's location can't be written down as text.")?;
+    if path.contains("/AppTranslocation/") {
         return Err("Move Mark to your Applications folder first: macOS is running it from a temporary copy.".into());
     }
     if app_of(binary).is_none() { return Err("This Mark isn't running from its app, so there's nothing for an AI tool to start.".into()); }
-    // Single quotes keep any character in a path as itself, but a single quote.
-    let quoted = format!("'{}'", text.replace('\'', r"'\''"));
-    let entry = json!({ "mcpServers": { "mark": { "command": text, "args": ["--mcp"] } } });
-    Ok(Setup {
-        claude_code: format!("claude mcp add --scope user mark -- {quoted} --mcp"),
-        claude_desktop: serde_json::to_string_pretty(&entry).map_err(|e| e.to_string())?,
-    })
+    let shell = shell_quoted(path);
+    // A JSON string is a TOML basic string and a YAML double-quoted one too.
+    let quoted = Value::from(path).to_string();
+    let server = json!({ "command": path, "args": ["--mcp"] });
+    let pretty = |value: Value| serde_json::to_string_pretty(&value).unwrap_or_default();
+    let servers = || pretty(json!({ "mcpServers": { "mark": server } }));
+    let typed = |key: &str| pretty(json!({ key: { "mark": { "type": "stdio", "command": path, "args": ["--mcp"] } } }));
+    let command = |name, line: String| Agent { name, group: "Command line", how: How::Command { text: line } };
+    let config = |name, group, place: &str, text: String, restart| Agent { name, group, how: How::Config { place: place.into(), text, restart } };
+    let link = |name, url: String| Agent { name, group: "Editors", how: How::Link { url } };
+    // VS Code reads its link's text twice over, so a % in the path would be
+    // read as the start of another; such a Mark gives the command instead.
+    let vs_code = json!({ "name": "mark", "type": "stdio", "command": path, "args": ["--mcp"] }).to_string();
+    let vs_code = if path.contains('%') {
+        Agent { name: "VS Code", group: "Editors", how: How::Command { text: format!("code --add-mcp {}", shell_quoted(&vs_code)) } }
+    } else { link("VS Code", format!("vscode:mcp/install?{}", link_part(&vs_code))) };
+    Ok(vec![
+        command("Claude Code", format!("claude mcp add --scope user mark -- {shell} --mcp")),
+        command("Codex", format!("codex mcp add mark -- {shell} --mcp")),
+        command("Grok Build", format!("grok mcp add mark -- {shell} --mcp")),
+        // Copilot's own limit is a matter of seconds; an hour is time to show it.
+        command("GitHub Copilot CLI", format!("copilot mcp add --timeout 3600000 mark -- {shell} --mcp")),
+        command("Gemini CLI", format!("gemini mcp add --scope user mark {shell} -- --mcp")),
+        command("OpenCode", format!("opencode mcp add mark -- {shell} --mcp")),
+        command("Amp", format!("amp mcp add mark -- {shell} --mcp")),
+        // Droid takes its command as one string it splits itself, so its file is surer.
+        config("Factory Droid", "Command line", "~/.factory/mcp.json", typed("mcpServers"), false),
+        command("Qwen Code", format!("qwen mcp add mark {shell} -- --mcp")),
+        config("Crush", "Command line", "~/.config/crush/crush.json", typed("mcp"), true),
+        config("Claude Desktop", "Apps", "~/Library/Application Support/Claude/claude_desktop_config.json", servers(), true),
+        // The Codex app is the ChatGPT app's now: its Codex chats use local tools, from Codex's own settings.
+        config("ChatGPT (Codex)", "Apps", "~/.codex/config.toml", format!("[mcp_servers.mark]\ncommand = {quoted}\nargs = [\"--mcp\"]"), true),
+        config("Goose", "Apps", "the extensions in ~/.config/goose/config.yaml",
+               format!("  mark:\n    enabled: true\n    type: stdio\n    name: mark\n    cmd: {quoted}\n    args: [\"--mcp\"]\n    timeout: 300"), true),
+        config("Warp", "Apps", "~/.warp/.mcp.json", servers(), false),
+        link("Cursor", format!("cursor://anysphere.cursor-deeplink/mcp/install?name=mark&config={}",
+                               link_part(&STANDARD.encode(server.to_string())))),
+        vs_code,
+        config("JetBrains AI", "Editors", "Settings › Tools › AI Assistant › Model Context Protocol (MCP)", servers(), false),
+        config("Devin (Windsurf)", "Editors", "~/.config/devin/mcp_config.json", servers(), true),
+        // Zed waits a minute unless told otherwise, and ten at most.
+        config("Zed", "Editors", "~/.config/zed/settings.json, inside its outer braces",
+               within(&json!({ "context_servers": { "mark": { "command": path, "args": ["--mcp"], "env": {}, "timeout": 600 } } })), false),
+        config("Antigravity", "Editors", "~/.gemini/config/mcp_config.json", servers(), true),
+    ])
+}
+
+/// Single quotes keep any character in a path as itself, but a single quote.
+fn shell_quoted(text: &str) -> String {
+    format!("'{}'", text.replace('\'', r"'\''"))
+}
+
+/// Text as part of a link: every byte but the few a link leaves as they are,
+/// written %XX -- what a web page's encodeURIComponent makes, which is what
+/// these tools read.
+fn link_part(text: &str) -> String {
+    text.bytes().map(|byte| match byte {
+        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')' => char::from(byte).to_string(),
+        _ => format!("%{byte:02X}"),
+    }).collect()
+}
+
+/// An object's members, without its braces, to go inside a settings file that
+/// has other things in it already.
+fn within(value: &Value) -> String {
+    let text = serde_json::to_string_pretty(value).unwrap_or_default();
+    let lines: Vec<&str> = text.lines().collect();
+    lines[1..lines.len().saturating_sub(1)].iter().map(|line| line.strip_prefix("  ").unwrap_or(line)).collect::<Vec<_>>().join("\n")
+}
+
+/// The link for the tool with this name, if Mark has one, in a scheme Mark opens.
+pub fn link_for(binary: &Path, name: &str) -> Result<String, String> {
+    let agents = agents(binary)?;
+    let agent = agents.iter().find(|agent| agent.name == name).ok_or_else(|| format!("Mark doesn't know {name}."))?;
+    match &agent.how {
+        How::Link { url } if LINK_SCHEMES.iter().any(|scheme| url.starts_with(&format!("{scheme}:"))) => Ok(url.clone()),
+        _ => Err(format!("{name} is added another way.")),
+    }
 }
 
 // ---- the bridge ------------------------------------------------------------
 
-/// What the bridge knows of the conversation: who it is talking to, and
-/// whether that tool waits for as long as a call takes.
+/// What the bridge knows of the conversation: who it is talking to, as a
+/// person would name it and as it names itself.
 #[derive(Default)]
-pub struct Bridge { client: Option<String>, patient: bool }
+pub struct Bridge { client: Option<String>, id: Option<String> }
 
 /// What a message from the tool calls for.
 #[derive(Debug, PartialEq)]
@@ -322,7 +447,7 @@ pub fn respond(line: &str, bridge: &mut Bridge, calling: Option<&Value>) -> Acti
     match method {
         "initialize" => {
             bridge.client = client_name(&params);
-            bridge.patient = patient(&params);
+            bridge.id = params["clientInfo"]["name"].as_str().map(str::to_string);
             Action::Reply(result(id, initialized(&params)))
         }
         "ping" => Action::Reply(result(id, json!({}))),
@@ -361,7 +486,7 @@ fn call(id: Value, params: &Value, bridge: &Bridge, calling: Option<&Value>) -> 
     let progress = params.get("_meta").and_then(|meta| meta.get("progressToken"))
         .filter(|token| token.is_string() || token.is_i64() || token.is_u64()).cloned();
     let client = bridge.client.clone().unwrap_or_else(|| "An AI tool".into());
-    let wait = (!bridge.patient).then_some(SDK_PATIENCE);
+    let wait = patience(bridge.id.as_deref());
     Action::Call { id, ask: Ask { client, prompt: prompt.into(), mode: mode.into(), wait }, progress }
 }
 
@@ -370,18 +495,34 @@ fn client_name(params: &Value) -> Option<String> {
     let info = params.get("clientInfo")?;
     let text = |key: &str| info.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
     if let Some(title) = text("title") { return Some(title.into()); }
-    Some(match text("name")? {
+    let name = text("name")?;
+    // Grok Build names itself for the server it talks to: grok-shell-mark.
+    if name.starts_with("grok-shell-") { return Some("Grok Build".into()); }
+    if name.starts_with("grok-cli") { return Some("Grok CLI".into()); }
+    Some(match name {
         "claude-code" => "Claude Code",
         "claude-ai" | "claude-desktop" | "claude-desktop-3p" => "Claude",
+        "codex-mcp-client" => "Codex",
         "cursor-vscode" => "Cursor",
+        "Visual Studio Code" | "Visual Studio Code - Insiders" | "Visual-Studio-Code" => "VS Code",
+        "Windsurf" | "windsurf-client" => "Windsurf",
+        "@cline/core" => "Cline",
+        "lmstudio-mcp-server-session" => "LM Studio",
+        "kimi-code" => "Kimi Code",
+        "gemini-cli-mcp-client" => "Gemini CLI",
+        "antigravity-client" => "Antigravity",
+        "qwen-code-mcp-client" => "Qwen Code",
+        "goose-cli" | "goose-desktop" => "Goose",
+        "opencode" => "OpenCode",
+        "crush" => "Crush",
+        "copilot-cli" | "github-copilot-developer" => "GitHub Copilot",
+        "dev.warp.Warp-Stable" | "dev.warp.Warp-Preview" => "Warp",
+        "amp-mcp-client" => "Amp",
+        "factory-cli" => "Factory Droid",
+        "com.raycast.macos" => "Raycast",
         other => other,
     }.into())
 }
-
-/// Whether the tool waits for as long as a call takes rather than the SDK's
-/// minute. Only Claude Code is known to; a tool that is not known is taken at
-/// the SDK's word, and the editor counts its minute down.
-fn patient(params: &Value) -> bool { params["clientInfo"]["name"].as_str() == Some("claude-code") }
 
 fn initialized(params: &Value) -> Value {
     let asked = params.get("protocolVersion").and_then(Value::as_str);
@@ -523,7 +664,12 @@ fn wait_for_mark(ask: &Ask, asked: std::time::Instant, progress: Option<Value>, 
             .map_err(|_| QUIT.to_string()).and_then(|line| read_answer(&line));
         let _ = events.send(Event::Answer(answer));
     });
+    let tell = |waited: u64| if let Some(token) = &progress {
+        send(&json!({ "jsonrpc": "2.0", "method": "notifications/progress",
+                      "params": { "progressToken": token, "progress": waited, "message": "Waiting for the screenshot" } }));
+    };
     let mut waited = 0;
+    tell(waited);
     loop {
         match heard.recv_timeout(PROGRESS_EVERY) {
             Ok(Event::Answer(answer)) => return Some(answer.unwrap_or_else(Reply::Failed)),
@@ -534,10 +680,7 @@ fn wait_for_mark(ask: &Ask, asked: std::time::Instant, progress: Option<Value>, 
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 waited += PROGRESS_EVERY.as_secs();
-                if let Some(token) = &progress {
-                    send(&json!({ "jsonrpc": "2.0", "method": "notifications/progress",
-                                  "params": { "progressToken": token, "progress": waited, "message": "Waiting for the screenshot" } }));
-                }
+                tell(waited);
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => return Some(Reply::Failed(QUIT.into())),
         }
@@ -604,6 +747,8 @@ mod tests {
         assert_eq!(answer["result"]["serverInfo"]["name"], "mark");
         assert_eq!(answer["result"]["capabilities"], json!({ "tools": { "listChanged": false } }));
         assert_eq!(reply(respond(&line("2099-01-01"), &mut bridge, None))["result"]["protocolVersion"], PROTOCOL);
+        // Cline's command line still asks for the first revision; what Mark sends was in it.
+        assert_eq!(reply(respond(&line("2024-11-05"), &mut bridge, None))["result"]["protocolVersion"], "2024-11-05");
         assert_eq!(bridge.client.as_deref(), Some("Claude Code"));
         assert_eq!(reply(respond(r#"{"jsonrpc":"2.0","id":"p","method":"ping"}"#, &mut bridge, None)),
                    json!({ "jsonrpc": "2.0", "id": "p", "result": {} }));
@@ -653,6 +798,17 @@ mod tests {
         assert_eq!(waits("claude-code"), ("Claude Code".into(), None));
         assert_eq!(waits("claude-desktop"), ("Claude".into(), Some(60.0)));
         assert_eq!(waits("some-editor"), ("some-editor".into(), Some(60.0)));
+        // Each known tool by its own default.
+        assert_eq!(waits("codex-mcp-client"), ("Codex".into(), Some(300.0)));
+        assert_eq!(waits("gemini-cli-mcp-client"), ("Gemini CLI".into(), Some(600.0)));
+        assert_eq!(waits("grok-shell-mark"), ("Grok Build".into(), None));
+        assert_eq!(waits("opencode"), ("OpenCode".into(), None));
+        assert_eq!(waits("cursor-vscode"), ("Cursor".into(), None));
+        assert_eq!(waits("Visual Studio Code"), ("VS Code".into(), None));
+        // As long as Mark's own line for each asks it to wait.
+        assert_eq!(waits("copilot-cli"), ("GitHub Copilot".into(), Some(3600.0)));
+        assert_eq!(waits("Zed"), ("Zed".into(), Some(600.0)));
+        assert_eq!(waits("@cline/core"), ("Cline".into(), Some(60.0)));
         // Told how long is left, the app hears it; told nonsense, it hears nothing.
         assert_eq!(parse_ask(r#"{"v":1,"type":"ask","prompt":"x","wait":42.5}"#).unwrap().wait, Some(42.5));
         assert_eq!(parse_ask(r#"{"v":1,"type":"ask","prompt":"x","wait":-3}"#).unwrap().wait, None);
@@ -691,16 +847,100 @@ mod tests {
         assert_eq!(clean("\u{0}\u{7}", 10), "");
     }
 
+    fn agent<'a>(agents: &'a [Agent], name: &str) -> &'a How {
+        &agents.iter().find(|agent| agent.name == name).unwrap_or_else(|| panic!("{name} missing")).how
+    }
+
     #[test]
-    fn setup_points_at_the_app_and_quotes_it() {
-        let made = setup(Path::new("/Applications/Mark.app/Contents/MacOS/mark")).unwrap();
-        assert_eq!(made.claude_code, "claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp");
-        let entry: Value = serde_json::from_str(&made.claude_desktop).unwrap();
-        assert_eq!(entry, json!({ "mcpServers": { "mark": { "command": "/Applications/Mark.app/Contents/MacOS/mark", "args": ["--mcp"] } } }));
-        let odd = setup(Path::new("/Users/me/Apps/Tom's Mark.app/Contents/MacOS/mark")).unwrap();
-        assert!(odd.claude_code.contains(r"'/Users/me/Apps/Tom'\''s Mark.app/Contents/MacOS/mark'"));
-        assert!(setup(Path::new("/private/var/folders/x/AppTranslocation/ABC/d/Mark.app/Contents/MacOS/mark")).is_err());
-        assert!(setup(Path::new("/Users/me/Mark/src-tauri/target/debug/mark")).is_err());
+    fn each_tool_is_pointed_at_this_app_its_own_way() {
+        let app = Path::new("/Applications/Mark.app/Contents/MacOS/mark");
+        let all = agents(app).unwrap();
+        let command = |name| match agent(&all, name) { How::Command { text } => text.clone(), other => panic!("{name}: {other:?}") };
+        let config = |name| match agent(&all, name) { How::Config { place, text, restart } => (place.clone(), text.clone(), *restart), other => panic!("{name}: {other:?}") };
+        let path = "'/Applications/Mark.app/Contents/MacOS/mark'";
+        assert_eq!(command("Claude Code"), format!("claude mcp add --scope user mark -- {path} --mcp"));
+        assert_eq!(command("Codex"), format!("codex mcp add mark -- {path} --mcp"));
+        assert_eq!(command("Grok Build"), format!("grok mcp add mark -- {path} --mcp"));
+        assert_eq!(command("GitHub Copilot CLI"), format!("copilot mcp add --timeout 3600000 mark -- {path} --mcp"));
+        assert_eq!(command("Gemini CLI"), format!("gemini mcp add --scope user mark {path} -- --mcp"));
+        assert_eq!(command("Qwen Code"), format!("qwen mcp add mark {path} -- --mcp"));
+        let server = json!({ "command": "/Applications/Mark.app/Contents/MacOS/mark", "args": ["--mcp"] });
+        let stdio = json!({ "type": "stdio", "command": "/Applications/Mark.app/Contents/MacOS/mark", "args": ["--mcp"] });
+        for name in ["Claude Desktop", "Warp", "JetBrains AI", "Devin (Windsurf)", "Antigravity"] {
+            assert_eq!(serde_json::from_str::<Value>(&config(name).1).unwrap(), json!({ "mcpServers": { "mark": server } }), "{name}");
+        }
+        assert_eq!(serde_json::from_str::<Value>(&config("Factory Droid").1).unwrap(), json!({ "mcpServers": { "mark": stdio } }));
+        assert_eq!(serde_json::from_str::<Value>(&config("Crush").1).unwrap(), json!({ "mcp": { "mark": stdio } }));
+        assert_eq!(config("Claude Desktop").2, true);
+        assert_eq!(config("ChatGPT (Codex)"), ("~/.codex/config.toml".into(),
+            "[mcp_servers.mark]\ncommand = \"/Applications/Mark.app/Contents/MacOS/mark\"\nargs = [\"--mcp\"]".into(), true));
+        // Goose's lines go under the extensions it has, so they come indented.
+        let (_, goose, _) = config("Goose");
+        assert!(goose.starts_with("  mark:\n    enabled: true\n"));
+        assert!(goose.contains("    cmd: \"/Applications/Mark.app/Contents/MacOS/mark\"\n    args: [\"--mcp\"]"));
+        // Zed's go inside a settings file that has other settings, so they come
+        // without braces of their own; read inside some, they are the server.
+        let (_, zed, restart) = config("Zed");
+        assert!(zed.starts_with("\"context_servers\": {") && !restart);
+        assert_eq!(serde_json::from_str::<Value>(&format!("{{{zed}}}")).unwrap()["context_servers"]["mark"]["timeout"], 600);
+        // Every name is listed once, under a group the page knows.
+        let mut names: Vec<_> = all.iter().map(|agent| agent.name).collect();
+        names.sort(); names.dedup();
+        assert_eq!(names.len(), all.len());
+        assert!(all.iter().all(|agent| ["Command line", "Apps", "Editors"].contains(&agent.group)));
+    }
+
+    /// What a link carries, read back the way the tool reads it.
+    fn unescape(text: &str) -> String {
+        let bytes = text.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'%' { out.push(u8::from_str_radix(&text[i + 1..i + 3], 16).unwrap()); i += 3; } else { out.push(bytes[i]); i += 1; }
+        }
+        String::from_utf8(out).unwrap()
+    }
+
+    #[test]
+    fn a_link_carries_the_server_as_each_editor_reads_it() {
+        let app = Path::new("/Applications/Mark.app/Contents/MacOS/mark");
+        let all = agents(app).unwrap();
+        let How::Link { url } = agent(&all, "Cursor") else { panic!("a link") };
+        let config = url.strip_prefix("cursor://anysphere.cursor-deeplink/mcp/install?name=mark&config=").unwrap();
+        assert!(!config.contains(['+', '/', '=']), "base64's own characters, escaped for a link");
+        let decoded = STANDARD.decode(unescape(config)).unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&decoded).unwrap(), json!({ "command": app, "args": ["--mcp"] }));
+        let How::Link { url } = agent(&all, "VS Code") else { panic!("a link") };
+        let config = url.strip_prefix("vscode:mcp/install?").unwrap();
+        assert!(config.chars().all(|c| c.is_ascii_alphanumeric() || "%-_.!~*'()".contains(c)));
+        assert_eq!(serde_json::from_str::<Value>(&unescape(config)).unwrap(),
+                   json!({ "name": "mark", "type": "stdio", "command": app, "args": ["--mcp"] }));
+        // VS Code would read a % in the path twice; such a Mark gives its command.
+        let odd = agents(Path::new("/Applications/100% Mark.app/Contents/MacOS/mark")).unwrap();
+        let How::Command { text } = agent(&odd, "VS Code") else { panic!("a command") };
+        assert!(text.starts_with("code --add-mcp '{") && text.contains("100% Mark.app"));
+    }
+
+    #[test]
+    fn a_path_with_a_quote_is_quoted_and_a_temporary_copy_is_refused() {
+        let odd = agents(Path::new("/Users/me/Apps/Tom's Mark.app/Contents/MacOS/mark")).unwrap();
+        let How::Command { text } = agent(&odd, "Claude Code") else { panic!("a command") };
+        assert!(text.contains(r"'/Users/me/Apps/Tom'\''s Mark.app/Contents/MacOS/mark'"));
+        assert!(agents(Path::new("/private/var/folders/x/AppTranslocation/ABC/d/Mark.app/Contents/MacOS/mark")).is_err());
+        assert!(agents(Path::new("/Users/me/Mark/src-tauri/target/debug/mark")).is_err());
+    }
+
+    #[test]
+    fn only_a_link_mark_made_is_opened() {
+        let app = Path::new("/Applications/Mark.app/Contents/MacOS/mark");
+        assert!(link_for(app, "Cursor").unwrap().starts_with("cursor://anysphere.cursor-deeplink/mcp/install?"));
+        assert!(link_for(app, "VS Code").unwrap().starts_with("vscode:mcp/install?"));
+        assert!(link_for(app, "Claude Code").is_err(), "a command, not a link");
+        assert!(link_for(app, "Nobody").is_err());
+        // Every link Mark makes is in a scheme it opens.
+        for agent in agents(app).unwrap() {
+            if let How::Link { .. } = agent.how { assert!(link_for(app, agent.name).is_ok(), "{}", agent.name); }
+        }
     }
 
     #[test]
@@ -785,7 +1025,16 @@ mod tests {
         // Once the first has gone -- its lock with it -- the socket it left is cleared and bound afresh.
         drop(first);
         assert!(folder.path().join("mcp.sock").exists());
-        let second = bind(folder.path()).unwrap();
+        // Tests run side by side in one process, and one starting a program
+        // shares this lock with the child for the moment before it runs; the
+        // lock is free once that has passed.
+        let mut second = bind(folder.path());
+        for _ in 0..50 {
+            if second.is_ok() { break; }
+            std::thread::sleep(Duration::from_millis(20));
+            second = bind(folder.path());
+        }
+        let second = second.unwrap();
         assert!(UnixStream::connect(second.path()).is_ok());
         let mode = std::fs::metadata(second.path()).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);

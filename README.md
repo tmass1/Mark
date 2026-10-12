@@ -425,7 +425,8 @@ new capture hides the old editor; cancel restores it and success replaces it.
 
 ## AI tools
 
-Claude Code, Claude Desktop and other MCP apps can ask you for a screenshot.
+Claude Code, Codex, Cursor, Grok Build and the other AI tools that run MCP
+servers on your Mac can ask you for a screenshot.
 Mark comes forward with the ask in a bar across the top of the editor —
 **Claude Code** asks to see “the error dialog in Xcode” — and nothing more
 happens until you act. Bring the thing on screen and capture it the usual way:
@@ -439,29 +440,42 @@ read out of pixels, and nothing you redacted comes back as words. The frame
 stays behind, being for people. **Don’t Send**, Escape, ⌘W or closing the
 editor tells the tool no, and that it should not ask again unless you say so.
 
-To set it up, open **Settings › AI tools**:
+To set it up, open **Settings › AI tools**, pick the tool under **Add Mark
+to**, and press the button beside it. Each is added the way its makers
+document:
 
-- **Copy Claude Code Command** copies a command for Terminal that adds Mark to
-  Claude Code in every project:
+- **Command line** — Claude Code, Codex, Grok Build, GitHub Copilot CLI,
+  Gemini CLI, OpenCode, Amp and Qwen Code get a command to paste into
+  Terminal. For Claude Code it is:
 
   ```bash
   claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp
   ```
 
-- **Copy Claude Desktop Config** copies the entry for
-  `~/Library/Application Support/Claude/claude_desktop_config.json`. Add it
-  under `mcpServers`, then quit and reopen Claude.
+  Factory Droid and Crush get the lines for their settings files.
+- **Apps** — Claude Desktop, ChatGPT (in its Codex chats, which share Codex's
+  settings), Goose and Warp get the lines for their settings files, and Mark
+  says which file and whether to quit and reopen the app.
+- **Editors** — Cursor and VS Code open at a link and ask whether to add Mark.
+  JetBrains AI Assistant, Devin Desktop (formerly Windsurf), Zed and
+  Antigravity get the lines for their settings.
 
-Both point at the Mark that is running, so move Mark to Applications first.
-**Let AI tools ask for screenshots** turns asking off without removing
+All of them point at the Mark that is running, so move Mark to Applications
+first. **Let AI tools ask for screenshots** turns asking off without removing
 anything; a tool that asks then hears that it is off.
 
-Claude Code waits as long as you need: Mark tells it every ten seconds that it
-is still waiting, and a long wait moves into its background tasks. Claude
-Desktop, like most apps built on the MCP SDK, gives a tool one minute, which
-being told it is still waiting does not extend, so the bar counts that minute
-down for any app but Claude Code. An app that turns out to wait longer just
-loses the count; one that gives up takes its bar with it.
+Grok Bot isn't in the list: it works on a computer in the cloud, which can't
+start a program on your Mac. xAI's tool that can is Grok Build, the `grok`
+command line, which also picks up Mark from Claude Code's settings.
+
+How long a tool waits is its own. Claude Code waits as long as you need, and
+so do Cursor, VS Code, OpenCode and Crush: Mark tells each every five seconds
+that it is still waiting. Others give a call a fixed time that being told does
+not extend — Claude Desktop and most apps built on the MCP SDK a minute, Codex
+and Goose five minutes, Gemini CLI ten, Warp half an hour, and Copilot and Zed
+as long as the lines Mark gives them ask. For those the bar counts the time
+down once ten minutes or less are left. A tool that turns out to wait longer
+just loses the count; one that gives up takes its bar with it.
 
 The tool starts Mark's own binary with `--mcp` as its MCP server. That process,
 the bridge, takes nothing itself: it relays the ask over a Unix socket in

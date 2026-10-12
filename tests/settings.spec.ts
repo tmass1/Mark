@@ -165,31 +165,55 @@ test('a refused thumbnail choice says why and puts the box back', async ({ page 
   await expect(thumbnail).not.toBeChecked();
 });
 
-test('AI tools: the switch is sent, and each copy button copies what Rust made and says where it goes', async ({ page }) => {
-  const setup = { claudeCode: "claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp",
-                  claudeDesktop: '{\n  "mcpServers": {\n    "mark": {}\n  }\n}' };
-  await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false, set_mcp: { ...SAVED, mcp: false }, mcp_setup: setup } });
+test('AI tools: the switch is sent, and the tool picked is added its own way', async ({ page }) => {
+  const agents = [
+    { name: 'Claude Code', group: 'Command line', kind: 'command', text: "claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp" },
+    { name: 'Claude Desktop', group: 'Apps', kind: 'config', place: '~/Library/Application Support/Claude/claude_desktop_config.json',
+      text: '{\n  "mcpServers": {}\n}', restart: true },
+    { name: 'Cursor', group: 'Editors', kind: 'link', url: 'cursor://anysphere.cursor-deeplink/mcp/install?name=mark&config=e30' },
+  ];
+  await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false, set_mcp: { ...SAVED, mcp: false }, mcp_setup: agents } });
   await page.goto('/settings.html');
   const allow = page.getByLabel('Let AI tools ask for screenshots');
   await expect(allow).toBeChecked();
   await allow.uncheck();
   expect((await waitFor(page, 'set_mcp')).args).toEqual({ enabled: false });
   await expect(allow).not.toBeChecked();
+
+  // Listed under their groups, Claude Code first; a command is copied for Terminal.
+  const pick = page.getByRole('combobox', { name: 'Add Mark to' });
+  const add = page.locator('.add-agent');
+  await expect(pick).toBeEnabled();
+  await expect(pick.locator('optgroup')).toHaveCount(3);
+  await expect(pick).toHaveValue('Claude Code');
+  await expect(add).toHaveText('Copy Command');
   await clear(page);
-  await page.getByRole('button', { name: 'Copy Claude Code Command' }).click();
-  expect((await waitFor(page, 'copy_text')).args).toEqual({ text: setup.claudeCode });
-  await expect(page.getByText(/Paste it into Terminal/)).toBeVisible();
+  await add.click();
+  expect((await waitFor(page, 'copy_text')).args).toEqual({ text: agents[0].text });
+  await expect(page.getByText('Copied. Paste it into Terminal and press Return.')).toBeVisible();
+
+  // A tool with a link of its own is opened, by name: Rust makes the link.
+  await pick.selectOption('Cursor');
+  await expect(add).toHaveText('Add to Cursor');
   await clear(page);
-  await page.getByRole('button', { name: 'Copy Claude Desktop Config' }).click();
-  expect((await waitFor(page, 'copy_text')).args).toEqual({ text: setup.claudeDesktop });
-  await expect(page.getByText(/claude_desktop_config\.json/)).toBeVisible();
+  await add.click();
+  expect((await waitFor(page, 'add_to_agent')).args).toEqual({ name: 'Cursor' });
+  await expect(page.getByText('Cursor opens and asks whether to add Mark.')).toBeVisible();
+
+  // A settings file: its lines are copied, and the note says where they go.
+  await pick.selectOption('Claude Desktop');
+  await expect(add).toHaveText('Copy Config');
+  await clear(page);
+  await add.click();
+  expect((await waitFor(page, 'copy_text')).args).toEqual({ text: agents[1].text });
+  await expect(page.getByText('Copied. Add it to ~/Library/Application Support/Claude/claude_desktop_config.json, then quit and reopen Claude Desktop.')).toBeVisible();
 });
 
-test('a Mark running from a temporary copy says to move it first, and copies nothing', async ({ page }) => {
+test('a Mark running from a temporary copy says to move it first, and offers nothing to add', async ({ page }) => {
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false },
     fails: { mcp_setup: 'Move Mark to your Applications folder first: macOS is running it from a temporary copy.' } });
   await page.goto('/settings.html');
-  await page.getByRole('button', { name: 'Copy Claude Code Command' }).click();
   await expect(page.getByText(/Move Mark to your Applications folder first/)).toBeVisible();
-  expect((await sent(page)).map(call => call.cmd)).not.toContain('copy_text');
+  await expect(page.getByRole('combobox', { name: 'Add Mark to' })).toBeDisabled();
+  await expect(page.locator('.add-agent')).toBeDisabled();
 });

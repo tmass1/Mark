@@ -1147,8 +1147,10 @@ function countDown() {
   window.clearTimeout(waitTimer);
   const deadline = request?.deadline;
   const left = deadline ? deadline - Date.now() : 0;
-  requestWait.hidden = left <= 0;
+  // A long wait -- Warp's half hour -- is counted only once it is nearly up.
+  requestWait.hidden = left <= 0 || left > 10 * 60_000;
   if (left <= 0) return;
+  if (left > 10 * 60_000) { waitTimer = window.setTimeout(countDown, left - 10 * 60_000); return; }
   const seconds = Math.ceil(left / 1000);
   requestWait.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left`;
   requestWait.classList.toggle('soon', seconds <= 15);
