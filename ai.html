@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Use Mark with your AI tools</title>
+    <meta name="description" content="Set up Claude Code, Codex, Copilot, Grok Build, Claude Desktop, ChatGPT, Cursor or VS Code to ask Mark for a screenshot — and how to ask." />
+    <link rel="canonical" href="https://mark.tommymassaro.com/ai" />
+    <meta property="og:title" content="Use Mark with your AI tools" />
+    <meta property="og:description" content="Your AI asks for a screenshot. You choose what it sees, point at what matters, and press Send." />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://mark.tommymassaro.com/ai" />
+    <meta property="og:image" content="https://mark.tommymassaro.com/site/ask.png" />
+  </head>
+  <body>
+    <a class="skip" href="#setup">Skip to setup</a>
+
+    <header class="top">
+      <nav class="bar" aria-label="Site">
+        <a class="brand" href="./"><img class="mark" data-mark alt="" width="36" height="36" />Mark</a>
+        <div class="links">
+          <a href="#how">How it works</a>
+          <a href="#setup">Set up</a>
+          <a href="#ask">Ask</a>
+          <a href="#help">Help</a>
+        </div>
+        <a class="primary small" href="./#download" data-download>Download for Mac</a>
+      </nav>
+    </header>
+
+    <main class="doc" id="top">
+      <section class="doc-hero">
+        <p class="eyebrow">Guide</p>
+        <h1>Use Mark with your AI tools</h1>
+        <p class="lede">Claude, ChatGPT, Cursor and other AI tools can ask Mark for a screenshot. You choose what they see,
+          point at what matters, and press Send. Nothing is taken or sent without that Send.</p>
+      </section>
+
+      <section id="how" aria-labelledby="how-title">
+        <h2 id="how-title">How it works</h2>
+        <ol class="beats">
+          <li><span class="beat" aria-hidden="true">1</span><div><h3>Your AI asks</h3>
+            <p>Mark comes forward with what it wants to see — <em>Claude Code asks to see “the error in Xcode”</em>.
+              Nothing is captured yet.</p></div></li>
+          <li><span class="beat" aria-hidden="true">2</span><div><h3>You show it</h3>
+            <p>Bring the thing on screen and capture it the usual way, with <kbd data-shortcut>⌘4</kbd> or a tile. Add
+              arrows, boxes and numbered steps with notes, and hide anything private.</p></div></li>
+          <li><span class="beat" aria-hidden="true">3</span><div><h3>You send it</h3>
+            <p>Press <strong>Send</strong> (<kbd>⌥⌘C</kbd>). Your AI gets the picture, what you marked and where, and the
+              words in it, read on your Mac. <strong>Don’t Send</strong> or <kbd>Esc</kbd> tells it no.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="setup" aria-labelledby="setup-title">
+        <h2 id="setup-title">Set it up once</h2>
+        <p class="doc-text">First move Mark to your Applications folder and open it once. Then the quickest way is in Mark
+          itself: open <strong>Settings › AI tools</strong>, pick your tool under <strong>Add Mark to</strong>, and press
+          the button beside it. Or follow the steps for your tool here.</p>
+        <nav class="tool-index" aria-label="Tools">
+          <div><h3>Command line</h3><a href="#claude-code">Claude Code</a><a href="#codex">Codex</a>
+            <a href="#github-copilot-cli">GitHub Copilot CLI</a><a href="#grok-build">Grok Build</a></div>
+          <div><h3>Apps</h3><a href="#claude-desktop">Claude Desktop</a><a href="#chatgpt-codex">ChatGPT</a></div>
+          <div><h3>Editors</h3><a href="#cursor">Cursor</a><a href="#vs-code">VS Code</a></div>
+        </nav>
+
+        <article class="tool" id="claude-code" aria-labelledby="claude-code-title">
+          <header><h3 id="claude-code-title">Claude Code</h3><span class="tag">Command line</span></header>
+          <ol class="how">
+            <li>Paste this into Terminal and press Return:
+              <div class="command"><code>claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp</code>
+                <button class="copy-command" type="button">Copy</button></div></li>
+            <li>Start a new Claude Code session. Mark is there in every project.</li>
+          </ol>
+          <p class="aside">This is also how to set up Claude Code in VS Code and Cursor: Claude Code keeps one set of tools,
+            wherever it runs, apart from the editor’s own.</p>
+        </article>
+
+        <article class="tool" id="codex" aria-labelledby="codex-title">
+          <header><h3 id="codex-title">Codex</h3><span class="tag">Command line</span></header>
+          <ol class="how">
+            <li>Paste this into Terminal and press Return:
+              <div class="command"><code>codex mcp add mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp</code>
+                <button class="copy-command" type="button">Copy</button></div></li>
+            <li>Start a new Codex session. ChatGPT’s Codex chats share these settings, so they get Mark too.</li>
+          </ol>
+        </article>
+
+        <article class="tool" id="github-copilot-cli" aria-labelledby="github-copilot-cli-title">
+          <header><h3 id="github-copilot-cli-title">GitHub Copilot CLI</h3><span class="tag">Command line</span></header>
+          <ol class="how">
+            <li>Paste this into Terminal and press Return:
+              <div class="command"><code>copilot mcp add --timeout 3600000 mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp</code>
+                <button class="copy-command" type="button">Copy</button></div></li>
+            <li>Start a new Copilot session. The timeout gives you an hour to answer; without it, Copilot may stop waiting
+              before you’ve taken the screenshot.</li>
+          </ol>
+        </article>
+
+        <article class="tool" id="grok-build" aria-labelledby="grok-build-title">
+          <header><h3 id="grok-build-title">Grok Build</h3><span class="tag">Command line</span></header>
+          <ol class="how">
+            <li>Paste this into Terminal and press Return:
+              <div class="command"><code>grok mcp add mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp</code>
+                <button class="copy-command" type="button">Copy</button></div></li>
+            <li>Start a new Grok Build session. Grok Build also uses what Claude Code is set up with, so if you added
+              Mark to Claude Code, it’s already there.</li>
+          </ol>
+          <p class="aside">Grok Bot can’t use Mark: it works on a computer in the cloud, which can’t reach your Mac.</p>
+        </article>
+
+        <article class="tool" id="claude-desktop" aria-labelledby="claude-desktop-title">
+          <header><h3 id="claude-desktop-title">Claude Desktop</h3><span class="tag">App</span></header>
+          <ol class="how">
+            <li>Copy these lines:
+              <div class="command block"><pre><code>{
+  "mcpServers": {
+    "mark": {
+      "command": "/Applications/Mark.app/Contents/MacOS/mark",
+      "args": ["--mcp"]
+    }
+  }
+}</code></pre>
+                <button class="copy-command" type="button">Copy</button></div></li>
+            <li>In Finder, choose <strong>Go › Go to Folder</strong>, enter <code>~/Library/Application Support/Claude</code>,
+              and open <code>claude_desktop_config.json</code> in TextEdit. If the file is empty, paste the lines as they
+              are. If it already has an <code>"mcpServers"</code> section, add just the <code>"mark"</code> entry to it.</li>
+            <li>Save, quit Claude with <kbd>⌘Q</kbd>, and open it again.</li>
+          </ol>
+          <p class="aside">Claude Desktop waits only a minute for a screenshot, so Mark counts that minute down for you.</p>
+        </article>
+
+        <article class="tool" id="chatgpt-codex" aria-labelledby="chatgpt-codex-title">
+          <header><h3 id="chatgpt-codex-title">ChatGPT</h3><span class="tag">App</span></header>
+          <ol class="how">
+            <li>In ChatGPT, open <strong>Settings › MCP servers</strong> and click <strong>Add server</strong>.</li>
+            <li>Name it <code>mark</code> and choose <strong>STDIO</strong>.</li>
+            <li>In <strong>Command to launch</strong>, paste Mark’s location:
+              <div class="command"><code>/Applications/Mark.app/Contents/MacOS/mark</code>
+                <button class="copy-command" type="button">Copy</button></div></li>
+            <li>Under <strong>Arguments</strong>, click <strong>Add argument</strong> and type <code>--mcp</code>.</li>
+            <li>Click <strong>Save</strong>, then <strong>Restart</strong>.</li>
+          </ol>
+          <p class="aside">Mark works in ChatGPT’s Codex chats, which use tools on your Mac. Its regular chats run in the
+            cloud and can’t reach it.</p>
+        </article>
+
+        <article class="tool" id="cursor" aria-labelledby="cursor-title">
+          <header><h3 id="cursor-title">Cursor</h3><span class="tag">Editor</span></header>
+          <ol class="how">
+            <li><a class="primary small" href="cursor://anysphere.cursor-deeplink/mcp/install?name=mark&amp;config=eyJjb21tYW5kIjoiL0FwcGxpY2F0aW9ucy9NYXJrLmFwcC9Db250ZW50cy9NYWNPUy9tYXJrIiwiYXJncyI6WyItLW1jcCJdfQ%3D%3D">Add to Cursor</a>
+              Cursor opens and asks whether to install Mark. Click <strong>Install</strong>.</li>
+            <li>Ask in Cursor’s Agent chat.</li>
+          </ol>
+          <p class="aside">This adds Mark to Cursor’s own Agent. Using Claude Code inside Cursor? Set up
+            <a class="inline" href="#claude-code">Claude Code</a> instead: it keeps its own tools.</p>
+        </article>
+
+        <article class="tool" id="vs-code" aria-labelledby="vs-code-title">
+          <header><h3 id="vs-code-title">VS Code</h3><span class="tag">Editor</span></header>
+          <ol class="how">
+            <li><a class="primary small" href="vscode:mcp/install?%7B%22name%22%3A%22mark%22%2C%22type%22%3A%22stdio%22%2C%22command%22%3A%22%2FApplications%2FMark.app%2FContents%2FMacOS%2Fmark%22%2C%22args%22%3A%5B%22--mcp%22%5D%7D">Add to VS Code</a>
+              VS Code opens Mark’s page. Click <strong>Install</strong>, and trust Mark when it asks.</li>
+            <li>Ask in Copilot Chat in Agent mode, with a model that can see images.</li>
+          </ol>
+          <p class="aside">This adds Mark to Copilot Chat. Using Claude Code inside VS Code? Set up
+            <a class="inline" href="#claude-code">Claude Code</a> instead: it keeps its own tools.</p>
+        </article>
+      </section>
+
+      <section id="ask" aria-labelledby="ask-title">
+        <h2 id="ask-title">Ask for a screenshot</h2>
+        <p class="doc-text">Ask the way you’d ask a person sitting beside you. Naming Mark helps the first time.</p>
+        <ul class="examples">
+          <li>“Use Mark to look at my screen — why is this button out of line?”</li>
+          <li>“Take a screenshot of the error in Xcode and tell me what’s wrong.”</li>
+          <li>“Look at the chart I have open and explain the spike.”</li>
+        </ul>
+        <p class="doc-text">Your AI also asks on its own when seeing your screen would help. Either way, Mark shows you what
+          it wants first, and sends nothing until you press Send.</p>
+      </section>
+
+      <section id="help" aria-labelledby="help-title">
+        <h2 id="help-title">If something’s not right</h2>
+        <dl class="help">
+          <dt>Mark says to move it to Applications</dt>
+          <dd>Run from Downloads or the disk image, macOS gives Mark a temporary home your AI tool can’t find again. Drag
+            Mark to Applications, open it from there, and set your tool up again.</dd>
+          <dt>Your AI says it can’t reach Mark</dt>
+          <dd>Mark opens itself when asked, from where it was when you set the tool up. If you’ve moved it since, set the
+            tool up again. Check that <strong>Let AI tools ask for screenshots</strong> is on in Mark’s Settings.</dd>
+          <dt>A countdown appears</dt>
+          <dd>Some tools stop waiting after a set time — Claude Desktop after a minute. Send before it runs out, or ask
+            again.</dd>
+          <dt>Your AI doesn’t know what Mark is</dt>
+          <dd>Then Mark isn’t among its tools. Each tool keeps its own list — and Claude Code inside VS Code or Cursor uses
+            Claude Code’s, not the editor’s, so set up <a class="inline" href="#claude-code">Claude Code</a> for it. After
+            setting a tool up, start a new session.</dd>
+          <dt>Your AI doesn’t use Mark</dt>
+          <dd>Ask for it by name. In Cursor and VS Code, use Agent mode; in ChatGPT, a Codex chat.</dd>
+          <dt>Turning it off</dt>
+          <dd>Uncheck <strong>Let AI tools ask for screenshots</strong> in Mark’s Settings. Your tools are told it’s off, and
+            nothing else changes.</dd>
+        </dl>
+      </section>
+
+      <section id="other" aria-labelledby="other-title">
+        <h2 id="other-title">Other tools</h2>
+        <p class="doc-text">Any tool that runs MCP servers on your Mac can use Mark. Give it this command, with the argument
+          <code>--mcp</code>:</p>
+        <div class="command"><code>/Applications/Mark.app/Contents/MacOS/mark</code>
+          <button class="copy-command" type="button">Copy</button></div>
+        <p class="doc-text">Chats on the web, and Grok Bot, run in the cloud and can’t reach your Mac. Paste instead: every
+          capture lands on your clipboard as a PNG, and <kbd>⇧⌘L</kbd> copies its numbered steps as text.</p>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand" href="./"><img class="mark" data-mark alt="" width="26" height="26" />Mark</a>
+      <span class="made">Made by <a href="https://tommymassaro.com">Tommy Massaro</a></span>
+      <span class="version">Version <span data-version>0.3.0</span></span>
+    </footer>
+
+    <script type="module" src="/src/site/page.ts"></script>
+  </body>
+</html>

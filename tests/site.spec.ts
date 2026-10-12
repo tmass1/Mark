@@ -72,6 +72,42 @@ test('the setup line copies as it reads', async ({ page }) => {
   expect(await command.textContent()).toBe("claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp");
 });
 
+test('the guide to AI tools: reached from the home page, a section for every tool, each line copied as it reads', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text: string) => { (window as any).__copied = text; } } });
+  });
+  await page.goto('/site.html');
+  await expect(page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'AI setup' })).toHaveAttribute('href', './ai.html');
+  await page.getByRole('link', { name: 'the setup guide' }).click();
+  await expect(page).toHaveURL(/\/ai\.html$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Use Mark with your AI tools');
+  await expect(page.locator('footer [data-version]')).toHaveText(pkg.version);
+  // The index names every tool, and each name leads to its section.
+  const index = page.getByRole('navigation', { name: 'Tools' }).getByRole('link');
+  await expect(index).toHaveText(['Claude Code', 'Codex', 'GitHub Copilot CLI', 'Grok Build', 'Claude Desktop', 'ChatGPT', 'Cursor', 'VS Code']);
+  for (const link of await index.all()) {
+    const id = (await link.getAttribute('href'))!.slice(1);
+    await expect(page.locator(`article.tool#${id}`)).toHaveCount(1);
+  }
+  // A copied line is exactly the line shown, the block of settings included.
+  for (const id of ['claude-code', 'claude-desktop', 'chatgpt-codex']) {
+    const well = page.locator(`#${id} .command`).first();
+    await well.getByRole('button', { name: 'Copy' }).click();
+    expect(await page.evaluate(() => (window as any).__copied)).toBe(await well.locator('code').textContent());
+  }
+  expect(JSON.parse(await page.locator('#claude-desktop code').first().textContent() ?? '')).toEqual(
+    { mcpServers: { mark: { command: '/Applications/Mark.app/Contents/MacOS/mark', args: ['--mcp'] } } });
+  await expect(page.getByRole('link', { name: 'Add to Cursor' })).toHaveAttribute('href', /^cursor:\/\/anysphere\.cursor-deeplink\/mcp\/install\?name=mark&config=/);
+  await expect(page.getByRole('link', { name: 'Add to VS Code' })).toHaveAttribute('href', /^vscode:mcp\/install\?%7B/);
+});
+
+test('the guide reads on a phone, nothing wider than the screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/ai.html');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
 test('the hero is the real demo, framed without its caption', async ({ page }) => {
   await page.goto('/site.html');
   // Where the picture of the app used to be, under the heading and the buttons.
@@ -114,7 +150,7 @@ test('every page finds everything it asks for', async ({ page }) => {
   // The editor is loaded at the root and again from demo/, so a path that is
   // right from one is not automatically right from the other. This is the check
   // that caught the icon missing from the site and broken in the demo's frame.
-  for (const at of ['/', '/demo.html', '/site.html']) {
+  for (const at of ['/', '/demo.html', '/site.html', '/ai.html']) {
     const missing: string[] = [];
     page.on('response', response => {
       // Only what was fetched over the wire: a data: or blob: URL has no status

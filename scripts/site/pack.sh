@@ -1,13 +1,14 @@
 #!/bin/sh
 # Assembles the site into dist-site/, ready to upload to any static host: the
-# page as index.html, the demo it frames, their assets, and the disk image the
-# download button points at if one has been built.
+# page as index.html, the guide to AI tools, the demo it frames, their assets,
+# and the disk image the download button points at if one has been built.
 set -eu
 cd "$(dirname "$0")/../.."
 pnpm build
 rm -rf dist-site
 mkdir dist-site
 cp dist/site.html dist-site/index.html
+cp dist/ai.html dist-site/ai.html      # the guide to AI tools, at /ai
 cp dist/demo.html dist-site/
 cp -R dist/assets dist/demo dist/site dist-site/
 cp scripts/site/_headers dist-site/_headers      # read by Cloudflare's static asset host
