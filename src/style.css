@@ -840,6 +840,11 @@ h1 { margin: 18px 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -.35
 .agent:disabled { opacity: .5; }
 .agent-pick .chevron { position: absolute; right: 10px; top: 50%; width: 14px; height: 14px; margin-top: -7px; color: var(--muted); pointer-events: none; }
 .add-agent { flex: none; }
+/* The guide is a page on the web, so it reads as a link rather than a button. */
+.guide {
+  padding: 0; border: 0; background: none; color: var(--blue); font: inherit; font-size: 12px; cursor: pointer;
+}
+.guide:hover { text-decoration: underline; }
 .pref-preview, .pref-version { margin: 8px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
 .pref-version { margin-top: 4px; opacity: .8; font-variant-numeric: tabular-nums; }
 

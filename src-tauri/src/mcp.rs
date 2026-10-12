@@ -300,6 +300,9 @@ pub struct Agent {
     pub group: &'static str,
     #[serde(flatten)]
     pub how: How,
+    /// A word on which of the tool's agents it is for, where that is easily mistaken.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<&'static str>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -312,6 +315,9 @@ pub enum How {
     /// Text for the tool's settings, where it goes -- a file, or a place in
     /// the tool -- and whether the tool must be opened again to read it.
     Config { place: String, text: String, restart: bool },
+    /// A form in the tool's own settings: Mark's location to paste into it,
+    /// and the steps, in the tool's own words.
+    Form { text: String, steps: String },
 }
 
 /// The schemes Mark opens a link in. Only links Mark made itself are ever
@@ -319,10 +325,12 @@ pub enum How {
 const LINK_SCHEMES: [&str; 2] = ["cursor", "vscode"];
 
 /// Every tool Mark can be added to, for the Mark at this path -- the running
-/// one, so what is copied starts this very copy. Each the way its own makers
-/// document: a link where it takes one, a command where it has one, and
-/// otherwise the lines for its settings. A tool that runs in the cloud, as
-/// Grok Bot does, can't start a program on this Mac, so it isn't here.
+/// one, so what is copied starts this very copy. The most used of each kind,
+/// each one that is known to hand the picture on to its model, and each the
+/// way its own makers document: a link where it takes one, a command where it
+/// has one, and otherwise its own settings. Any other tool that runs MCP
+/// servers on the Mac can still be pointed at Mark by hand, as the guide says;
+/// one that runs in the cloud, as Grok Bot does, can't start a program here.
 pub fn agents(binary: &Path) -> Result<Vec<Agent>, String> {
     let path = binary.to_str().ok_or("Mark's location can't be written down as text.")?;
     if path.contains("/AppTranslocation/") {
@@ -330,50 +338,56 @@ pub fn agents(binary: &Path) -> Result<Vec<Agent>, String> {
     }
     if app_of(binary).is_none() { return Err("This Mark isn't running from its app, so there's nothing for an AI tool to start.".into()); }
     let shell = shell_quoted(path);
-    // A JSON string is a TOML basic string and a YAML double-quoted one too.
-    let quoted = Value::from(path).to_string();
     let server = json!({ "command": path, "args": ["--mcp"] });
-    let pretty = |value: Value| serde_json::to_string_pretty(&value).unwrap_or_default();
-    let servers = || pretty(json!({ "mcpServers": { "mark": server } }));
-    let typed = |key: &str| pretty(json!({ key: { "mark": { "type": "stdio", "command": path, "args": ["--mcp"] } } }));
-    let command = |name, line: String| Agent { name, group: "Command line", how: How::Command { text: line } };
-    let config = |name, group, place: &str, text: String, restart| Agent { name, group, how: How::Config { place: place.into(), text, restart } };
-    let link = |name, url: String| Agent { name, group: "Editors", how: How::Link { url } };
+    // Laid out by hand, as a person would write it: the argument on its line.
+    let quoted = Value::from(path).to_string();
+    let servers = format!("{{\n  \"mcpServers\": {{\n    \"mark\": {{\n      \"command\": {quoted},\n      \"args\": [\"--mcp\"]\n    }}\n  }}\n}}");
+    let command = |name, line: String| Agent { name, group: "Command line", how: How::Command { text: line }, hint: None };
+    // An editor's link adds Mark to the editor's own agent. Claude Code inside
+    // the editor keeps its own tools, as it does in Terminal -- the one most
+    // easily taken for the other.
+    let link = |name, url: String, hint| Agent { name, group: "Editors", how: How::Link { url }, hint: Some(hint) };
+    const IN_VS_CODE: &str = "For Copilot Chat. Using Claude Code in VS Code? Pick Claude Code: it has its own tools.";
     // VS Code reads its link's text twice over, so a % in the path would be
     // read as the start of another; such a Mark gives the command instead.
     let vs_code = json!({ "name": "mark", "type": "stdio", "command": path, "args": ["--mcp"] }).to_string();
     let vs_code = if path.contains('%') {
-        Agent { name: "VS Code", group: "Editors", how: How::Command { text: format!("code --add-mcp {}", shell_quoted(&vs_code)) } }
-    } else { link("VS Code", format!("vscode:mcp/install?{}", link_part(&vs_code))) };
+        Agent { name: "VS Code", group: "Editors", how: How::Command { text: format!("code --add-mcp {}", shell_quoted(&vs_code)) }, hint: Some(IN_VS_CODE) }
+    } else { link("VS Code", format!("vscode:mcp/install?{}", link_part(&vs_code)), IN_VS_CODE) };
     Ok(vec![
-        command("Claude Code", format!("claude mcp add --scope user mark -- {shell} --mcp")),
+        Agent { hint: Some("In Terminal, and in VS Code and Cursor too: Claude Code keeps one set of tools for all three."),
+                ..command("Claude Code", format!("claude mcp add --scope user mark -- {shell} --mcp")) },
         command("Codex", format!("codex mcp add mark -- {shell} --mcp")),
-        command("Grok Build", format!("grok mcp add mark -- {shell} --mcp")),
         // Copilot's own limit is a matter of seconds; an hour is time to show it.
         command("GitHub Copilot CLI", format!("copilot mcp add --timeout 3600000 mark -- {shell} --mcp")),
-        command("Gemini CLI", format!("gemini mcp add --scope user mark {shell} -- --mcp")),
-        command("OpenCode", format!("opencode mcp add mark -- {shell} --mcp")),
-        command("Amp", format!("amp mcp add mark -- {shell} --mcp")),
-        // Droid takes its command as one string it splits itself, so its file is surer.
-        config("Factory Droid", "Command line", "~/.factory/mcp.json", typed("mcpServers"), false),
-        command("Qwen Code", format!("qwen mcp add mark {shell} -- --mcp")),
-        config("Crush", "Command line", "~/.config/crush/crush.json", typed("mcp"), true),
-        config("Claude Desktop", "Apps", "~/Library/Application Support/Claude/claude_desktop_config.json", servers(), true),
-        // The Codex app is the ChatGPT app's now: its Codex chats use local tools, from Codex's own settings.
-        config("ChatGPT (Codex)", "Apps", "~/.codex/config.toml", format!("[mcp_servers.mark]\ncommand = {quoted}\nargs = [\"--mcp\"]"), true),
-        config("Goose", "Apps", "the extensions in ~/.config/goose/config.yaml",
-               format!("  mark:\n    enabled: true\n    type: stdio\n    name: mark\n    cmd: {quoted}\n    args: [\"--mcp\"]\n    timeout: 300"), true),
-        config("Warp", "Apps", "~/.warp/.mcp.json", servers(), false),
-        link("Cursor", format!("cursor://anysphere.cursor-deeplink/mcp/install?name=mark&config={}",
-                               link_part(&STANDARD.encode(server.to_string())))),
+        command("Grok Build", format!("grok mcp add mark -- {shell} --mcp")),
+        Agent { name: "Claude Desktop", group: "Apps", how: How::Config {
+            place: "~/Library/Application Support/Claude/claude_desktop_config.json".into(), text: servers, restart: true }, hint: None },
+        // The Codex app is the ChatGPT app's now, and its Codex chats use local
+        // tools. The labels are ChatGPT's own.
+        Agent { name: "ChatGPT (Codex)", group: "Apps", how: How::Form { text: path.into(), steps:
+            "In ChatGPT, open Settings › MCP servers › Add server. Name it mark, choose STDIO, paste into Command to launch, \
+             add the argument --mcp, then Save and Restart.".into() }, hint: None },
+        link("Cursor", format!("cursor://anysphere.cursor-deeplink/mcp/install?name=mark&config={}", link_part(&STANDARD.encode(server.to_string()))),
+             "For Cursor’s own Agent. Using Claude Code in Cursor? Pick Claude Code: it has its own tools."),
         vs_code,
-        config("JetBrains AI", "Editors", "Settings › Tools › AI Assistant › Model Context Protocol (MCP)", servers(), false),
-        config("Devin (Windsurf)", "Editors", "~/.config/devin/mcp_config.json", servers(), true),
-        // Zed waits a minute unless told otherwise, and ten at most.
-        config("Zed", "Editors", "~/.config/zed/settings.json, inside its outer braces",
-               within(&json!({ "context_servers": { "mark": { "command": path, "args": ["--mcp"], "env": {}, "timeout": 600 } } })), false),
-        config("Antigravity", "Editors", "~/.gemini/config/mcp_config.json", servers(), true),
     ])
+}
+
+/// The guide to setting each tool up and asking, on Mark's site.
+pub const GUIDE: &str = "https://mark.tommymassaro.com/ai";
+
+/// Where the guide tells of the tool with this name: its heading's id, made
+/// of nothing but lowercase letters, digits and dashes, so any name makes a
+/// safe link -- one the page has no heading for just opens at its top.
+pub fn guide_for(name: Option<&str>) -> String {
+    let mut anchor = String::new();
+    for c in name.unwrap_or_default().chars() {
+        if c.is_ascii_alphanumeric() { anchor.push(c.to_ascii_lowercase()); }
+        else if !anchor.is_empty() && !anchor.ends_with('-') { anchor.push('-'); }
+    }
+    let anchor = anchor.trim_end_matches('-');
+    if anchor.is_empty() { GUIDE.into() } else { format!("{GUIDE}#{anchor}") }
 }
 
 /// Single quotes keep any character in a path as itself, but a single quote.
@@ -389,14 +403,6 @@ fn link_part(text: &str) -> String {
         b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')' => char::from(byte).to_string(),
         _ => format!("%{byte:02X}"),
     }).collect()
-}
-
-/// An object's members, without its braces, to go inside a settings file that
-/// has other things in it already.
-fn within(value: &Value) -> String {
-    let text = serde_json::to_string_pretty(value).unwrap_or_default();
-    let lines: Vec<&str> = text.lines().collect();
-    lines[1..lines.len().saturating_sub(1)].iter().map(|line| line.strip_prefix("  ").unwrap_or(line)).collect::<Vec<_>>().join("\n")
 }
 
 /// The link for the tool with this name, if Mark has one, in a scheme Mark opens.
@@ -855,39 +861,56 @@ mod tests {
     fn each_tool_is_pointed_at_this_app_its_own_way() {
         let app = Path::new("/Applications/Mark.app/Contents/MacOS/mark");
         let all = agents(app).unwrap();
+        // The most used of each kind, and only those, in this order.
+        assert_eq!(all.iter().map(|agent| (agent.group, agent.name)).collect::<Vec<_>>(), [
+            ("Command line", "Claude Code"), ("Command line", "Codex"), ("Command line", "GitHub Copilot CLI"),
+            ("Command line", "Grok Build"), ("Apps", "Claude Desktop"), ("Apps", "ChatGPT (Codex)"),
+            ("Editors", "Cursor"), ("Editors", "VS Code"),
+        ]);
         let command = |name| match agent(&all, name) { How::Command { text } => text.clone(), other => panic!("{name}: {other:?}") };
-        let config = |name| match agent(&all, name) { How::Config { place, text, restart } => (place.clone(), text.clone(), *restart), other => panic!("{name}: {other:?}") };
         let path = "'/Applications/Mark.app/Contents/MacOS/mark'";
         assert_eq!(command("Claude Code"), format!("claude mcp add --scope user mark -- {path} --mcp"));
         assert_eq!(command("Codex"), format!("codex mcp add mark -- {path} --mcp"));
-        assert_eq!(command("Grok Build"), format!("grok mcp add mark -- {path} --mcp"));
         assert_eq!(command("GitHub Copilot CLI"), format!("copilot mcp add --timeout 3600000 mark -- {path} --mcp"));
-        assert_eq!(command("Gemini CLI"), format!("gemini mcp add --scope user mark {path} -- --mcp"));
-        assert_eq!(command("Qwen Code"), format!("qwen mcp add mark {path} -- --mcp"));
-        let server = json!({ "command": "/Applications/Mark.app/Contents/MacOS/mark", "args": ["--mcp"] });
-        let stdio = json!({ "type": "stdio", "command": "/Applications/Mark.app/Contents/MacOS/mark", "args": ["--mcp"] });
-        for name in ["Claude Desktop", "Warp", "JetBrains AI", "Devin (Windsurf)", "Antigravity"] {
-            assert_eq!(serde_json::from_str::<Value>(&config(name).1).unwrap(), json!({ "mcpServers": { "mark": server } }), "{name}");
+        assert_eq!(command("Grok Build"), format!("grok mcp add mark -- {path} --mcp"));
+        let How::Config { place, text, restart } = agent(&all, "Claude Desktop") else { panic!("a config") };
+        assert_eq!((place.as_str(), *restart), ("~/Library/Application Support/Claude/claude_desktop_config.json", true));
+        assert_eq!(serde_json::from_str::<Value>(text).unwrap(),
+                   json!({ "mcpServers": { "mark": { "command": "/Applications/Mark.app/Contents/MacOS/mark", "args": ["--mcp"] } } }));
+        // ChatGPT's form takes the path as it is: it is a program, not a line for a shell.
+        let How::Form { text, steps } = agent(&all, "ChatGPT (Codex)") else { panic!("a form") };
+        assert_eq!(text, "/Applications/Mark.app/Contents/MacOS/mark");
+        assert!(steps.contains("Settings › MCP servers › Add server") && steps.contains("STDIO") && steps.contains("--mcp"));
+        // An editor's link is for the editor's own agent, which is said; Claude Code says it covers the editors.
+        for name in ["Cursor", "VS Code"] {
+            assert!(all.iter().find(|agent| agent.name == name).unwrap().hint.unwrap().contains("Pick Claude Code"), "{name}");
         }
-        assert_eq!(serde_json::from_str::<Value>(&config("Factory Droid").1).unwrap(), json!({ "mcpServers": { "mark": stdio } }));
-        assert_eq!(serde_json::from_str::<Value>(&config("Crush").1).unwrap(), json!({ "mcp": { "mark": stdio } }));
-        assert_eq!(config("Claude Desktop").2, true);
-        assert_eq!(config("ChatGPT (Codex)"), ("~/.codex/config.toml".into(),
-            "[mcp_servers.mark]\ncommand = \"/Applications/Mark.app/Contents/MacOS/mark\"\nargs = [\"--mcp\"]".into(), true));
-        // Goose's lines go under the extensions it has, so they come indented.
-        let (_, goose, _) = config("Goose");
-        assert!(goose.starts_with("  mark:\n    enabled: true\n"));
-        assert!(goose.contains("    cmd: \"/Applications/Mark.app/Contents/MacOS/mark\"\n    args: [\"--mcp\"]"));
-        // Zed's go inside a settings file that has other settings, so they come
-        // without braces of their own; read inside some, they are the server.
-        let (_, zed, restart) = config("Zed");
-        assert!(zed.starts_with("\"context_servers\": {") && !restart);
-        assert_eq!(serde_json::from_str::<Value>(&format!("{{{zed}}}")).unwrap()["context_servers"]["mark"]["timeout"], 600);
-        // Every name is listed once, under a group the page knows.
-        let mut names: Vec<_> = all.iter().map(|agent| agent.name).collect();
-        names.sort(); names.dedup();
-        assert_eq!(names.len(), all.len());
-        assert!(all.iter().all(|agent| ["Command line", "Apps", "Editors"].contains(&agent.group)));
+        assert!(all[0].hint.unwrap().contains("VS Code and Cursor"));
+        assert!(all.iter().filter(|agent| agent.group != "Editors" && agent.name != "Claude Code").all(|agent| agent.hint.is_none()));
+    }
+
+    #[test]
+    fn the_guide_shows_each_tool_as_settings_gives_it() {
+        // Read the way a browser reads it: the page's own escapes undone.
+        let page = include_str!("../../ai.html").replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", "\"");
+        let app = Path::new("/Applications/Mark.app/Contents/MacOS/mark");
+        for agent in agents(app).unwrap() {
+            let link = guide_for(Some(agent.name));
+            let anchor = link.split_once('#').map(|(_, anchor)| anchor).unwrap();
+            assert!(page.contains(&format!("id=\"{anchor}\"")), "the guide has no section for {}", agent.name);
+            match agent.how {
+                How::Command { text } => assert!(page.contains(&text), "the guide's line for {}", agent.name),
+                How::Link { url } => assert!(page.contains(&format!("href=\"{url}\"")), "the guide's link for {}", agent.name),
+                How::Config { text, .. } => assert!(page.contains(&text), "the guide's lines for {}", agent.name),
+                How::Form { text, .. } => assert!(page.contains(&text), "the guide's path for {}", agent.name),
+            }
+        }
+        assert_eq!(guide_for(Some("ChatGPT (Codex)")), "https://mark.tommymassaro.com/ai#chatgpt-codex");
+        assert_eq!(guide_for(Some("GitHub Copilot CLI")), "https://mark.tommymassaro.com/ai#github-copilot-cli");
+        // Whatever the name, the link stays a link to the guide.
+        assert_eq!(guide_for(Some("\"><script>")), "https://mark.tommymassaro.com/ai#script");
+        assert_eq!(guide_for(None), GUIDE);
+        assert_eq!(guide_for(Some(" ")), GUIDE);
     }
 
     /// What a link carries, read back the way the tool reads it.

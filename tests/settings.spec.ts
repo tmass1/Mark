@@ -167,10 +167,14 @@ test('a refused thumbnail choice says why and puts the box back', async ({ page 
 
 test('AI tools: the switch is sent, and the tool picked is added its own way', async ({ page }) => {
   const agents = [
-    { name: 'Claude Code', group: 'Command line', kind: 'command', text: "claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp" },
+    { name: 'Claude Code', group: 'Command line', kind: 'command', text: "claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp",
+      hint: 'In Terminal, and in VS Code and Cursor too.' },
     { name: 'Claude Desktop', group: 'Apps', kind: 'config', place: '~/Library/Application Support/Claude/claude_desktop_config.json',
       text: '{\n  "mcpServers": {}\n}', restart: true },
-    { name: 'Cursor', group: 'Editors', kind: 'link', url: 'cursor://anysphere.cursor-deeplink/mcp/install?name=mark&config=e30' },
+    { name: 'ChatGPT (Codex)', group: 'Apps', kind: 'form', text: '/Applications/Mark.app/Contents/MacOS/mark',
+      steps: 'In ChatGPT, open Settings › MCP servers › Add server, with the argument --mcp.' },
+    { name: 'Cursor', group: 'Editors', kind: 'link', url: 'cursor://anysphere.cursor-deeplink/mcp/install?name=mark&config=e30',
+      hint: 'For Cursor’s own Agent. Using Claude Code in Cursor? Pick Claude Code.' },
   ];
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false, set_mcp: { ...SAVED, mcp: false }, mcp_setup: agents } });
   await page.goto('/settings.html');
@@ -192,8 +196,12 @@ test('AI tools: the switch is sent, and the tool picked is added its own way', a
   expect((await waitFor(page, 'copy_text')).args).toEqual({ text: agents[0].text });
   await expect(page.getByText('Copied. Paste it into Terminal and press Return.')).toBeVisible();
 
+  await expect(page.locator('.agent-hint')).toHaveText('In Terminal, and in VS Code and Cursor too.');
+
   // A tool with a link of its own is opened, by name: Rust makes the link.
+  // Which of the editor's agents that is for is said before it is opened.
   await pick.selectOption('Cursor');
+  await expect(page.locator('.agent-hint')).toHaveText('For Cursor’s own Agent. Using Claude Code in Cursor? Pick Claude Code.');
   await expect(add).toHaveText('Add to Cursor');
   await clear(page);
   await add.click();
@@ -203,10 +211,24 @@ test('AI tools: the switch is sent, and the tool picked is added its own way', a
   // A settings file: its lines are copied, and the note says where they go.
   await pick.selectOption('Claude Desktop');
   await expect(add).toHaveText('Copy Config');
+  await expect(page.locator('.agent-hint')).toBeHidden();
   await clear(page);
   await add.click();
   expect((await waitFor(page, 'copy_text')).args).toEqual({ text: agents[1].text });
   await expect(page.getByText('Copied. Add it to ~/Library/Application Support/Claude/claude_desktop_config.json, then quit and reopen Claude Desktop.')).toBeVisible();
+
+  // A form in the tool's own settings: Mark's path is copied, and the steps said.
+  await pick.selectOption('ChatGPT (Codex)');
+  await expect(add).toHaveText('Copy Path');
+  await clear(page);
+  await add.click();
+  expect((await waitFor(page, 'copy_text')).args).toEqual({ text: '/Applications/Mark.app/Contents/MacOS/mark' });
+  await expect(page.locator('.mcp-note')).toHaveText('Copied Mark’s path. In ChatGPT, open Settings › MCP servers › Add server, with the argument -\u2060-\u2060mcp.');
+
+  // The guide opens at the tool picked.
+  await clear(page);
+  await page.getByRole('button', { name: 'How to set it up and use it' }).click();
+  expect((await waitFor(page, 'open_guide')).args).toEqual({ name: 'ChatGPT (Codex)' });
 });
 
 test('a Mark running from a temporary copy says to move it first, and offers nothing to add', async ({ page }) => {

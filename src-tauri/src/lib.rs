@@ -610,6 +610,13 @@ fn add_to_agent(name: String) -> Result<(), String> {
     if opened.success() { Ok(()) } else { Err(format!("{name} isn't installed, or couldn't be opened.")) }
 }
 
+/// Open the guide to setting up and using AI tools, at the tool with this name.
+#[tauri::command]
+fn open_guide(name: Option<String>) -> Result<(), String> {
+    let opened = std::process::Command::new("/usr/bin/open").arg(mcp::guide_for(name.as_deref())).status().map_err(|e| e.to_string())?;
+    if opened.success() { Ok(()) } else { Err("The guide couldn't be opened.".into()) }
+}
+
 /// A build for testing the bridge end to end, with no screen access and no
 /// one at the keyboard: it answers each ask itself a moment after showing it.
 /// A prompt with "decline" in it is declined, and one with "wait" is left
@@ -1006,7 +1013,7 @@ pub fn run() {
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, capture_window, cancel_selection,
             copy_capture, copy_edited, copy_text, recognize_text, scan_image, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
-            send_capture, decline_request, mcp_setup, add_to_agent,
+            send_capture, decline_request, mcp_setup, add_to_agent, open_guide,
             thumbnail::thumbnail_image, thumbnail::open_thumbnail, thumbnail::close_thumbnail, thumbnail::drag_thumbnail,
             get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, login_enabled, set_login, open_settings, quit_app,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,

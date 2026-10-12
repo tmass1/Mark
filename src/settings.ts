@@ -20,8 +20,10 @@ interface Settings {
  *  Mark that is running, so what is copied starts this very copy. */
 interface Agent {
   name: string; group: string;
-  kind: 'command' | 'link' | 'config';
-  text?: string; url?: string; place?: string; restart?: boolean;
+  kind: 'command' | 'link' | 'config' | 'form';
+  text?: string; url?: string; place?: string; restart?: boolean; steps?: string;
+  /** Which of the tool's agents it is for, where that is easily mistaken. */
+  hint?: string;
 }
 
 /** The four ways into a capture, each with a shortcut of its own. Capture
@@ -66,14 +68,16 @@ root.innerHTML = `
     <h2 class="pref-label">AI tools</h2>
     <div class="pref-control">
       <label class="check"><input class="mcp" type="checkbox" checked aria-describedby="mcp-hint" /> Let AI tools ask for screenshots</label>
-      <p class="pref-hint" id="mcp-hint">Claude, Codex, Cursor, Grok Build and other AI tools can ask; nothing is sent until you press Send.</p>
+      <p class="pref-hint" id="mcp-hint">Claude, ChatGPT, Cursor, Copilot and other AI tools can ask; nothing is sent until you press Send.</p>
       <span class="add-label" id="agent-label">Add Mark to</span>
       <div class="add-to">
         <span class="agent-pick"><select class="agent" aria-labelledby="agent-label" disabled></select>
           <svg class="chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 8.4 10 11.8l3.4-3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         <button class="add-agent glassy" type="button" disabled>Copy Command</button>
       </div>
+      <p class="pref-hint agent-hint" hidden></p>
       <p class="pref-note mcp-note" role="status" hidden></p>
+      <button class="guide" type="button">How to set it up and use it</button>
     </div>
   </section>
   <section class="pref">
@@ -232,11 +236,17 @@ const addAgent = root.querySelector<HTMLButtonElement>('.add-agent')!;
 let agents: Agent[] = [];
 const chosenAgent = () => agents.find(agent => agent.name === agentPick.value);
 
-/** The button says what it will do for the tool chosen. */
+const agentHint = root.querySelector<HTMLElement>('.agent-hint')!;
+
+/** The button says what it will do for the tool chosen, and a line under it
+ *  which of the tool's agents that is for, where it could be mistaken. */
 function labelAdd() {
   const agent = chosenAgent();
+  agentHint.textContent = agent?.hint ?? '';
+  agentHint.hidden = !agent?.hint;
   addAgent.disabled = !agent;
-  addAgent.textContent = agent?.kind === 'link' ? `Add to ${agent.name}` : agent?.kind === 'config' ? 'Copy Config' : 'Copy Command';
+  addAgent.textContent = agent?.kind === 'link' ? `Add to ${agent.name}` : agent?.kind === 'config' ? 'Copy Config'
+    : agent?.kind === 'form' ? 'Copy Path' : 'Copy Command';
 }
 
 async function loadAgents() {
@@ -265,11 +275,20 @@ addAgent.addEventListener('click', async () => {
     } else if (agent.kind === 'command') {
       await command('copy_text', { text: agent.text });
       note(mcpNote, 'Copied. Paste it into Terminal and press Return.', true);
+    } else if (agent.kind === 'form') {
+      await command('copy_text', { text: agent.text });
+      // --mcp kept whole: broken after its first hyphen, it reads as two words.
+      note(mcpNote, `Copied Mark’s path. ${agent.steps?.replaceAll('--mcp', '-\u2060-\u2060mcp')}`, true);
     } else {
       await command('copy_text', { text: agent.text });
       note(mcpNote, `Copied. Add it to ${agent.place}${agent.restart ? `, then quit and reopen ${agent.name}` : ''}.`, true);
     }
   } catch (error) { note(mcpNote, String(error)); }
+});
+
+// The guide, at the tool picked: each one's setup step by step, and how to ask.
+root.querySelector<HTMLButtonElement>('.guide')!.addEventListener('click', () => {
+  void command('open_guide', { name: chosenAgent()?.name ?? null }).catch(error => note(mcpNote, String(error)));
 });
 
 autoUpdate.addEventListener('change', () => {

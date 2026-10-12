@@ -425,7 +425,7 @@ new capture hides the old editor; cancel restores it and success replaces it.
 
 ## AI tools
 
-Claude Code, Codex, Cursor, Grok Build and the other AI tools that run MCP
+Claude Code, ChatGPT, Cursor, Copilot and the other AI tools that run MCP
 servers on your Mac can ask you for a screenshot.
 Mark comes forward with the ask in a bar across the top of the editor —
 **Claude Code** asks to see “the error dialog in Xcode” — and nothing more
@@ -441,41 +441,39 @@ stays behind, being for people. **Don’t Send**, Escape, ⌘W or closing the
 editor tells the tool no, and that it should not ask again unless you say so.
 
 To set it up, open **Settings › AI tools**, pick the tool under **Add Mark
-to**, and press the button beside it. Each is added the way its makers
-document:
+to**, and press the button beside it. Eight are listed, the most used of each
+kind, each known to hand the picture on to its model, and each added the way
+its makers document:
 
-- **Command line** — Claude Code, Codex, Grok Build, GitHub Copilot CLI,
-  Gemini CLI, OpenCode, Amp and Qwen Code get a command to paste into
-  Terminal. For Claude Code it is:
+- **Command line** — Claude Code, Codex, GitHub Copilot CLI and Grok Build
+  get a command to paste into Terminal. For Claude Code it is:
 
   ```bash
   claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp
   ```
 
-  Factory Droid and Crush get the lines for their settings files.
-- **Apps** — Claude Desktop, ChatGPT (in its Codex chats, which share Codex's
-  settings), Goose and Warp get the lines for their settings files, and Mark
-  says which file and whether to quit and reopen the app.
+- **Apps** — Claude Desktop gets the lines for its settings file. ChatGPT,
+  whose Codex chats use tools on the Mac, gets Mark's path to paste into its
+  own Settings › MCP servers, with the steps.
 - **Editors** — Cursor and VS Code open at a link and ask whether to add Mark.
-  JetBrains AI Assistant, Devin Desktop (formerly Windsurf), Zed and
-  Antigravity get the lines for their settings.
+
+**How to set it up and use it**, under the picker, opens the guide at
+[mark.tommymassaro.com/ai](https://mark.tommymassaro.com/ai): each tool's
+setup step by step, how to ask, and what to do when something is off. The page
+is `ai.html`, and a test holds it to the very lines Settings copies. Any other
+tool that runs MCP servers on the Mac can be given Mark's binary with `--mcp`
+by hand; one that runs in the cloud, as Grok Bot does, can't start it.
 
 All of them point at the Mark that is running, so move Mark to Applications
 first. **Let AI tools ask for screenshots** turns asking off without removing
 anything; a tool that asks then hears that it is off.
 
-Grok Bot isn't in the list: it works on a computer in the cloud, which can't
-start a program on your Mac. xAI's tool that can is Grok Build, the `grok`
-command line, which also picks up Mark from Claude Code's settings.
-
-How long a tool waits is its own. Claude Code waits as long as you need, and
-so do Cursor, VS Code, OpenCode and Crush: Mark tells each every five seconds
-that it is still waiting. Others give a call a fixed time that being told does
-not extend — Claude Desktop and most apps built on the MCP SDK a minute, Codex
-and Goose five minutes, Gemini CLI ten, Warp half an hour, and Copilot and Zed
-as long as the lines Mark gives them ask. For those the bar counts the time
-down once ten minutes or less are left. A tool that turns out to wait longer
-just loses the count; one that gives up takes its bar with it.
+How long a tool waits is its own. Claude Code, Cursor and VS Code wait as long
+as you need, told every five seconds that Mark is still waiting. Others give a
+call a fixed time — Claude Desktop a minute, Codex five minutes, Copilot the
+hour its command asks for — and for those the bar counts the time down once
+ten minutes or less are left. A tool that turns out to wait longer just loses
+the count; one that gives up takes its bar with it.
 
 The tool starts Mark's own binary with `--mcp` as its MCP server. That process,
 the bridge, takes nothing itself: it relays the ask over a Unix socket in
@@ -668,9 +666,9 @@ settings are the real pages, each in a frame, against a page that plays lib.rs
 and a picture of a desktop. `site.html` is the landing page, which opens on
 the demo itself, framed where a picture of the app would be, and takes its
 version, shortcut and mark from the app itself. A phone gets the picture
-instead, and never loads the demo. Both are
-pages of the same Vite build, so `pnpm dev` serves them at
-`http://127.0.0.1:1420/demo.html` and `/site.html`. A copy in the demo shows
+instead, and never loads the demo. `ai.html` is the guide to AI tools, served
+at `/ai`. All three are pages of the same Vite build, so `pnpm dev` serves them
+at `http://127.0.0.1:1420/demo.html`, `/site.html` and `/ai.html`. A copy in the demo shows
 the very image that went to the clipboard, in a card at the bottom right, with
 a Save button for a browser that refuses the clipboard; below 640 pixels wide
 the demo shows a picture of the editor instead, since a phone cannot drive it.
@@ -689,7 +687,7 @@ To assemble a folder for a static host:
 pnpm site                  # builds, then fills dist-site/
 ```
 
-`dist-site/index.html` is the landing page, with the demo, their assets, and
+`dist-site/index.html` is the landing page, with the guide, the demo, their assets, and
 `Mark_<version>_universal.dmg` beside it if the disk image has been built; the
 download button points at that file name.
 

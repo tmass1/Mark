@@ -442,6 +442,8 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         state.settings = { ...state.settings, afterCapture: 'editor' }; return state.settings;
       case 'set_mcp': state.settings = { ...state.settings, mcp: Boolean(args.enabled) }; return state.settings;
       case 'mcp_setup': throw 'AI tools reach Mark on your Mac, so the lines to set them up are in the Mac app\'s settings.';
+      // The guide is beside the demo on the site, and opens there.
+      case 'open_guide': window.open(new URL('ai.html', location.href), '_blank', 'noopener'); return;
       case 'send_capture': {
         if (state.request?.id !== Number(args.id)) throw 'That request has ended, so nothing was sent.';
         state.request = null;
