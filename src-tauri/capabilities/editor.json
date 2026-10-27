@@ -4,7 +4,7 @@
   "description": "Only Mark's local editor can capture, annotate, frame, read text from, copy, save and share, and send a screenshot to an AI tool that asked for one.",
   "windows": ["editor"], "platforms": ["macOS"],
   "permissions": [
-    "allow-current-capture", "allow-capture-region", "allow-capture-display",
+    "allow-current-capture", "allow-capture-region", "allow-capture-display", "allow-take-copied",
     "allow-copy-capture", "allow-copy-edited", "allow-copy-text", "allow-recognize-text", "allow-scan-image", "allow-save-image", "allow-share-image",
     "allow-dismiss-editor", "allow-open-screen-settings", "allow-quit-app", "allow-send-capture", "allow-decline-request",
     "allow-glass-available", "allow-set-glass",

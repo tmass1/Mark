@@ -233,6 +233,22 @@ test('a phone gets a picture of the editor and none of the frames', async ({ pag
   await expect(page.locator('.stage')).toHaveCount(1);
 });
 
+// Copy in the overlay, as in the app: the clipboard and Recent, and the editor
+// back as it was -- on its empty state, since it was open on that before.
+test('Copy in the overlay puts the region on the clipboard and in Recent, without opening it', async ({ page }) => {
+  const editor = await open(page);
+  await startSelection(page);
+  const stage = (await page.locator('.stage').boundingBox())!;
+  await page.mouse.move(stage.x + 300, stage.y + 200); await page.mouse.down();
+  await page.mouse.move(stage.x + 600, stage.y + 350, { steps: 8 }); await page.mouse.up();
+  await page.frameLocator('.overlay').getByRole('button', { name: 'Copy', exact: true }).click();
+  await expect(page.locator('.clip strong')).toHaveText('On your clipboard');
+  expect(await page.evaluate(() => (window as any).__copied.length)).toBe(1);
+  await expect(editor.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
+  await expect(editor.locator('.recent')).toHaveCount(1);
+  await expect(editor.locator('.recent')).toContainText('Just now');
+});
+
 // The site's "Let Claude ask": the demo plays the AI tool, and the visitor
 // answers it with the real editor, request bar, Send and all.
 test('Claude asks, the visitor captures and points, and the card shows what Claude received', async ({ page }) => {

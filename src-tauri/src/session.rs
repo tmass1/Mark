@@ -29,7 +29,14 @@ pub struct Session {
     /// The file the last drag of a thumbnail made. The app it was dropped on
     /// reads it after the drop, so it stays until the next drag replaces it.
     pub drag_dir: Option<tempfile::TempDir>,
+    /// Captures copied straight from the overlay, waiting for the editor to
+    /// take them into Recent: it never showed them, so it has to ask.
+    pub copied: Vec<Capture>,
 }
+
+/// As many copied captures as Recent keeps: an editor that hasn't asked for
+/// them yet would only keep that many anyway.
+const COPIES_KEPT: usize = 6;
 
 /// A capture floating in the corner. Numbered, so a click or a drag meant for
 /// one that has since gone acts on nothing.
@@ -68,6 +75,12 @@ pub struct Asked { pub id: u64, pub client: String, pub prompt: String, pub mode
 pub struct Snapshot { pub capture: Option<Preview>, pub error: Option<String>, pub busy: bool, pub request: Option<Asked> }
 
 impl Session {
+    /// Hold a capture copied straight from the overlay until the editor takes it.
+    pub fn keep_copied(&mut self, capture: Capture) {
+        self.copied.push(capture);
+        let over = self.copied.len().saturating_sub(COPIES_KEPT);
+        self.copied.drain(..over);
+    }
     pub fn begin_capture(&mut self) -> bool {
         if self.busy { return false; }
         self.busy = true; self.error = None;
@@ -137,6 +150,13 @@ pub type State = Mutex<Session>;
 mod tests {
     use super::*;
     use std::sync::mpsc::channel;
+
+    #[test]
+    fn copied_captures_wait_for_the_editor_no_more_than_recent_keeps() {
+        let mut session = Session::default();
+        for width in 1..=8 { session.keep_copied(Capture { png: vec![], width, height: 1, scale: 1.0 }); }
+        assert_eq!(session.copied.iter().map(|c| c.width).collect::<Vec<_>>(), [3, 4, 5, 6, 7, 8]);
+    }
 
     #[test]
     fn repeated_shortcuts_cannot_start_parallel_captures() {

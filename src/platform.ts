@@ -27,6 +27,14 @@ export async function watchCapture(update: () => void): Promise<() => void> {
   return listen('capture-changed', update);
 }
 
+/** A capture copied straight from the overlay, which the editor never showed:
+ *  it fetches them with take_copied, for Recent. */
+export async function watchCopied(update: () => void): Promise<() => void> {
+  if (!isTauri) return () => {};
+  const { listen } = await import('@tauri-apps/api/event');
+  return listen('capture-copied', update);
+}
+
 /** The app menu's Copy and Close. The menu only sees the keys the page leaves
  *  alone, and the page is what can flatten the drawing into the copy, so the
  *  menu asks it to rather than copying the bare capture itself. */

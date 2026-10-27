@@ -4,7 +4,7 @@ fn main() {
   println!("cargo:rustc-link-lib=framework=ServiceManagement");
   tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
     tauri_build::AppManifest::new().commands(&[
-      "current_capture", "capture_region", "capture_display", "capture_rect", "capture_window", "cancel_selection",
+      "current_capture", "capture_region", "capture_display", "capture_rect", "capture_window", "cancel_selection", "take_copied",
       "copy_capture", "copy_edited", "copy_text", "recognize_text", "scan_image", "save_image", "share_image", "quit_app",
       "dismiss_editor", "open_screen_settings", "send_capture", "decline_request", "mcp_setup", "add_to_agent", "open_guide",
       "thumbnail_image", "open_thumbnail", "close_thumbnail", "drag_thumbnail",

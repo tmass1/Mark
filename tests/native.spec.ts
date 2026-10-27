@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installBridge, sent, clear, waitFor } from './bridge';
+import { installBridge, sent, clear, waitFor, emit, setBridge } from './bridge';
 import { CAPTURE } from './fixture';
 
 /** The wiring between the editor and Rust. In the browser preview none of this
@@ -63,6 +63,22 @@ test('the empty state offers every way in, each sending the command it should', 
     await tiles.filter({ has: page.locator('.mode-name', { hasText: new RegExp(`^${name}$`) }) }).click();
     expect((await waitFor(page, cmd)).args, name).toEqual(args);
   }
+});
+
+// Copied straight from the overlay, a capture never reaches the editor: it
+// asks for it, and keeps it in Recent all the same.
+test('a capture copied from the overlay goes into Recent without opening the editor', async ({ page }) => {
+  await installBridge(page, { capture: null });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
+  await setBridge(page, { returns: { take_copied: [CAPTURE] } });
+  await emit(page, 'capture-copied');
+  await expect(page.locator('.recent')).toHaveCount(1);
+  await expect(page.locator('.recent')).toContainText('Just now');
+  await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
+  // Reopened, it is the capture, ready to mark up.
+  await page.locator('.recent').click();
+  await expect(page.locator('.dimensions')).toHaveText('240 × 160 px');
 });
 
 // With a recent capture under the tiles it is at its tallest; at the

@@ -1,5 +1,5 @@
 import './style.css';
-import { command, isTauri, watchCapture, watchMenuCopy, watchRequestWithdrawn, watchSettings, type Asked, type CapturePreview,
+import { command, isTauri, watchCapture, watchCopied, watchMenuCopy, watchRequestWithdrawn, watchSettings, type Asked, type CapturePreview,
          type SavedSettings, type Snapshot } from './platform';
 import { MAX_BASE64, describeMarks, resultText, sendSize } from './send';
 import { suggestedName } from './names';
@@ -1921,6 +1921,19 @@ function remember(leaving: CapturePreview) {
   keep({ capture: leaving, thumb: thumbnail(), at: shownAt, annotations: layer.annotations.map(item => ({ ...item })) });
 }
 
+/** Captures copied straight from the overlay, which the editor never showed,
+ *  go into Recent all the same. */
+async function takeCopied() {
+  const copied = await command<CapturePreview[]>('take_copied') ?? [];
+  for (const preview of copied) {
+    const source = new Image();
+    source.src = preview.dataUrl;
+    try { await source.decode(); } catch { continue; }
+    keep({ capture: preview, thumb: thumbnail(source, [], preview.scale ?? 1), at: Date.now(), annotations: [] });
+  }
+  if (copied.length) drawRecents();
+}
+
 /** Into Recent, newest first, keeping no more than it has room for. */
 function keep(entry: Omit<Past, 'id'>) {
   past.unshift({ id: pastId++, ...entry });
@@ -2219,6 +2232,8 @@ async function init() {
     // The tool that asked gave up before anything was sent. Rust has already
     // taken the ask away; this says why the bar went.
     cleanups.push(await watchRequestWithdrawn(client => flash(`${client} stopped waiting, so nothing was sent.`)));
+    cleanups.push(await watchCopied(() => { void takeCopied().catch(report); }));
+    void takeCopied().catch(() => {});
     // On macOS 26 the panes sit on the system's own glass, laid under the web
     // view by lib.rs, so the stylesheet draws them bare there.
     document.documentElement.classList.toggle('native-glass', await command<boolean>('glass_available').catch(() => false));

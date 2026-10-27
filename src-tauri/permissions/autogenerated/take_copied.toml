@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-take-copied"
+description = "Enables the take_copied command without any pre-configured scope."
+commands.allow = ["take_copied"]
+
+[[permission]]
+identifier = "deny-take-copied"
+description = "Denies the take_copied command without any pre-configured scope."
+commands.deny = ["take_copied"]

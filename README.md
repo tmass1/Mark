@@ -122,12 +122,19 @@ notarization; an Apple Development certificate is only good for this Mac.
    or hover state you are capturing, and counts down in the menu bar rather
    than over the shot. Escape cancels.
 
+   When a screenshot is all you want, press **Copy** (or ⌘C) instead of
+   Capture: the shot goes straight to the clipboard and into Recent, the
+   editor stays shut, and the menu bar says **Copied** for a moment. If the
+   editor was open when you started, it comes back as it was. A capture an AI
+   tool asked for opens in the editor regardless, since only Send answers it.
+
    Press **Space** to pick a window instead, as in macOS's own screenshots —
    **Capture Window** opens the overlay this way. The window under the pointer
    is framed and named with its size, and a click (or Return) captures that
    window alone: all of it, even where another window covers it, and without
    its shadow, so the image is the window edge to edge. Space again goes back
    to a region; a switch made on one display is made on all of them.
+   ⌘-click a window, or press ⌘C, to copy it rather than open it.
 5. Pick a tool in the toolbar.
    - **Arrow**: drag. Drag its body to move it, or either end to reshape it.
      Three styles sit beside the colours: **tapered**, which narrows almost to a
@@ -395,7 +402,7 @@ notarization; an Apple Development certificate is only good for this Mac.
 9. A closed capture is not gone. **Recent** on the empty state holds the last
    six, drawing and all, so closing one by accident costs a click rather than
    the shot. Four show across, each labelled with when it was taken; the rest
-   scroll. It lives in memory only and does not survive quitting Mark:
+   scroll. A capture copied straight from the overlay is there too. It lives in memory only and does not survive quitting Mark:
    it is an undo for closing, not a library.
 10. **A thumbnail instead of the editor.** With **Show a thumbnail instead of
     the editor** on in Settings, a capture taken from another app is copied at

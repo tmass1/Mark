@@ -26,7 +26,7 @@ const DELAYS = [0, 3, 5, 10];
 const windows = (window.__MARK_WINDOWS__ ?? []).filter(w => [w.x, w.y, w.width, w.height].every(Number.isFinite) && w.width > 0 && w.height > 0);
 const HINTS: Record<Mode, string> = {
   region: 'Drag to select a region · Space for a window · Escape to cancel',
-  window: windows.length ? 'Click a window to capture it · Space for a region · Escape to cancel'
+  window: windows.length ? 'Click a window to capture it, ⌘-click to copy it · Space for a region · Escape to cancel'
                          : 'No windows to capture · Space for a region · Escape to cancel',
 };
 
@@ -59,6 +59,7 @@ root.innerHTML = `
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
         <path d="M4 8V5.2A1.2 1.2 0 0 1 5.2 4H8M12 4h2.8A1.2 1.2 0 0 1 16 5.2V8M16 12v2.8a1.2 1.2 0 0 1-1.2 1.2H12M8 16H5.2A1.2 1.2 0 0 1 4 14.8V12"/></svg>
     </button>
+    <button class="copy" type="button" title="Copy it without opening the editor (⌘C)">Copy</button>
     <button class="go" type="button">Capture</button>
   </div>
 `;
@@ -226,7 +227,7 @@ root.addEventListener('pointerdown', event => {
   if (mode === 'window') {
     event.preventDefault();
     const under = windowAt(event.clientX, event.clientY);
-    if (under) void captureWindow(under);
+    if (under) void captureWindow(under, event.metaKey);
     return;
   }
   const target = event.target as Element;
@@ -323,20 +324,22 @@ root.querySelector('.full')!.addEventListener('click', () => {
 });
 root.querySelector('.cancel')!.addEventListener('click', () => void cancel());
 root.querySelector('.go')!.addEventListener('click', () => void capture());
+root.querySelector('.copy')!.addEventListener('click', () => void capture(true));
 
-async function capture() {
+/** `copy`: straight to the clipboard, without opening the editor. */
+async function capture(copy = false) {
   if (!rect || sent) return;
   const { x, y, width, height } = rect;
   if (width < 1 || height < 1) return;
   sent = true;
   await invoke('capture_rect', {
-    x: display.x + x, y: display.y + y, width, height, delay,
+    x: display.x + x, y: display.y + y, width, height, delay, copy,
   }).catch(error => { sent = false; console.error('[Mark]', error); });
 }
-async function captureWindow(target: ScreenWindow) {
+async function captureWindow(target: ScreenWindow, copy = false) {
   if (sent) return;
   sent = true;
-  await invoke('capture_window', { id: target.id, delay }).catch(error => {
+  await invoke('capture_window', { id: target.id, delay, copy }).catch(error => {
     // Most likely the window closed while the overlay was up: say so, and let
     // another be picked.
     sent = false;
@@ -367,6 +370,11 @@ document.addEventListener('keydown', event => {
   } else if (mode === 'region' && !typing && event.key === 'a' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
     setRect({ x: 0, y: 0, width: display.width, height: display.height });
+  } else if (!typing && event.key === 'c' && (event.metaKey || event.ctrlKey)) {
+    // Copy: what Capture would take, but to the clipboard, without the editor.
+    event.preventDefault();
+    if (mode === 'window') { if (picked) void captureWindow(picked, true); }
+    else void capture(true);
   }
 });
 

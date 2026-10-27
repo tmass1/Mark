@@ -310,6 +310,24 @@ async function tick(seconds: number) {
   countdown.hidden = true;
 }
 
+/** Copied straight from the overlay, as lib.rs's keep_copied: onto the
+ *  clipboard, then into the editor's Recent without the editor opening -- or,
+ *  when the browser refuses the copy, into the editor with it, as the app does
+ *  when a copy fails. The editor comes back only if it was out before. */
+const copiedCaptures: Capture[] = [];
+async function tookCopy(capture: Capture) {
+  const png = capture.dataUrl.split(',')[1];
+  let refused: string | null = null;
+  try { await toClipboard(png); } catch (error) { refused = String(error); }
+  showClip(png, refused);
+  if (refused) { await took(capture); return; }
+  copiedCaptures.push(capture);
+  emitTo(editorFrame, 'capture-copied');
+  emitTo(editorFrame, 'capture-changed');
+  if (editorWanted) showEditor(true);
+  else showHint('Copied, without opening the editor. It waits in Recent too.');
+}
+
 async function took(capture: Capture) {
   state.capture = capture; state.error = null;
   editorWanted = true;
@@ -372,7 +390,7 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         overlay?.remove(); overlay = null;
         await tick(Number(args.delay ?? 0));
         const region = await crop(Number(args.x), Number(args.y), Number(args.width), Number(args.height));
-        state.busy = false; await took(region); return;
+        state.busy = false; await (args.copy && !state.request ? tookCopy : took)(region); return;
       }
       case 'capture_window': {
         const picked = sceneWindows().find(w => w.id === Number(args.id));
@@ -380,8 +398,9 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         overlay?.remove(); overlay = null;
         await tick(Number(args.delay ?? 0));
         const shot = await crop(picked.x, picked.y, picked.width, picked.height);
-        state.busy = false; await took(shot); return;
+        state.busy = false; await (args.copy && !state.request ? tookCopy : took)(shot); return;
       }
+      case 'take_copied': return copiedCaptures.splice(0);
       case 'cancel_selection': endSelection(); if (editorWanted) showEditor(true); emitTo(editorFrame, 'capture-changed'); return;
       case 'copy_capture': {
         if (!state.capture) throw 'Nothing to copy yet.';

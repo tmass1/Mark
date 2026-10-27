@@ -175,7 +175,7 @@ fn capture_display(app: AppHandle, delay: Option<u32>) -> Result<(), String> {
     let handle = app.clone();
     app.run_on_main_thread(move || {
         if !ready_to_capture(&handle) { return; }
-        take_selection(&handle, capture::Target::Region(rect), delay);
+        take_selection(&handle, capture::Target::Region(rect), delay, false);
     }).map_err(|e| e.to_string())
 }
 
@@ -278,8 +278,10 @@ fn set_tray_title(app: &AppHandle, text: Option<String>) {
     if let Some(tray) = app.tray_by_id("mark") { let _ = tray.set_title(text); }
 }
 
+/// `copy`: straight to the clipboard and Recent, without the editor -- the
+/// overlay's Copy, ⌘C and ⌘-click.
 #[tauri::command]
-fn capture_rect(app: AppHandle, x: f64, y: f64, width: f64, height: f64, delay: u32) -> Result<(), String> {
+fn capture_rect(app: AppHandle, x: f64, y: f64, width: f64, height: f64, delay: u32, copy: Option<bool>) -> Result<(), String> {
     if ![x, y, width, height].iter().all(|value| value.is_finite()) {
         return Err("That selection isn't a valid region.".into());
     }
@@ -287,24 +289,26 @@ fn capture_rect(app: AppHandle, x: f64, y: f64, width: f64, height: f64, delay: 
     let rect = capture::Rect { x, y, width, height };
     let delay = delay.min(60);
     let handle = app.clone();
-    app.run_on_main_thread(move || take_selection(&handle, capture::Target::Region(rect), delay)).map_err(|e| e.to_string())
+    let copy = copy.unwrap_or(false);
+    app.run_on_main_thread(move || take_selection(&handle, capture::Target::Region(rect), delay, copy)).map_err(|e| e.to_string())
 }
 
 /// One window, picked in the overlay, by the number the window server gave it.
 /// It is looked up again rather than taken on trust: the window has to still be
 /// there, and its size here is what the image's density is worked out from.
 #[tauri::command]
-fn capture_window(app: AppHandle, id: u32, delay: u32) -> Result<(), String> {
+fn capture_window(app: AppHandle, id: u32, delay: u32, copy: Option<bool>) -> Result<(), String> {
     let window = capture::capturable(macos::windows_on_screen(), std::process::id() as i32)
         .into_iter().find(|window| window.id == id)
         .ok_or("That window has closed. Pick another, or press Escape.")?;
     let target = capture::Target::Window { id, bounds: window.bounds() };
     let delay = delay.min(60);
     let handle = app.clone();
-    app.run_on_main_thread(move || take_selection(&handle, target, delay)).map_err(|e| e.to_string())
+    let copy = copy.unwrap_or(false);
+    app.run_on_main_thread(move || take_selection(&handle, target, delay, copy)).map_err(|e| e.to_string())
 }
 
-fn take_selection(app: &AppHandle, target: capture::Target, delay: u32) {
+fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bool) {
     close_selectors(app);
     let (cancelled, previous) = {
         let state = app.state::<State>();
@@ -335,6 +339,8 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32) {
             let mut wanted: Option<(f64, f64)> = None;
             let thumbnail_wanted = handle.state::<Prefs>().0.lock().unwrap().thumbnail();
             let mut thumb: Option<(Vec<u8>, u32, u32, f64)> = None;
+            let mut copied: Option<capture::Capture> = None;
+            let mut restore = false;
             let show = {
                 let state = handle.state::<State>();
                 let mut session = state.lock().unwrap();
@@ -346,14 +352,24 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32) {
                         // density of the display it came off.
                         let (width, height) = target.size();
                         if width >= 1.0 { capture.scale = f64::from(capture.width) / width; }
-                        wanted = Some((width, height));
-                        // Taken from another app with the thumbnail chosen, and no AI
-                        // tool waiting on it: the corner, not the editor.
-                        if thumbnail_wanted && session.request.is_none() && !session.editor_was_visible {
-                            thumb = Some((capture.png.clone(), capture.width, capture.height, capture.scale));
+                        // Copied straight from the overlay: the clipboard and
+                        // Recent, and the editor back only if it was out before,
+                        // as it was. An AI tool's ask still opens the editor,
+                        // since only Send answers it.
+                        if copy && session.request.is_none() {
+                            restore = session.editor_was_visible;
+                            copied = Some(capture);
+                            false
+                        } else {
+                            wanted = Some((width, height));
+                            // Taken from another app with the thumbnail chosen, and no AI
+                            // tool waiting on it: the corner, not the editor.
+                            if thumbnail_wanted && session.request.is_none() && !session.editor_was_visible {
+                                thumb = Some((capture.png.clone(), capture.width, capture.height, capture.scale));
+                            }
+                            session.capture = Some(capture);
+                            true
                         }
-                        session.capture = Some(capture);
-                        true
                     }
                     // Nothing taken: the editor comes back if it was there, or if
                     // an AI tool's ask is waiting in it.
@@ -362,6 +378,7 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32) {
                 }
             };
             changed(&handle);
+            if let Some(capture) = copied { keep_copied(&handle, capture, target.size(), restore); return; }
             // Resize before showing, so the window arrives at its size rather
             // than being seen to grow into it.
             if wanted.is_some() { fit_window(&handle, wanted); }
@@ -377,6 +394,39 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32) {
             if show { present(&handle); }
         }) { eprintln!("[Mark] {error}"); }
     });
+}
+
+/// A capture copied straight from the overlay: on the clipboard, and waiting
+/// for the editor to take it into Recent. Nothing opens, so the menu bar says
+/// it worked; the editor comes back only if it was out before. A copy that
+/// fails opens the editor on the capture with the reason. Main thread.
+fn keep_copied(app: &AppHandle, capture: capture::Capture, size: (f64, f64), restore: bool) {
+    if let Err(error) = macos::copy_png(&capture.png) {
+        app.state::<State>().lock().unwrap().capture = Some(capture);
+        changed(app); fit_window(app, Some(size)); report(app, error);
+        return;
+    }
+    app.state::<State>().lock().unwrap().keep_copied(capture);
+    if let Err(error) = app.emit_to(EDITOR, "capture-copied", ()) { eprintln!("[Mark] {error}"); }
+    set_tray_title(app, Some(" Copied".into()));
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1600));
+        let app = handle.clone();
+        let _ = handle.run_on_main_thread(move || {
+            // A capture counting down since has the title now.
+            if !app.state::<State>().lock().unwrap().capturing { set_tray_title(&app, None); }
+        });
+    });
+    if restore { present(app); }
+}
+
+/// The captures copied straight from the overlay since the editor last asked,
+/// for its Recent.
+#[tauri::command]
+fn take_copied(app: AppHandle) -> Vec<capture::Preview> {
+    let copied = std::mem::take(&mut app.state::<State>().lock().unwrap().copied);
+    copied.iter().map(capture::Capture::preview).collect()
 }
 
 #[tauri::command]
@@ -1011,7 +1061,7 @@ pub fn run() {
                 .unwrap_or(Way::Region);
             if let Err(e) = way.start(app) { report(app, e); }
         }).build())
-        .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, capture_window, cancel_selection,
+        .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, capture_window, cancel_selection, take_copied,
             copy_capture, copy_edited, copy_text, recognize_text, scan_image, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
             send_capture, decline_request, mcp_setup, add_to_agent, open_guide,
             thumbnail::thumbnail_image, thumbnail::open_thumbnail, thumbnail::close_thumbnail, thumbnail::drag_thumbnail,

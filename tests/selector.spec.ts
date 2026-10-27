@@ -164,7 +164,7 @@ test('Space picks windows instead: the one under the pointer is framed and named
   await expect(hint).toHaveText('Drag to select a region · Space for a window · Escape to cancel');
   await page.mouse.move(200, 150);
   await page.keyboard.press('Space');
-  await expect(hint).toHaveText('Click a window to capture it · Space for a region · Escape to cancel');
+  await expect(hint).toHaveText('Click a window to capture it, ⌘-click to copy it · Space for a region · Escape to cancel');
   // Under the pointer already, so framed already, without a move.
   const pick = page.locator('.pick');
   await expect(pick).toBeVisible();
@@ -186,7 +186,7 @@ test('Space picks windows instead: the one under the pointer is framed and named
   expect((await sent(page)).map(call => call.cmd)).not.toContain('capture_window');
 
   await page.mouse.click(600, 450);
-  expect((await waitFor(page, 'capture_window')).args).toEqual({ id: 12, delay: 0 });
+  expect((await waitFor(page, 'capture_window')).args).toEqual({ id: 12, delay: 0, copy: false });
 });
 
 test('Capture Window opens picking, the window under a pointer that has not moved already framed, and Return takes it', async ({ page }) => {
@@ -194,7 +194,7 @@ test('Capture Window opens picking, the window under a pointer that has not move
   await expect(page.locator('.pick-name')).toHaveText('Safari — Apple');
   await page.keyboard.press('Enter');
   // The delay armed in Capture's menu holds for a window as for a region.
-  expect((await waitFor(page, 'capture_window')).args).toEqual({ id: 11, delay: 5 });
+  expect((await waitFor(page, 'capture_window')).args).toEqual({ id: 11, delay: 5, copy: false });
 });
 
 test('on a display to one side, windows are found in global points, and one hanging off it is named where it shows', async ({ page }) => {
@@ -209,7 +209,7 @@ test('on a display to one side, windows are found in global points, and one hang
   expect(label.x + label.width / 2).toBeCloseTo(150, 0);
   expect(label.y + label.height / 2).toBeCloseTo(250, 0);
   await page.mouse.click(50, 200);
-  expect((await waitFor(page, 'capture_window')).args).toEqual({ id: 21, delay: 0 });
+  expect((await waitFor(page, 'capture_window')).args).toEqual({ id: 21, delay: 0, copy: false });
 });
 
 test('Space goes back to a region, where a drag selects as before', async ({ page }) => {
@@ -250,7 +250,43 @@ test('a window that has closed says so, and another can be picked', async ({ pag
   await expect(page.locator('.hint')).toHaveText(closed);
   await clear(page);
   await page.mouse.click(600, 450);
-  expect((await waitFor(page, 'capture_window')).args).toEqual({ id: 12, delay: 0 });
+  expect((await waitFor(page, 'capture_window')).args).toEqual({ id: 12, delay: 0, copy: false });
+});
+
+// Sometimes a screenshot is all that's wanted: Copy, ⌘C and ⌘-click take it
+// to the clipboard, and Rust keeps the editor shut.
+test('Copy takes the region straight to the clipboard', async ({ page }) => {
+  await picking(page);
+  await select(page, [120, 100], [520, 400]);
+  await page.locator('.copy').click();
+  expect((await waitFor(page, 'capture_rect')).args).toMatchObject({ width: 400, height: 300, delay: 0, copy: true });
+});
+
+test('⌘C copies the region, but not while a size is being typed', async ({ page }) => {
+  await picking(page);
+  await select(page, [120, 100], [520, 400]);
+  await page.locator('.w').focus();
+  await page.keyboard.press('Meta+c');
+  await page.waitForTimeout(100);
+  expect((await sent(page)).map(call => call.cmd)).not.toContain('capture_rect');
+  await page.locator('.w').blur();
+  await page.keyboard.press('Meta+c');
+  expect((await waitFor(page, 'capture_rect')).args).toMatchObject({ width: 400, height: 300, copy: true });
+});
+
+test('picking a window, ⌘C copies the one framed and ⌘-click the one clicked', async ({ page }) => {
+  await picking(page, { mode: 'window', pointer: { x: 200, y: 150 } });
+  await page.keyboard.press('Meta+c');
+  expect((await waitFor(page, 'capture_window')).args).toEqual({ id: 11, delay: 0, copy: true });
+});
+
+test('⌘-click copies a window rather than opening it', async ({ page }) => {
+  await picking(page, { mode: 'window' });
+  await page.mouse.move(600, 450);
+  await page.keyboard.down('Meta');
+  await page.mouse.click(600, 450);
+  await page.keyboard.up('Meta');
+  expect((await waitFor(page, 'capture_window')).args).toEqual({ id: 12, delay: 0, copy: true });
 });
 
 test('with no windows to pick, window mode says so', async ({ page }) => {
