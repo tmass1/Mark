@@ -1171,6 +1171,63 @@ test('Recent lists the newest capture first', async ({ page }) => {
   await expect(page.locator('.recent').nth(1)).toContainText('1200 × 740');
 });
 
+/** Open a file in the preview and close it again once it has loaded: Recent
+ *  only keeps a capture whose picture it can draw. */
+const loaded = (page: Page) => page.waitForFunction(() => {
+  const image = document.querySelector<HTMLImageElement>('.capture');
+  return !!image && image.complete && image.naturalWidth > 0;
+});
+async function openAndClose(page: Page, file: string) {
+  await page.locator('input[type=file]').setInputFiles(`src-tauri/icons/${file}`);
+  await page.waitForFunction(name => {
+    const image = document.querySelector<HTMLImageElement>('.capture');
+    return !!image && image.complete && image.naturalWidth > 0 && document.querySelector('.dimensions')?.textContent?.startsWith(name);
+  }, file.startsWith('128x128@') ? '256' : file.split('x')[0]);
+  await page.keyboard.press('Escape');
+}
+
+test('Recent says when each capture was taken, and keeps it current', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-27T15:00:00Z') });
+  await page.goto('/');
+  await loaded(page);
+  await page.clock.fastForward(6 * 60_000);
+  await page.keyboard.press('Escape');                    // the sample, taken six minutes ago
+  await expect(page.locator('.recent time')).toHaveText('6 min ago');
+  await openAndClose(page, '128x128.png');
+  await expect(page.locator('.recent time')).toHaveText(['Just now', '6 min ago']);
+  // Left open, the labels age with it.
+  await page.clock.fastForward(60 * 60_000);
+  await expect(page.locator('.recent time')).toHaveText(['1 h ago', '1 h ago']);
+});
+
+test('Recent shows four across, and says how many when there are more', async ({ page }) => {
+  await page.goto('/');
+  await loaded(page);
+  await page.keyboard.press('Escape');
+  for (const file of ['128x128.png', '64x64.png', '32x32.png']) await openAndClose(page, file);
+  await expect(page.locator('.recent')).toHaveCount(4);
+  await expect(page.locator('.recents-count')).toBeEmpty();
+  await openAndClose(page, '128x128@2x.png');
+  await expect(page.locator('.recents-count')).toHaveText('5 captures');
+  // The fifth starts past the strip's edge, there to be scrolled to.
+  const strip = (await page.locator('.recent-list').boundingBox())!, fifth = (await page.locator('.recent').nth(4).boundingBox())!;
+  expect(fifth.x).toBeLessThan(strip.x + strip.width);
+  expect(fifth.x + fifth.width).toBeGreaterThan(strip.x + strip.width);
+});
+
+test('a reopened capture goes back to the front of Recent, not into it twice', async ({ page }) => {
+  await page.goto('/');
+  await loaded(page);
+  await page.keyboard.press('Escape');
+  await openAndClose(page, '128x128.png');
+  await page.locator('.recent').nth(1).click();
+  await expect(page.locator('.dimensions')).toHaveText('1200 × 740 px');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.recent')).toHaveCount(2);
+  await expect(page.locator('.recent').first()).toContainText('1200 × 740');
+  await expect(page.locator('.recent').nth(1)).toContainText('128 × 128');
+});
+
 test('no Recent section until something has been closed', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.recents')).toBeHidden();

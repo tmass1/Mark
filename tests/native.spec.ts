@@ -49,14 +49,18 @@ test('the empty state offers every way in, each sending the command it should', 
   await expect(page.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
   const tiles = page.getByRole('group', { name: 'Capture' }).getByRole('button');
   await expect(tiles).toHaveCount(4);
-  for (const [i, name] of ['Region ⌘4', 'Window', 'Screen', 'Timed 5s'].entries()) await expect(tiles.nth(i)).toHaveAccessibleName(name);
+  // Each says what it does, so Window's "even if it's covered" needs no tooltip.
+  for (const [i, name] of ['Region Drag out part of the screen ⌘4', 'Window Click one, even if it’s covered',
+                           'Screen The whole display, right away', 'Timed A region, five seconds later 5s'].entries()) {
+    await expect(tiles.nth(i)).toHaveAccessibleName(name);
+  }
   const ways: [string, string, Record<string, unknown>][] = [
     ['Region', 'capture_region', {}], ['Window', 'capture_region', { window: true }],
     ['Screen', 'capture_display', {}], ['Timed', 'capture_region', { delay: 5 }],
   ];
   for (const [name, cmd, args] of ways) {
     await clear(page);
-    await tiles.filter({ hasText: name }).click();
+    await tiles.filter({ has: page.locator('.mode-name', { hasText: new RegExp(`^${name}$`) }) }).click();
     expect((await waitFor(page, cmd)).args, name).toEqual(args);
   }
 });

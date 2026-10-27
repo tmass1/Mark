@@ -3,6 +3,7 @@ import { command, isTauri, watchCapture, watchMenuCopy, watchRequestWithdrawn, w
          type SavedSettings, type Snapshot } from './platform';
 import { MAX_BASE64, describeMarks, resultText, sendSize } from './send';
 import { suggestedName } from './names';
+import { ago } from './ago';
 import { DEFAULT_SHORTCUT, prettyShortcut } from './shortcut';
 // The icon as an import, so its path is right whether this page is the app's
 // own or the copy the web demo runs in a frame.
@@ -119,8 +120,10 @@ function toolCursor(tool: Tool, numbering: boolean, style: ArrowStyle, color: st
 
 /** Captures kept after they leave the editor, newest first. Memory only: this
  *  is an undo for closing, not a library. */
-interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[] }
+interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number }
 const KEPT = 6;
+/** How many of them Recent's strip shows side by side; the rest scroll. */
+const STRIP = 4;
 /** Roughly 90 MB of image once decoded from base64. */
 const KEPT_CHARS = 120_000_000;
 
@@ -132,23 +135,22 @@ const STROKE = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-line
  *  the set reads as four answers to the same question rather than four
  *  unrelated pictures. */
 type CaptureMode = 'region' | 'window' | 'display' | 'timed';
-/** `tile` is the word on the empty state's tiles, where four have to fit
- *  side by side in the smallest window; `tip` says it in full -- except for
- *  Region, which its word and its key say well enough, and which is focused
- *  each time the empty state comes back, where a tip would pop up unasked. */
-const CAPTURE_MODES: { mode: CaptureMode; name: string; tile: string; tip: string; hint: string; art: string }[] = [
-  { mode: 'region', name: 'Region', tile: 'Region', tip: 'Drag out the part of the screen to capture', hint: prettyShortcut(DEFAULT_SHORTCUT), art:
+/** `tile` is the word on the empty state's tiles and `does` the few words
+ *  under it, short enough for two to a row in the smallest window; `tip` says
+ *  it in full where there is room, in the Capture menu. */
+const CAPTURE_MODES: { mode: CaptureMode; name: string; tile: string; does: string; tip: string; hint: string; art: string }[] = [
+  { mode: 'region', name: 'Region', tile: 'Region', does: 'Drag out part of the screen', tip: 'Drag out the part of the screen to capture', hint: prettyShortcut(DEFAULT_SHORTCUT), art:
     `<path d="M4.4 7.7V5.9a1.5 1.5 0 0 1 1.5-1.5h1.8M12.3 4.4h1.8a1.5 1.5 0 0 1 1.5 1.5v1.8`
     + `M15.6 12.3v1.8a1.5 1.5 0 0 1-1.5 1.5h-1.8M7.7 15.6H5.9a1.5 1.5 0 0 1-1.5-1.5v-1.8" ${STROKE}/>` },
-  { mode: 'window', name: 'Window', tile: 'Window', tip: 'Click a window to capture it, whole even where it is covered', hint: '', art:
+  { mode: 'window', name: 'Window', tile: 'Window', does: 'Click one, even if it’s covered', tip: 'Click a window to capture it, whole even where it is covered', hint: '', art:
     `<rect x="3.2" y="4.4" width="13.6" height="11.2" rx="1.8" ${STROKE}/>`
     + `<path d="M3.2 7.8h13.6" ${STROKE}/>`
     + `<circle cx="5.6" cy="6.1" r=".7" fill="currentColor"/><circle cx="7.6" cy="6.1" r=".7" fill="currentColor"/>` },
-  { mode: 'display', name: 'Whole Screen', tile: 'Screen', tip: 'Capture the whole screen the pointer is on, straight away', hint: '', art:
+  { mode: 'display', name: 'Whole Screen', tile: 'Screen', does: 'The whole display, right away', tip: 'Capture the whole screen the pointer is on, straight away', hint: '', art:
     `<rect x="3.2" y="4.5" width="13.6" height="9.6" rx="1.8" fill="currentColor" opacity=".16"/>`
     + `<rect x="3.2" y="4.5" width="13.6" height="9.6" rx="1.8" ${STROKE}/>`
     + `<path d="M7.6 16.6h4.8" ${STROKE}/>` },
-  { mode: 'timed', name: 'Timed Region', tile: 'Timed', tip: 'Choose a region, then capture it five seconds later', hint: '5s', art:
+  { mode: 'timed', name: 'Timed Region', tile: 'Timed', does: 'A region, five seconds later', tip: 'Choose a region, then capture it five seconds later', hint: '5s', art:
     `<circle cx="10" cy="11.4" r="5.4" ${STROKE}/>`
     + `<path d="M10 8.4v3l2.1 1.3M8.1 3.4h3.8M10 3.4v2.6" ${STROKE}/>` },
 ];
@@ -340,18 +342,21 @@ app.innerHTML = `
       <!-- The icon itself, so what greets you on launch is exactly what sits in
            the Dock. It used to be redrawn from paths, which is how the two came
            to be different pictures. -->
-      <img class="viewfinder" src="${markIcon}" alt="" width="72" height="72" />
-      <h1>Capture your screen</h1><p class="empty-hint">${RESTING_HINT}</p>
-      <!-- Every way in, side by side, as macOS's own screenshot toolbar lays
-           them out, rather than one button with the rest behind a menu. A
-           region, the one most reached for, is the blue one. -->
+      <div class="empty-head">
+        <img class="viewfinder" src="${markIcon}" alt="" width="46" height="46" />
+        <div><h1>Capture your screen</h1><p class="empty-hint">${RESTING_HINT}</p></div>
+      </div>
+      <!-- Every way in at once, rather than one button with the rest behind a
+           menu: large tiles that each say what they do, so Window's "even if
+           it's covered" needs no tooltip to be found. A region, the one most
+           reached for, is the blue one. -->
       <div class="modes" role="group" aria-label="Capture">
         ${CAPTURE_MODES.map(item => `<button class="mode ${item.mode === 'region' ? 'start primary' : 'glassy'}" type="button"
-          data-start="${item.mode}"${item.mode === 'region' ? '' : ` title="${item.tip}"`}><svg viewBox="0 0 20 20" aria-hidden="true">${item.art}</svg>
-          <span class="mode-name">${item.tile}</span><kbd class="mode-hint">${item.hint}</kbd></button>`).join('')}
+          data-start="${item.mode}"><span class="mode-icon"><svg viewBox="0 0 20 20" aria-hidden="true">${item.art}</svg></span>
+          <span class="mode-text"><span class="mode-name">${item.tile}</span><span class="mode-does">${item.does}</span></span><kbd class="mode-hint">${item.hint}</kbd></button>`).join('')}
       </div>
       <section class="recents" hidden aria-label="Recent captures">
-        <p class="recents-label">Recent</p>
+        <div class="recents-head"><p class="recents-label">Recent</p><span class="recents-count"></span></div>
         <div class="recent-list"></div>
       </section>
       <p class="quit-hint" hidden>Mark lives in the menu bar · ⌘, settings · ⌘W hides it · ⌘Q quits</p>
@@ -510,6 +515,7 @@ const zoomSelect = app.querySelector<HTMLSelectElement>('.zoom-select')!;
 const cropBar = app.querySelector<HTMLElement>('.crop-bar')!;
 const recents = app.querySelector<HTMLElement>('.recents')!;
 const recentList = app.querySelector<HTMLElement>('.recent-list')!;
+const recentsCount = app.querySelector<HTMLElement>('.recents-count')!;
 const cropSize = app.querySelector<HTMLElement>('.crop-size')!;
 const cropShapes = app.querySelector<HTMLElement>('.crop-shapes')!;
 const cropApply = app.querySelector<HTMLButtonElement>('.crop-apply')!;
@@ -526,6 +532,11 @@ let busy = false;
 let copyPending = false;
 let disposed = false;
 let shown: CapturePreview | null = null;
+/** When the capture in the editor was taken -- or, for one reopened from
+ *  Recent, when it first was. */
+let shownAt = 0;
+/** What the empty state says under its heading when nothing is asked of it. */
+let restingHint = RESTING_HINT;
 let mustFlatten = false;
 const past: Past[] = [];
 let pastId = 1;
@@ -1083,7 +1094,7 @@ function render() {
       stage.style.setProperty('--ratio', `${capture.width} / ${capture.height}`);
       layer.density = capture.scale ?? 1;
       layer.setImage(capture.width, capture.height);
-      shown = capture; mustFlatten = false; crops.length = 0; zoom = startingZoom(capture);
+      shown = capture; shownAt = Date.now(); mustFlatten = false; crops.length = 0; zoom = startingZoom(capture);
       // A different capture is a differently sized window, so a position chosen
       // for the last one means nothing here.
       delete stepsPanel.dataset.moved;
@@ -1121,13 +1132,14 @@ function render() {
   // as text, whatever the tool sent -- the way in it named is the one offered
   // first, and the primary button sends rather than copies.
   app.classList.toggle('requesting', !!request);
+  app.classList.toggle('at-rest', !capture);
   requestBar.hidden = !request;
   if (request) {
     requestBar.querySelector('.request-client')!.textContent = request.client;
     requestBar.querySelector('.request-prompt')!.textContent = `“${request.prompt}”`;
     requestText.dataset.tip = `${request.client} asks to see “${request.prompt}”`;
   }
-  emptyHint.textContent = request ? ASKED_HINT : RESTING_HINT;
+  emptyHint.textContent = request ? ASKED_HINT : restingHint;
   const offered = request?.mode ?? 'region';
   for (const tile of modeTiles) {
     const first = tile.dataset.start === offered;
@@ -1886,26 +1898,32 @@ function closeCaptureMenu() {
 }
 
 /** A small picture of the capture as it stood, drawing and all, so a recent
- *  entry is recognisable at a glance rather than a grey rectangle. */
-function thumbnail(width = 168): string {
-  const scale = Math.min(1, width / (image.naturalWidth || width));
+ *  entry is recognisable at a glance rather than a grey rectangle. Large
+ *  enough to fill Recent's 4:3 frames at 2x whatever the capture's shape,
+ *  since a wide one is cropped to its height there. */
+function thumbnail(source = image, annotations = layer.annotations, density = layer.density): string {
+  const width = 240, height = 180;
+  const scale = Math.min(1, Math.max(width / (source.naturalWidth || width), height / (source.naturalHeight || height)));
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  canvas.width = Math.max(1, Math.round(source.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(source.naturalHeight * scale));
   const context = canvas.getContext('2d')!;
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
   context.scale(scale, scale);
   // The image's own size, which badges are kept inside: the canvas is smaller.
-  drawAnnotations(context, layer.annotations,
-                  { source: image, width: image.naturalWidth, height: image.naturalHeight, density: layer.density });
+  drawAnnotations(context, annotations, { source, width: source.naturalWidth, height: source.naturalHeight, density });
   return canvas.toDataURL('image/png');
 }
 
 /** Hold on to a capture that is leaving the editor. */
 function remember(leaving: CapturePreview) {
   if (!image.complete || !image.naturalWidth) return;
-  past.unshift({ id: pastId++, capture: leaving, thumb: thumbnail(),
-                 annotations: layer.annotations.map(item => ({ ...item })) });
+  keep({ capture: leaving, thumb: thumbnail(), at: shownAt, annotations: layer.annotations.map(item => ({ ...item })) });
+}
+
+/** Into Recent, newest first, keeping no more than it has room for. */
+function keep(entry: Omit<Past, 'id'>) {
+  past.unshift({ id: pastId++, ...entry });
   let total = 0;
   for (let index = 0; index < past.length; index++) {
     total += past[index].capture.dataUrl.length;
@@ -1916,6 +1934,9 @@ function remember(leaving: CapturePreview) {
 /** Bring a kept capture back, drawing and all. Rust no longer holds it, so
  *  copying will go through the flatten path from here on. */
 function restore(entry: Past) {
+  // Out of Recent while it is back in the editor; it returns to the front of
+  // the strip when it leaves again, rather than being there twice.
+  past.splice(past.indexOf(entry), 1);
   capture = entry.capture;
   mustFlatten = true;
   crops.length = 0;
@@ -1924,28 +1945,55 @@ function restore(entry: Past) {
   layer.density = entry.capture.scale ?? 1;
   layer.setImage(entry.capture.width, entry.capture.height);
   layer.load(entry.annotations);
-  shown = entry.capture;
+  shown = entry.capture; shownAt = entry.at;
   zoom = startingZoom(entry.capture);
   render();
 }
 
+/** Recent: a strip of the captures themselves, each labelled by when it was
+ *  taken. Its size is said to screen readers, and in its tooltip. */
 function drawRecents() {
   recents.hidden = !!capture || past.length === 0;
   if (recents.hidden) { recentList.replaceChildren(); return; }
+  // More than fit: the next one shows at the edge, and the count says how many.
+  recentList.classList.toggle('more', past.length > STRIP);
+  recentsCount.textContent = past.length > STRIP ? `${past.length} captures` : '';
+  const now = Date.now();
   recentList.replaceChildren(...past.map(entry => {
+    const size = `${entry.capture.width} × ${entry.capture.height}`;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'recent';
-    button.title = `Reopen this ${entry.capture.width} × ${entry.capture.height} capture`;
+    button.dataset.tip = `Reopen this ${size} capture`;
     const thumb = document.createElement('img');
     thumb.src = entry.thumb; thumb.alt = '';
-    const size = document.createElement('span');
-    size.textContent = `${entry.capture.width} × ${entry.capture.height}`;
-    button.append(thumb, size);
+    const when = document.createElement('time');
+    when.dateTime = new Date(entry.at).toISOString();
+    when.dataset.at = String(entry.at);
+    when.textContent = ago(entry.at, now);
+    const spoken = document.createElement('span');
+    spoken.className = 'sr';
+    spoken.textContent = `, ${size}`;
+    button.append(thumb, when, spoken);
     button.addEventListener('click', () => restore(entry), { signal: abort.signal });
     return button;
   }));
 }
+
+/** "Just now" goes stale while the empty state sits open, so the labels are
+ *  brought up to date each half-minute it is on screen. */
+const ageing = window.setInterval(() => {
+  if (recents.hidden || document.hidden) return;
+  const now = Date.now();
+  for (const when of recentList.querySelectorAll<HTMLElement>('time')) when.textContent = ago(Number(when.dataset.at), now);
+}, 30_000);
+cleanups.push(() => window.clearInterval(ageing));
+// A mouse wheel scrolls the strip sideways, as a trackpad's swipe does.
+recentList.addEventListener('wheel', event => {
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || recentList.scrollWidth <= recentList.clientWidth) return;
+  event.preventDefault();
+  recentList.scrollLeft += event.deltaY;
+}, { passive: false, signal: abort.signal });
 
 /** Trim the capture to the pending rectangle. The drawing comes along, shifted
  *  to match, so a crop never silently discards work. */
@@ -2143,6 +2191,11 @@ function showShortcuts(saved: Partial<SavedSettings>) {
     const text = chosen ? prettyShortcut(chosen) : item.mode === 'region' ? item.hint : item.mode === 'timed' ? '5s' : '';
     for (const key of app.querySelectorAll<HTMLElement>(`[data-start="${item.mode}"] kbd, .capture-menu [data-mode="${item.mode}"] kbd`)) key.textContent = text;
   }
+  // The heading's line says the one thing the tiles can't: Mark doesn't have
+  // to be open to capture.
+  const region = saved.shortcut === undefined ? DEFAULT_SHORTCUT : saved.shortcut;
+  restingHint = region ? `Or press ${prettyShortcut(region)} from any app.` : RESTING_HINT;
+  if (!request) emptyHint.textContent = restingHint;
 }
 
 async function init() {

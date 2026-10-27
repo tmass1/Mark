@@ -394,7 +394,8 @@ notarization; an Apple Development certificate is only good for this Mac.
    because annotations are stored in image pixels rather than screen ones.
 9. A closed capture is not gone. **Recent** on the empty state holds the last
    six, drawing and all, so closing one by accident costs a click rather than
-   the shot. It lives in memory only and does not survive quitting Mark:
+   the shot. Four show across, each labelled with when it was taken; the rest
+   scroll. It lives in memory only and does not survive quitting Mark:
    it is an undo for closing, not a library.
 10. **A thumbnail instead of the editor.** With **Show a thumbnail instead of
     the editor** on in Settings, a capture taken from another app is copied at
