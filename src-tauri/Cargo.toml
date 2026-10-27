@@ -1,6 +1,6 @@
 [package]
 name = "mark"
-version = "0.7.2"
+version = "0.7.3"
 description = "A minimal macOS screenshot utility"
 edition = "2021"
 rust-version = "1.85"
