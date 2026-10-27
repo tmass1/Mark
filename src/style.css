@@ -654,11 +654,15 @@ footer > * { flex: none; }
    frosting a pane would have had, and the words sit straight on it. Over a
    capture it goes back to the clear ground between panes. */
 #app.at-rest { background: var(--sheen), linear-gradient(var(--panel) 0 0), var(--scrim); }
+/* Taller than the window -- an ask's bar over a full Recent in a window the
+   user has kept small -- it scrolls rather than losing its top and bottom. */
+#app.at-rest .canvas { overflow-y: auto; align-items: safe center; }
 .empty { width: 100%; max-width: 524px; padding: 0 20px; }
-.empty-head { display: flex; align-items: center; gap: 14px; }
-.viewfinder { flex: none; width: 46px; height: 46px; filter: drop-shadow(0 6px 12px #00000038); }
-h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -.3px; }
-.empty-hint { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+/* The icon over the heading, centred: what opens on launch leads with Mark. */
+.empty-head { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.viewfinder { flex: none; width: 64px; height: 64px; filter: drop-shadow(0 8px 16px #00000038); }
+h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -.45px; line-height: 1.2; text-wrap: balance; }
+.empty-hint { margin: 4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
 /* Four tiles, two to a row, each an icon on a well of its own, its name, and
    a few words on what it does; its key, where it has one, in the corner. */
 .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
@@ -683,15 +687,18 @@ h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -.3px; }
   color: var(--muted); background: var(--control); box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--control-line); }
 .mode.primary .mode-hint { color: #fff; background: #ffffff2e; box-shadow: inset 0 0 0 .5px #ffffff40; }
 /* In the browser preview the one tile left is a file chooser: a button's shape suits it. */
-.browser .modes { display: flex; }
+.browser .modes { display: flex; justify-content: center; }
 .browser .mode.start { min-height: 0; padding: 9px 18px; border-radius: 999px; }
 .browser .mode.start .mode-name { font-size: 13px; font-weight: 500; }
 .browser .mode.start :is(.mode-icon, .mode-does, .mode-hint) { display: none; }
-.quit-hint { margin: 22px 0 0; color: var(--muted); font-size: 11px; opacity: .8; text-wrap: balance; }
+.quit-hint { margin: 22px 0 0; color: var(--muted); font-size: 11px; opacity: .8; text-align: center; text-wrap: balance; }
+/* It is for a first launch. Once there is a Recent, Mark has been used, and
+   the strip needs the room. */
+.recents:not([hidden]) ~ .quit-hint { display: none; }
 
 /* Recent: the captures themselves, four across, each labelled by when it was
    taken. More than four scroll sideways, with the next showing at the edge. */
-.recents { margin-top: 28px; }
+.recents { margin-top: 24px; }
 .recents-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; }
 .recents-label { margin: 0; color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .6px; }
 .recents-count { color: var(--muted); font-size: 11px; }

@@ -81,6 +81,24 @@ test('a capture copied from the overlay goes into Recent without opening the edi
   await expect(page.locator('.dimensions')).toHaveText('240 × 160 px');
 });
 
+// The line on where Mark lives is for a first launch; once there is a Recent,
+// the strip has the room.
+test('the first-launch line shows until there is a Recent', async ({ page }) => {
+  await installBridge(page, { capture: null });
+  await page.goto('/');
+  await expect(page.getByText('Mark lives in the menu bar')).toBeVisible();
+  await setBridge(page, { capture: CAPTURE });
+  await emit(page, 'capture-changed');
+  await page.waitForFunction(() => {
+    const image = document.querySelector<HTMLImageElement>('.capture');
+    return !!image && image.complete && image.naturalWidth > 0;
+  });
+  await setBridge(page, { capture: null });
+  await emit(page, 'capture-changed');
+  await expect(page.locator('.recent')).toHaveCount(1);
+  await expect(page.getByText('Mark lives in the menu bar')).toBeHidden();
+});
+
 // With a recent capture under the tiles it is at its tallest; at the
 // smallest window it is at its narrowest. It fits both, words whole.
 test('the empty state fits the smallest window and the usual one, recents and all', async ({ page }) => {

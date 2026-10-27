@@ -115,7 +115,8 @@ fn fit_window(app: &AppHandle, to: Option<(f64, f64)>) {
     let asked = app.state::<State>().lock().unwrap().request.is_some();
     let (mut width, mut height) = match to {
         Some((w, h)) => (w + SIDES + RAIL, h + CHROME + if asked { REQUEST_BAR } else { 0.0 }),
-        None => COMPACT,
+        // The empty state too keeps the ask's bar clear above it.
+        None => (COMPACT.0, COMPACT.1 + if asked { REQUEST_BAR } else { 0.0 }),
     };
     // Never larger than the screen it will appear on, less a margin so the
     // window does not sit edge to edge.
