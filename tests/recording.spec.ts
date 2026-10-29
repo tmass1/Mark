@@ -42,7 +42,10 @@ test('a recording opens in a player with its trim, and the tools to mark it up',
   await expect(page.locator('.frame-button')).toBeHidden();
   await expect(page.locator('.copy-text')).toBeHidden();
   await expect(page.locator('.zoom')).toBeHidden();
-  await expect(page.locator('.save-gif')).toBeVisible();
+  // Save says it saves the video; a GIF is the other way, in the menu beside it.
+  await expect(page.locator('.save')).toHaveText('Save Video');
+  await expect(page.locator('.save-more')).toBeVisible();
+  await expect(page.locator('.save-menu')).toBeHidden();
   await expect(page.locator('.dimensions')).toHaveText(`${CAPTURE.width} × ${CAPTURE.height} px · 0:12`);
   await expect(page.locator('.trim-time')).toHaveText('0:12');
   expect((await waitFor(page, 'video_frames')).args).toEqual({ id: 7, count: 10 });
@@ -74,8 +77,16 @@ test('the handles keep part of it, and Copy, Save and Share take that part', asy
   expect((await waitFor(page, 'save_video')).args).toMatchObject({ id: 7, gif: false, name: 'Mark 2026-10-29 at 09.41.07.mp4' });
   await expect(page.locator('.message')).toContainText('Saved as Mark 2026-10-29 at 09.41.07.mp4');
   await clear(page);
-  await page.locator('.save-gif').click();
+  await page.locator('.save-more').click();
+  await expect(page.getByRole('menuitem')).toHaveText([/Save Video\s*⌘S/, /Save as GIF\s*⌥⌘S/]);
+  await page.getByRole('menuitem', { name: /Save as GIF/ }).click();
   expect((await waitFor(page, 'save_video')).args).toMatchObject({ id: 7, gif: true, name: 'Mark 2026-10-29 at 09.41.07.gif' });
+  await expect(page.locator('.save-menu')).toBeHidden();
+  // Escape closes the menu, not the recording.
+  await page.locator('.save-more').click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.save-menu')).toBeHidden();
+  await expect(page.locator('.movie')).toBeVisible();
   await page.locator('.share').click();
   expect((await waitFor(page, 'share_video')).args).toMatchObject({ id: 7 });
 

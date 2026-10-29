@@ -443,8 +443,11 @@ app.innerHTML = `
     </button>
     <button class="save glassy icon" type="button" title="Save to a file (⌘S)" aria-label="Save to a file">
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.8v9M6.8 8.6 10 11.8l3.2-3.2"/><path d="M3.4 14v2.2a1.4 1.4 0 0 0 1.4 1.4h10.4a1.4 1.4 0 0 0 1.4-1.4V14"/></svg>
+      <span class="save-word" hidden>Save Video</span>
     </button>
-    <button class="save-gif glassy" type="button" title="Save as a GIF that loops (⌥⌘S)" hidden>GIF</button>
+    <button class="save-more glassy icon" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Other ways to save" title="Other ways to save" hidden>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.4 8.4 10 12l3.6-3.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <button class="copy-text glassy icon" type="button" aria-label="Copy text"
       title="Copy the text in the image, or in the selected box (⇧⌘T)">
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.6V4.8A1.8 1.8 0 0 1 4.8 3h1.8M13.4 3h1.8A1.8 1.8 0 0 1 17 4.8v1.8M17 13.4v1.8a1.8 1.8 0 0 1-1.8 1.8h-1.8M6.6 17H4.8A1.8 1.8 0 0 1 3 15.2v-1.8"/><path d="M6.8 7.6h6.4M6.8 10.2h6.4M6.8 12.8h3.8"/></svg>
@@ -463,6 +466,11 @@ app.innerHTML = `
     <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘C</kbd></button>
     <button class="copy primary" type="button"><span class="copy-label">Copy and Close</span> <kbd>⌥⌘C</kbd></button>
   </footer>
+  <!-- A recording saves as a movie; this is the other way, a GIF that loops. -->
+  <div class="save-menu" role="menu" aria-label="Save" hidden>
+    <button type="button" role="menuitem" data-save="save"><span>Save Video</span><kbd>⌘S</kbd></button>
+    <button type="button" role="menuitem" data-save="gif"><span>Save as GIF</span><kbd>⌥⌘S</kbd></button>
+  </div>
   <aside class="frame-panel" role="dialog" aria-label="Frame" hidden>
     <div class="frame-head">
       <span class="frame-title">Frame</span>
@@ -525,7 +533,9 @@ const closeButton = app.querySelector<HTMLButtonElement>('.close-capture')!;
 const shareButton = app.querySelector<HTMLButtonElement>('.share')!;
 const saveButton = app.querySelector<HTMLButtonElement>('.save')!;
 const copyTextButton = app.querySelector<HTMLButtonElement>('.copy-text')!;
-const gifButton = app.querySelector<HTMLButtonElement>('.save-gif')!;
+const saveMore = app.querySelector<HTMLButtonElement>('.save-more')!;
+const saveMenu = app.querySelector<HTMLElement>('.save-menu')!;
+const saveWord = saveButton.querySelector<HTMLElement>('.save-word')!;
 const movie = app.querySelector<HTMLVideoElement>('.movie')!;
 const trimBar = app.querySelector<HTMLElement>('.trim')!;
 const playButton = trimBar.querySelector<HTMLButtonElement>('.play')!;
@@ -1172,10 +1182,16 @@ function render() {
   copyOnly.hidden = closeButton.hidden = !capture;
   shareButton.hidden = saveButton.hidden = !capture || !isTauri;
   app.querySelector<HTMLElement>('.exports')!.hidden = !capture || !isTauri;
-  shareButton.disabled = saveButton.disabled = copyTextButton.disabled = gifButton.disabled = busy || copyPending;
-  // A recording is played, trimmed and sent on, not drawn on, framed or read.
+  shareButton.disabled = saveButton.disabled = copyTextButton.disabled = saveMore.disabled = busy || copyPending;
+  // A recording is not framed or read. It saves as a movie, said in words
+  // so it is plainly the way it saves, and as a GIF from the menu beside it.
   copyTextButton.hidden = !!video;
-  gifButton.hidden = !video || !isTauri;
+  saveMore.hidden = !video || !isTauri;
+  saveWord.hidden = !video;
+  saveButton.classList.toggle('icon', !video);
+  saveButton.dataset.tip = video ? 'Save the video, as an MP4 (⌘S)' : 'Save to a file (⌘S)';
+  saveButton.setAttribute('aria-label', video ? 'Save Video' : 'Save to a file');
+  if (!video) closeSaveMenu();
   frameButton.hidden = !!video;
   copyOnly.dataset.tip = video ? 'Copy the recording and keep working' : 'Copy the image and keep working';
   zoomSelect.parentElement!.hidden = !capture || !!video;
@@ -1716,7 +1732,35 @@ on(copyOnly, 'click', () => { void copyCapture(false); });
 // ⌘W's button: out without copying, and nothing lost, since what closes waits in Recent.
 on(closeButton, 'click', () => { void dismiss().catch(report); });
 on(saveButton, 'click', () => { void exportImage('save_image'); });
-on(gifButton, 'click', () => { void exportVideo('gif'); });
+on(saveMore, 'click', event => {
+  event.stopPropagation();
+  if (saveMenu.hidden) openSaveMenu(); else closeSaveMenu();
+});
+on(saveMenu, 'click', event => {
+  const how = (event.target as Element).closest<HTMLButtonElement>('[data-save]')?.dataset.save as 'save' | 'gif' | undefined;
+  if (!how) return;
+  closeSaveMenu();
+  void exportVideo(how);
+});
+document.addEventListener('pointerdown', event => {
+  if (!saveMenu.hidden && !saveMenu.contains(event.target as Node) && !saveMore.contains(event.target as Node)) closeSaveMenu();
+}, { signal: abort.signal });
+/** Over the footer, its right edge under the ▾ it came from. */
+function openSaveMenu() {
+  saveMenu.hidden = false;
+  saveMore.setAttribute('aria-expanded', 'true');
+  hideTip();
+  const at = saveMore.getBoundingClientRect(), frame = app.getBoundingClientRect();
+  saveMenu.style.right = `${Math.max(8, frame.right - at.right)}px`;
+  saveMenu.style.bottom = `${frame.bottom - at.top + 8}px`;
+  saveMenu.querySelector<HTMLButtonElement>('button')?.focus();
+}
+function closeSaveMenu(refocus = false) {
+  if (saveMenu.hidden) return;
+  saveMenu.hidden = true;
+  saveMore.setAttribute('aria-expanded', 'false');
+  if (refocus) saveMore.focus();
+}
 on(copyTextButton, 'click', () => { void copyText(); });
 on(hideButton, 'click', () => { void hideSensitive(); });
 on(shareButton, 'click', () => { void exportImage('share_image'); });
@@ -2439,6 +2483,11 @@ document.addEventListener('keydown', event => {
     const button = menuFor;
     closeToolMenu();
     button.focus();
+    return;
+  }
+  if (key === 'escape' && !saveMenu.hidden) {
+    event.preventDefault();
+    closeSaveMenu(true);
     return;
   }
   if (key === 'escape' && !looksMenu.hidden) {

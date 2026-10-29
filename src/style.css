@@ -642,9 +642,24 @@ footer > * { flex: none; }
   box-shadow: 0 1px 3px #00000066; }
 .trim-time { flex: none; min-width: 70px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .trim.trimmed .trim-time { color: var(--ink); }
-/* GIF sits after Save in the exports' pill, and with Copy Text gone ends it. */
-.save-gif { font-size: 11px; font-weight: 650; letter-spacing: .4px; }
-#app.video .exports .save-gif { border-radius: 0 999px 999px 0; padding-right: 13px; }
+/* A recording saves as a video, in words, with its ▾ for a GIF ending the
+   exports' pill where Copy Text would. */
+#app.video .save { display: inline-flex; align-items: center; gap: 7px; padding-right: 11px; }
+#app.video .save svg { width: 17px; height: 17px; }
+#app.video .exports .save-more { border-radius: 0 999px 999px 0; padding: 0 10px 0 7px; }
+.save-more svg { width: 15px; height: 15px; }
+.save-menu {
+  position: absolute; z-index: 10; display: flex; flex-direction: column; min-width: 190px; padding: 5px;
+  border-radius: 12px; background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: 0 12px 34px var(--shadow), 0 0 0 .5px var(--control-line);
+}
+.save-menu button { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: none; border-radius: 8px;
+  background: transparent; font-size: 12px; text-align: left; }
+.save-menu button span { flex: 1; }
+.save-menu kbd { margin: 0; }
+.save-menu button:hover, .save-menu button:focus-visible { background: var(--blue); color: #fff; outline: none; }
+.save-menu button:hover kbd, .save-menu button:focus-visible kbd { opacity: .8; }
 
 /* ---- the frame ---------------------------------------------------------- */
 

@@ -444,8 +444,9 @@ notarization; an Apple Development certificate is only good for this Mac.
     handles to keep only part of it, or press **I** and **O** to trim to the
     playhead, and Space to play and pause; playing loops the part kept.
     **Copy** puts the movie on the clipboard as a file, which Slack, Messages
-    and Mail take as an attachment. **Save** writes an MP4, **GIF** a GIF that
-    loops (15 frames a second, at most 1280 pixels across), and **Share** hands
+    and Mail take as an attachment. **Save Video** writes an MP4, **Save as
+    GIF** in the menu beside it a GIF that loops (15 frames a second, at most
+    1280 pixels across), and **Share** hands
     it to the share sheet. Each takes only the part kept, trimmed to the frame.
 
     Mark it up as you would a screenshot: arrows, boxes, numbered steps, text,
