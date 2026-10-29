@@ -8,10 +8,10 @@ export default defineConfig({
   base: './',
   build: {
     target: 'safari15', sourcemap: true,
-    // The editor, the selection overlay, settings, Software Update and the floating thumbnail
+    // The editor, the selection overlay, settings, Software Update, the floating thumbnail and the recording bar
     // are separate windows, so separate pages. The demo page hosts copies of most in frames.
     rollupOptions: { input: {
-      main: 'index.html', selector: 'selector.html', settings: 'settings.html', update: 'update.html', thumbnail: 'thumbnail.html',
+      main: 'index.html', selector: 'selector.html', settings: 'settings.html', update: 'update.html', thumbnail: 'thumbnail.html', recording: 'recording.html',
       demo: 'demo.html', demoEditor: 'demo/editor.html', demoSelector: 'demo/selector.html', demoSettings: 'demo/settings.html',
       site: 'site.html', ai: 'ai.html',
     } },

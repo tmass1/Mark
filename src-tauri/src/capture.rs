@@ -10,7 +10,16 @@ pub struct Capture {
     /// editor needs it to show the capture at the size it was actually taken
     /// rather than twice that.
     pub scale: f64,
+    /// A recording, where this capture is one. Its image is then the
+    /// recording's first frame, which stands for it wherever a picture is
+    /// needed: the editor under the player, Recent, the thumbnail.
+    pub video: Option<Video>,
 }
+
+/// A recording as the editor plays it: Mark's number for it, the file, how
+/// long it runs in seconds, and whether it has sound.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Video { pub id: u64, pub path: String, pub duration: f64, pub sound: bool }
 
 /// A region in global screen points, as Mark's own selection overlay reports it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -85,13 +94,17 @@ pub fn capturable(listed: Vec<Listed>, own_pid: i32) -> Vec<Window> {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Preview { pub data_url: String, pub width: u32, pub height: u32, pub scale: f64 }
+pub struct Preview {
+    pub data_url: String, pub width: u32, pub height: u32, pub scale: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video: Option<Video>,
+}
 
 impl Capture {
     pub fn preview(&self) -> Preview {
         Preview {
             data_url: format!("data:image/png;base64,{}", STANDARD.encode(&self.png)),
-            width: self.width, height: self.height, scale: self.scale,
+            width: self.width, height: self.height, scale: self.scale, video: self.video.clone(),
         }
     }
 }
@@ -109,7 +122,7 @@ pub fn parse_result(bytes: Option<Vec<u8>>, code: Option<i32>, stderr: &[u8]) ->
     let (width, height) = validate_png(&bytes)?;
     // Density is only knowable from the region that was asked for, so the
     // caller fills it in; on its own a PNG says nothing about it.
-    Ok(Some(Capture { png: bytes, width, height, scale: 1.0 }))
+    Ok(Some(Capture { png: bytes, width, height, scale: 1.0, video: None }))
 }
 
 /// Decode fully, so only a complete PNG can reach the clipboard. Used for the

@@ -28,7 +28,7 @@ interface Capture { dataUrl: string; width: number; height: number; scale: numbe
 interface Settings {
   appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates: boolean; frame?: unknown;
   shortcuts?: { window?: string; display?: string; timed?: string };
-  afterCapture?: 'editor' | 'thumbnail'; mcp?: boolean;
+  afterCapture?: 'editor' | 'thumbnail'; mcp?: boolean; recordMic?: boolean; recordClicks?: boolean;
 }
 type Way = 'region' | 'window' | 'display' | 'timed';
 const WAY_NAMES: Record<Way, string> = { region: 'Capture Region', window: 'Capture Window', display: 'Capture Whole Screen', timed: 'Timed Region' };
@@ -477,6 +477,14 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         emitTo(editorFrame, 'capture-changed');
         showHint('Claude was told no, and not to ask again unless you say so.');
         return;
+      // Recording is the Mac app's: the demo says it can't, so nothing offers it.
+      case 'recording_supported': return false;
+      case 'set_record_options':
+        state.settings = { ...state.settings, recordMic: Boolean(args.mic ?? state.settings.recordMic),
+                           recordClicks: Boolean(args.clicks ?? state.settings.recordClicks ?? true) };
+        return state.settings;
+      case 'video_frames': case 'copy_video': case 'save_video': case 'share_video':
+        throw 'Recording the screen is in the Mac app.';
       case 'recognize_text': throw 'Copy Text reads the image with the Mac\'s own text recognition, so it works in the Mac app.';
       case 'scan_image': throw 'Hide Sensitive reads the image with the Mac\'s own text and face recognition, so it works in the Mac app.';
       case 'open_updates': showHint('The Mac app checks for updates and installs them. This web demo is always the newest version.'); return;

@@ -141,6 +141,21 @@ pub fn copy_png(bytes: &[u8]) -> Result<(), String> {
     write_png(&NSPasteboard::generalPasteboard(), bytes)
 }
 
+/// A file, as Finder's Copy puts one on the clipboard: its URL, which Slack,
+/// Messages and Mail take as an attachment when it is pasted. How a recording
+/// is copied, since a movie has no flavour of its own that apps paste.
+pub fn copy_file(file: &std::path::Path) -> Result<(), String> {
+    if MainThreadMarker::new().is_none() { return Err("Clipboard must be accessed on the main thread.".into()); }
+    let path = file.to_str().ok_or("The recording's path can't be copied.")?;
+    let url = NSURL::fileURLWithPath(&NSString::from_str(path));
+    let pasteboard = NSPasteboard::generalPasteboard();
+    pasteboard.clearContents();
+    if !pasteboard.writeObjects(&NSArray::from_retained_slice(&[ProtocolObject::from_retained(url)])) {
+        return Err("The recording couldn't be copied. Please try again.".into());
+    }
+    Ok(())
+}
+
 /// The steps as text. Its own write rather than a second flavour beside the
 /// PNG: a single pasteboard write cannot be pasted as the image and then as the
 /// words, since the second paste would only repeat the first.

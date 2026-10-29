@@ -1,6 +1,7 @@
 import './style.css';
-import { command, isTauri, watchCapture, watchCopied, watchMenuCopy, watchRequestWithdrawn, watchSettings, type Asked, type CapturePreview,
-         type SavedSettings, type Snapshot } from './platform';
+import { command, isTauri, videoSource, watchCapture, watchCopied, watchMenuCopy, watchRequestWithdrawn, watchSettings, type Asked,
+         type CapturePreview, type SavedSettings, type Snapshot } from './platform';
+import { clock, everything, moveEdge, playFrom, whole, type Trim } from './trim';
 import { MAX_BASE64, describeMarks, resultText, sendSize } from './send';
 import { suggestedName } from './names';
 import { ago } from './ago';
@@ -15,9 +16,9 @@ import { BACKGROUNDS, BAR_COLOURS, DEFAULT_FRAME, LIGHTS_SVG, backgroundOf, cssB
          sanitizeFrame, type FrameStyle } from './frame';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, LOOKS, hexColour, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
-         FONT, arrowPaint, badgeAt, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isShape, numbered,
+         FONT, arrowPaint, badgeAt, blockSize, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isShape, numbered,
          outsetOps, pathData, polygonPath, stepArrow, stepList, strokePath, styleOf, takesLooks, textSize,
-         type Annotation, type ArrowStyle, type Look, type NoteMode, type Point, type ShapeFill, type Tool } from './annotations';
+         type Annotation, type ArrowStyle, type Look, type NoteMode, type Point, type Shape, type ShapeFill, type Tool } from './annotations';
 
 /** Each style's button previews itself, drawn from the geometry it will draw
  *  with, so a picker cannot come to misrepresent what it picks. */
@@ -119,8 +120,8 @@ function toolCursor(tool: Tool, numbering: boolean, style: ArrowStyle, color: st
 }
 
 /** Captures kept after they leave the editor, newest first. Memory only: this
- *  is an undo for closing, not a library. */
-interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number }
+ *  is an undo for closing, not a library. A recording keeps its trim. */
+interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number; trim?: Trim }
 const KEPT = 6;
 /** How many of them Recent's strip shows side by side; the rest scroll. */
 const STRIP = 4;
@@ -130,11 +131,12 @@ const KEPT_CHARS = 120_000_000;
 /** Six tools do not fit as words, so the palette is glyphs with real labels
  *  behind them for screen readers and tooltips. */
 const STROKE = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
-/** The four ways into a capture. Part of the screen, one window, all of it, and
+/** The ways into a capture. Part of the screen, one window, all of it, and
  *  part of it later: a frame, a window, a filled display, and a stopwatch, so
  *  the set reads as four answers to the same question rather than four
- *  unrelated pictures. */
-type CaptureMode = 'region' | 'window' | 'display' | 'timed';
+ *  unrelated pictures. And a fifth that is a different kind of thing, a
+ *  recording, on a row of its own. */
+type CaptureMode = 'region' | 'window' | 'display' | 'timed' | 'record';
 /** `tile` is the word on the empty state's tiles and `does` the few words
  *  under it, short enough for two to a row in the smallest window; `tip` says
  *  it in full where there is room, in the Capture menu. */
@@ -153,6 +155,9 @@ const CAPTURE_MODES: { mode: CaptureMode; name: string; tile: string; does: stri
   { mode: 'timed', name: 'Timed Region', tile: 'Timed', does: 'A region, five seconds later', tip: 'Choose a region, then capture it five seconds later', hint: '5s', art:
     `<circle cx="10" cy="11.4" r="5.4" ${STROKE}/>`
     + `<path d="M10 8.4v3l2.1 1.3M8.1 3.4h3.8M10 3.4v2.6" ${STROKE}/>` },
+  { mode: 'record', name: 'Record Video', tile: 'Record', does: 'A short video of part of the screen, a window or all of it', tip: 'Record part of the screen, a window or all of it', hint: '', art:
+    `<circle cx="10" cy="10" r="6.4" ${STROKE}/>`
+    + `<circle class="record-dot" cx="10" cy="10" r="3.2" fill="currentColor"/>` },
 ];
 
 /** A numbered mark's badge, small enough to sit in a 20-unit glyph. */
@@ -335,6 +340,7 @@ app.innerHTML = `
       <div class="chrome" aria-hidden="true" hidden></div>
       <div class="stage" hidden>
         <img class="capture" alt="Captured screenshot" draggable="false" />
+        <video class="movie" playsinline preload="auto" hidden></video>
         <svg class="overlay" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Arrow annotations"></svg>
       </div>
     </div></div>
@@ -362,6 +368,23 @@ app.innerHTML = `
       <p class="quit-hint" hidden>Mark lives in the menu bar · ⌘, settings · ⌘W hides it · ⌘Q quits</p>
     </section>
   </main>
+  </div>
+  <!-- A recording's player and trim: play, and the part to keep, between two
+       handles over a strip of its frames. Its height is STRIP in recording.rs. -->
+  <div class="trim" hidden>
+    <button class="play glassy icon" type="button" aria-label="Play" title="Play (Space)">
+      <svg class="when-paused" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 4.6v10.8L15.4 10z" fill="currentColor"/></svg>
+      <svg class="when-playing" viewBox="0 0 20 20" aria-hidden="true" hidden><path d="M6 4.6h2.8v10.8H6zM11.2 4.6H14v10.8h-2.8z" fill="currentColor"/></svg>
+    </button>
+    <div class="strip">
+      <div class="frames"></div>
+      <div class="kept"></div>
+      <div class="playhead"></div>
+      <span class="mark-at" hidden title="When the selected mark appears: drag to change it"></span>
+      <span class="edge" data-edge="start" role="slider" tabindex="0" aria-label="Start of the part to keep" title="Drag to trim the start (I)"></span>
+      <span class="edge" data-edge="end" role="slider" tabindex="0" aria-label="End of the part to keep" title="Drag to trim the end (O)"></span>
+    </div>
+    <span class="trim-time"></span>
   </div>
   <aside class="message" role="status" aria-live="polite" hidden><span></span><button class="settings" hidden>Open System Settings</button></aside>
   <aside class="steps" hidden aria-label="Steps">
@@ -421,6 +444,7 @@ app.innerHTML = `
     <button class="save glassy icon" type="button" title="Save to a file (⌘S)" aria-label="Save to a file">
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.8v9M6.8 8.6 10 11.8l3.2-3.2"/><path d="M3.4 14v2.2a1.4 1.4 0 0 0 1.4 1.4h10.4a1.4 1.4 0 0 0 1.4-1.4V14"/></svg>
     </button>
+    <button class="save-gif glassy" type="button" title="Save as a GIF that loops (⌥⌘S)" hidden>GIF</button>
     <button class="copy-text glassy icon" type="button" aria-label="Copy text"
       title="Copy the text in the image, or in the selected box (⇧⌘T)">
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.6V4.8A1.8 1.8 0 0 1 4.8 3h1.8M13.4 3h1.8A1.8 1.8 0 0 1 17 4.8v1.8M17 13.4v1.8a1.8 1.8 0 0 1-1.8 1.8h-1.8M6.6 17H4.8A1.8 1.8 0 0 1 3 15.2v-1.8"/><path d="M6.8 7.6h6.4M6.8 10.2h6.4M6.8 12.8h3.8"/></svg>
@@ -501,6 +525,18 @@ const closeButton = app.querySelector<HTMLButtonElement>('.close-capture')!;
 const shareButton = app.querySelector<HTMLButtonElement>('.share')!;
 const saveButton = app.querySelector<HTMLButtonElement>('.save')!;
 const copyTextButton = app.querySelector<HTMLButtonElement>('.copy-text')!;
+const gifButton = app.querySelector<HTMLButtonElement>('.save-gif')!;
+const movie = app.querySelector<HTMLVideoElement>('.movie')!;
+const trimBar = app.querySelector<HTMLElement>('.trim')!;
+const playButton = trimBar.querySelector<HTMLButtonElement>('.play')!;
+const strip = trimBar.querySelector<HTMLElement>('.strip')!;
+const stripFrames = strip.querySelector<HTMLElement>('.frames')!;
+const kept = strip.querySelector<HTMLElement>('.kept')!;
+const playhead = strip.querySelector<HTMLElement>('.playhead')!;
+const trimTime = trimBar.querySelector<HTMLElement>('.trim-time')!;
+const markAt = strip.querySelector<HTMLElement>('.mark-at')!;
+/** The crop tool's own group at the foot of the rail. */
+const cropGroup = rail.querySelectorAll<HTMLElement>('.tool-group')[1];
 const start = app.querySelector<HTMLButtonElement>('.start')!;
 const modeTiles = [...app.querySelectorAll<HTMLButtonElement>('.mode')];
 const choose = app.querySelector<HTMLButtonElement>('.choose')!;
@@ -522,6 +558,10 @@ const cropApply = app.querySelector<HTMLButtonElement>('.crop-apply')!;
 const abort = new AbortController();
 const cleanups: (() => void)[] = [];
 let capture: CapturePreview | null = null;
+/** The part of the recording open, if one is, that Copy, Save and Share take. */
+let trim: Trim | null = null;
+/** Whether this Mac can record, which Rust says once: macOS 15 or later. */
+let recordable = false;
 /** An AI tool's ask, while one waits for a screenshot. */
 let request: Asked | null = null;
 /** How a capture is framed: kept by Rust in the app, for the session in the preview. */
@@ -1005,7 +1045,7 @@ function syncTools() {
   const shaping = source ? fillable(source) : layer.tool === 'box' || layer.tool === 'ellipse';
   fills.hidden = !shaping;
   // With Redact in hand, the one that finds what to redact by itself.
-  hideButton.hidden = layer.tool !== 'redact';
+  hideButton.hidden = layer.tool !== 'redact' || !!capture?.video;
   if (source && fillable(source)) layer.style.fill = fillOf(source);
   // Selecting a numbered mark puts its slot on the numbered variant, so the rail
   // goes on describing the next edit the way the toolbar's pickers do.
@@ -1077,13 +1117,22 @@ function syncTools() {
   removeButton.disabled = picked.length === 0 || layer.isEditing;
   backButton.disabled = frontButton.disabled = picked.length === 0 || layer.isEditing;
   for (const group of [tools, styles, fills]) placeLens(group);
+  // On a recording, the strip says when the mark selected appears.
+  if (capture?.video) drawTrim();
 }
 
 function render() {
-  if (isTauri) void command('set_glass', { visible: !!capture }).catch(() => {});
+  const video = capture?.video ?? null;
+  // The glass is under the toolbar and the rail -- and the crop tool, which a
+  // recording goes without.
+  if (isTauri) void command('set_glass', { visible: !!capture, crop: !video }).catch(() => {});
   stage.hidden = !capture;
   toolbar.hidden = !capture;
   rail.hidden = !capture;
+  cropGroup.hidden = !!video;
+  if (video && layer.tool === 'crop') wear(0, worn[0]);
+  trimBar.hidden = !video;
+  app.classList.toggle('video', !!video);
   empty.hidden = !!capture;
   if (capture) {
     // A different capture means a different drawing surface. A crop swaps the
@@ -1095,21 +1144,25 @@ function render() {
       layer.density = capture.scale ?? 1;
       layer.setImage(capture.width, capture.height);
       shown = capture; shownAt = Date.now(); mustFlatten = false; crops.length = 0; zoom = startingZoom(capture);
+      showMovie(capture);
       // A different capture is a differently sized window, so a position chosen
       // for the last one means nothing here.
       delete stepsPanel.dataset.moved;
       stepsPanel.style.left = ''; stepsPanel.style.top = ''; stepsPanel.style.bottom = '';
     }
-    image.alt = `Captured screenshot, ${capture.width} by ${capture.height} pixels`;
+    image.alt = video ? `First frame of a recording, ${capture.width} by ${capture.height} pixels`
+      : `Captured screenshot, ${capture.width} by ${capture.height} pixels`;
   } else {
     // The capture is on its way out, so keep it before the layer is reset.
     if (shown) { remember(shown); shown = null; mustFlatten = false; crops.length = 0; }
     image.removeAttribute('src');
+    showMovie(null);
   }
   drawRecents();
   // Framed, the size is the size of what will be copied.
   const framedSize = capture && frame.on ? frameGeometry(capture.width, capture.height, capture.scale ?? 1, frame) : null;
   app.querySelector('.dimensions')!.textContent = !capture ? ''
+    : video ? `${capture.width} × ${capture.height} px · ${clock(video.duration)}`
     : framedSize ? `${framedSize.width} × ${framedSize.height} px, framed` : `${capture.width} × ${capture.height} px`;
   if (!capture) closeFramePanel();
   // With nothing captured every control in the footer is hidden, which left an
@@ -1119,13 +1172,24 @@ function render() {
   copyOnly.hidden = closeButton.hidden = !capture;
   shareButton.hidden = saveButton.hidden = !capture || !isTauri;
   app.querySelector<HTMLElement>('.exports')!.hidden = !capture || !isTauri;
-  shareButton.disabled = saveButton.disabled = copyTextButton.disabled = busy || copyPending;
-  zoomSelect.parentElement!.hidden = !capture;
+  shareButton.disabled = saveButton.disabled = copyTextButton.disabled = gifButton.disabled = busy || copyPending;
+  // A recording is played, trimmed and sent on, not drawn on, framed or read.
+  copyTextButton.hidden = !!video;
+  gifButton.hidden = !video || !isTauri;
+  frameButton.hidden = !!video;
+  copyOnly.dataset.tip = video ? 'Copy the recording and keep working' : 'Copy the image and keep working';
+  zoomSelect.parentElement!.hidden = !capture || !!video;
   applyZoom();
   copy.disabled = busy || copyPending;
   copyOnly.disabled = closeButton.disabled = busy || copyPending;
   // The preview has no screen to capture, so it has one way in: a file.
-  for (const tile of modeTiles) { tile.disabled = busy; if (tile !== start) tile.hidden = !isTauri; }
+  // Recording needs macOS 15, and waits while an AI tool waits for a screenshot.
+  const canRecord = isTauri && recordable && !request;
+  for (const tile of modeTiles) {
+    tile.disabled = busy;
+    if (tile !== start) tile.hidden = !isTauri || (tile.dataset.start === 'record' && !canRecord);
+  }
+  captureMenu.querySelector<HTMLElement>('[data-mode="record"]')!.hidden = !canRecord;
   start.querySelector('.mode-name')!.textContent = isTauri ? (busy ? 'Selecting…' : 'Region') : 'Choose image…';
   start.querySelector('kbd')!.hidden = !isTauri;
   // An AI tool's ask, while it waits: the bar says who asked and for what --
@@ -1146,7 +1210,7 @@ function render() {
     tile.classList.toggle('primary', first);
     tile.classList.toggle('glassy', !first);
   }
-  copyLabel.textContent = request ? `Send to ${request.client}` : 'Copy and Close';
+  copyLabel.textContent = request && !video ? `Send to ${request.client}` : 'Copy and Close';
   countDown();
   syncTools();
 }
@@ -1220,6 +1284,7 @@ async function flatten(framed = frame.on, size?: { width: number; height: number
  *  on screen, crop and annotations included. */
 async function exportImage(via: 'save_image' | 'share_image') {
   if (!capture || busy || copyPending) return;
+  if (capture.video) { await exportVideo(via === 'save_image' ? 'save' : 'share'); return; }
   copyPending = true; render();
   try {
     const png = (await flatten()).toDataURL('image/png').split(',')[1];
@@ -1227,6 +1292,282 @@ async function exportImage(via: 'save_image' | 'share_image') {
     if (via === 'save_image') flash(saved ? `Saved as ${saved}.` : 'Not saved.');
   } catch (error) { report(error); }
   finally { copyPending = false; render(); }
+}
+
+// ---- a recording ----------------------------------------------------------------
+/** A recording plays where a screenshot would be drawn on: the movie over its
+ *  own first frame, which is what stands for it in Recent and is there while
+ *  the movie loads. Under it, the trim: the part between the handles is what
+ *  Copy, Save and Share take, and what plays, round and round. */
+
+/** Which recording's frames the strip holds, so frames arriving late for one
+ *  since closed are not shown under the next. */
+let framesFor = 0;
+async function loadFrames(id: number) {
+  framesFor = id;
+  stripFrames.replaceChildren();
+  const frames = await command<string[]>('video_frames', { id, count: 10 }).catch(() => [] as string[]);
+  if (framesFor !== id) return;
+  stripFrames.replaceChildren(...frames.map(url => Object.assign(new Image(), { src: url, alt: '' })));
+}
+
+/** Put a recording in the player, kept as `keep` says or all of it -- or, for
+ *  anything else, take the player down. */
+function showMovie(next: CapturePreview | null, keep?: Trim) {
+  const video = next?.video ?? null;
+  movie.pause();
+  // Marks on a recording are shown from the moment they are drawn at, so the
+  // layer stamps each with the playhead's time and shows only those due.
+  layer.live = !!video;
+  layer.stamp = video ? () => ({ at: Math.round(movie.currentTime * 1000) / 1000 }) : null;
+  layer.showing = video ? item => (item.at ?? 0) <= movie.currentTime + DUE : null;
+  shownMarks = '';
+  if (!video) {
+    movie.hidden = true;
+    if (movie.hasAttribute('src')) { movie.removeAttribute('src'); movie.removeAttribute('poster'); movie.load(); }
+    trim = null; framesFor = 0; stripFrames.replaceChildren();
+    return;
+  }
+  movie.hidden = false;
+  movie.poster = next!.dataUrl;
+  movie.src = videoSource(video.path);
+  trim = keep ? { ...keep } : everything(video.duration);
+  void loadFrames(video.id);
+  drawTrim();
+}
+on(movie, 'loadedmetadata', () => { if (trim) movie.currentTime = trim.start; drawTrim(); });
+// Drawing on a recording that is playing stops it there, so the mark is
+// stamped with the frame it was drawn on, and stays still to be drawn.
+overlay.addEventListener('pointerdown', () => { if (capture?.video && !movie.paused) movie.pause(); },
+                         { capture: true, signal: abort.signal });
+
+/** A mark is due a frame early rather than a frame late: drawn at a moment,
+ *  it is on that moment's frame. */
+const DUE = 1 / 60;
+/** Which marks the layer last drew, so it redraws only when that changes. */
+let shownMarks = '';
+function showDueMarks() {
+  const due = layer.annotations.filter(item => layer.showing?.(item) ?? true).map(item => item.id).join(',');
+  if (due !== shownMarks) { shownMarks = due; layer.render(); }
+}
+
+/** The handles, the shading outside them, the playhead and the time, from
+ *  the trim and where the movie is -- and the marks due by then, and when the
+ *  one selected appears. */
+function drawTrim() {
+  const video = capture?.video;
+  if (!video || !trim) return;
+  showDueMarks();
+  const one = layer.selection.length === 1 ? layer.selection[0] : null;
+  markAt.hidden = !one;
+  if (one && draggingAt === null) {
+    markAt.style.left = `${Math.min(100, Math.max(0, ((one.at ?? 0) / (video.duration || 1)) * 100))}%`;
+    markAt.dataset.tip = `Appears at ${clock(one.at ?? 0)}: drag to change it`;
+  }
+  const length = video.duration || 1;
+  const at = (seconds: number) => `${Math.min(100, Math.max(0, (seconds / length) * 100))}%`;
+  kept.style.left = at(trim.start);
+  kept.style.right = `calc(100% - ${at(trim.end)})`;
+  for (const edge of strip.querySelectorAll<HTMLElement>('.edge')) {
+    const seconds = edge.dataset.edge === 'start' ? trim.start : trim.end;
+    edge.style.left = at(seconds);
+    edge.setAttribute('aria-valuemin', '0');
+    edge.setAttribute('aria-valuemax', String(length));
+    edge.setAttribute('aria-valuenow', String(seconds));
+    edge.setAttribute('aria-valuetext', clock(seconds));
+  }
+  playhead.style.left = at(movie.currentTime || trim.start);
+  const playing = !movie.paused;
+  playButton.classList.toggle('playing', playing);
+  playButton.querySelector('.when-paused')!.toggleAttribute('hidden', playing);
+  playButton.querySelector('.when-playing')!.toggleAttribute('hidden', !playing);
+  playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  playButton.dataset.tip = playing ? 'Pause (Space)' : 'Play (Space)';
+  trimTime.textContent = whole(trim, length) ? clock(length) : `${clock(trim.end - trim.start)} of ${clock(length)}`;
+  trimBar.classList.toggle('trimmed', !whole(trim, length));
+}
+
+/** Playing, the playhead moves every frame, and at the end of the part kept
+ *  goes back to its start. */
+function follow() {
+  if (movie.paused || !trim) return;
+  if (movie.currentTime >= trim.end - 0.01) movie.currentTime = trim.start;
+  drawTrim();
+  requestAnimationFrame(follow);
+}
+on(movie, 'play', () => { drawTrim(); requestAnimationFrame(follow); });
+on(movie, 'pause', () => drawTrim());
+on(movie, 'ended', () => { if (trim) { movie.currentTime = trim.start; void movie.play().catch(() => {}); } });
+
+function togglePlay() {
+  if (!trim || movie.hidden) return;
+  if (movie.paused) {
+    movie.currentTime = playFrom(movie.currentTime, trim);
+    void movie.play().catch(report);
+  } else movie.pause();
+}
+on(playButton, 'click', () => togglePlay());
+
+/** Move one end of the part kept, and show the frame it is now on. */
+function setEdge(edge: 'start' | 'end', seconds: number) {
+  const video = capture?.video;
+  if (!video || !trim) return;
+  trim = moveEdge(trim, edge, seconds, video.duration);
+  movie.pause();
+  movie.currentTime = edge === 'start' ? trim.start : trim.end;
+  drawTrim();
+}
+
+/** Where on the strip a pointer is, in seconds into the recording. */
+function stripTime(event: PointerEvent): number {
+  const box = strip.getBoundingClientRect();
+  return Math.min(1, Math.max(0, (event.clientX - box.left) / Math.max(box.width, 1))) * (capture?.video?.duration ?? 0);
+}
+/** A handle is dragged; anywhere else on the strip moves the playhead there. */
+let dragging: 'start' | 'end' | 'seek' | 'mark' | null = null;
+/** Where the selected mark's time is being dragged to, until it is let go. */
+let draggingAt: number | null = null;
+on(strip, 'pointerdown', event => {
+  if (!capture?.video || event.button !== 0) return;
+  event.preventDefault();
+  if ((event.target as Element).closest('.mark-at')) {
+    dragging = 'mark'; draggingAt = stripTime(event);
+    strip.setPointerCapture(event.pointerId);
+    return;
+  }
+  const edge = (event.target as Element).closest<HTMLElement>('.edge')?.dataset.edge as 'start' | 'end' | undefined;
+  dragging = edge ?? 'seek';
+  strip.setPointerCapture(event.pointerId);
+  if (!edge) { movie.currentTime = stripTime(event); drawTrim(); }
+});
+on(strip, 'pointermove', event => {
+  if (!dragging) return;
+  if (dragging === 'mark') {
+    // Shows the frame it will now appear on, and moves when let go: one undo.
+    draggingAt = stripTime(event);
+    movie.currentTime = draggingAt;
+    markAt.style.left = `${(draggingAt / (capture!.video!.duration || 1)) * 100}%`;
+    drawTrim();
+  } else if (dragging === 'seek') { movie.currentTime = stripTime(event); drawTrim(); }
+  else setEdge(dragging, stripTime(event));
+});
+const letGo = (event: PointerEvent) => {
+  const one = layer.selection.length === 1 ? layer.selection[0] : null;
+  if (dragging === 'mark' && draggingAt !== null && one) layer.retime(one.id, Math.round(draggingAt * 1000) / 1000);
+  dragging = null; draggingAt = null;
+  drawTrim();
+  if (strip.hasPointerCapture(event.pointerId)) strip.releasePointerCapture(event.pointerId);
+};
+on(strip, 'pointerup', letGo);
+on(strip, 'pointercancel', letGo);
+/** A handle with the keyboard: a tenth of a second at a time, a second with Shift. */
+on(strip, 'keydown', event => {
+  const edge = (event.target as Element).closest<HTMLElement>('.edge')?.dataset.edge as 'start' | 'end' | undefined;
+  if (!edge || !trim || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+  event.preventDefault();
+  const step = (event.shiftKey ? 1 : 0.1) * (event.key === 'ArrowLeft' ? -1 : 1);
+  setEdge(edge, trim[edge] + step);
+});
+
+/** The name the movie was recorded under, which Save offers again, as what
+ *  it is being saved as. */
+function videoName(extension: string): string {
+  const file = capture?.video?.path.split('/').pop() ?? '';
+  const stem = file.replace(/\.mp4$/i, '');
+  return stem ? `${stem}.${extension}` : suggestedName(new Date(shownAt || Date.now()), extension);
+}
+
+/** Copy: the movie, or the part kept, on the clipboard as a file -- which a
+ *  message, a mail or a chat takes as an attachment. A trim is made first,
+ *  which takes a moment for a long one. */
+async function copyVideo(close: boolean) {
+  const video = capture?.video;
+  if (!video || busy || copyPending) return;
+  const part = trim ?? everything(video.duration);
+  movie.pause();
+  copyPending = true; render(); showMessage(null);
+  const marks = videoMarks();
+  const trimming = marks ? working('Drawing the marks into the recording…')
+    : whole(part, video.duration) ? null : working('Trimming the recording…');
+  try {
+    await command('copy_video', { id: video.id, start: part.start, end: part.end, close, marks });
+    if (close) { capture = null; showMessage(null); }
+    else flash('Copied the recording. Paste it into a message, a mail or a chat.');
+  } catch (error) { report(error); }
+  finally { trimming?.(); copyPending = false; render(); }
+}
+
+/** Save, as a movie or as a GIF that loops, or Share: the part kept. */
+async function exportVideo(how: 'save' | 'gif' | 'share') {
+  const video = capture?.video;
+  if (!video || busy || copyPending || !isTauri) return;
+  const part = trim ?? everything(video.duration);
+  movie.pause();
+  copyPending = true; render();
+  const marks = videoMarks();
+  try {
+    if (how === 'share') await command('share_video', { id: video.id, start: part.start, end: part.end, marks });
+    else {
+      const saved = await command<string | null>('save_video', {
+        id: video.id, start: part.start, end: part.end, gif: how === 'gif', name: videoName(how === 'gif' ? 'gif' : 'mp4'), marks,
+      });
+      flash(saved ? `Saved as ${saved}.` : 'Not saved.');
+    }
+  } catch (error) { report(error); }
+  finally { copyPending = false; render(); }
+}
+
+/** The keys a recording answers to before a screenshot's: playing, trimming,
+ *  and copying and saving it as a movie. False hands the key on to what a
+ *  screenshot answers to -- drawing, undo, selecting, Escape -- less what a
+ *  recording goes without: cropping, zooming, Copy Text, Hide Sensitive. */
+function videoKey(event: KeyboardEvent, key: string): boolean {
+  const commanded = event.metaKey || event.ctrlKey;
+  const done = (act: () => void) => { event.preventDefault(); act(); return true; };
+  const without = () => { event.preventDefault(); return true; };
+  // A focused button takes Space itself, and would be pressed twice.
+  if (key === ' ' && !commanded) return event.target instanceof HTMLButtonElement ? true : done(togglePlay);
+  if (!commanded && !event.altKey && !event.shiftKey && key === 'i') return done(() => setEdge('start', movie.currentTime));
+  if (!commanded && !event.altKey && !event.shiftKey && key === 'o') return done(() => setEdge('end', movie.currentTime));
+  if (!commanded && key === 'c') return without();
+  if (commanded && event.altKey && (event.code === 'KeyC' || key === 'c' || key === 'ç')) return done(primary);
+  if (commanded && key === 'c') return done(() => { void copyVideo(false); });
+  if (commanded && event.altKey && (event.code === 'KeyS' || key === 's' || key === 'ß')) return done(() => { void exportVideo('gif'); });
+  if (commanded && key === 's') return done(() => { void exportVideo(event.shiftKey ? 'share' : 'save'); });
+  if (commanded && ['=', '+', '-', '0', '1'].includes(key)) return without();
+  if (commanded && event.shiftKey && (key === 't' || key === 'r')) return without();
+  return false;
+}
+
+/** What is drawn on a recording, as Rust draws it into every frame: one
+ *  picture of the marks for each moment a mark appears at -- all of those due
+ *  by then, numbered as among all of them -- and each redaction, which Rust
+ *  pixelates afresh in every frame, since a recording's pixels change under it.
+ *  None when nothing is drawn, so the movie goes as it was. */
+interface VideoMarks {
+  overlays: { at: number; png: string }[];
+  redactions: { x: number; y: number; width: number; height: number; at: number; block: number }[];
+}
+function videoMarks(): VideoMarks | null {
+  if (!capture?.video) return null;
+  const drawn = layer.annotations.filter(item => item.kind !== 'redact');
+  const hidden = layer.annotations.filter((item): item is Shape => item.kind === 'redact');
+  if (!drawn.length && !hidden.length) return null;
+  const { width, height } = capture;
+  const moments = [...new Set(drawn.map(item => item.at ?? 0))].sort((a, b) => a - b);
+  const overlays = moments.map(at => {
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    drawAnnotations(canvas.getContext('2d')!, drawn, {
+      notes: layer.notes, density: layer.density, width, height, showing: item => (item.at ?? 0) <= at,
+    });
+    return { at, png: canvas.toDataURL('image/png').split(',')[1] };
+  });
+  const redactions = hidden.map(shape => ({
+    x: Math.min(shape.x, shape.x + shape.width), y: Math.min(shape.y, shape.y + shape.height),
+    width: Math.abs(shape.width), height: Math.abs(shape.height), at: shape.at ?? 0, block: blockSize(shape.weight),
+  }));
+  return { overlays, redactions };
 }
 
 /** A box, ellipse or highlight on its own in the selection: Copy Text then
@@ -1290,6 +1631,7 @@ async function hideSensitive() {
 
 async function copyCapture(close = true) {
   if (!capture || busy || copyPending) return;
+  if (capture.video) { await copyVideo(close); return; }
   // The image is what goes to the clipboard, whatever is selected. Anything
   // selected is held as well, so copying a mark and pasting it works the way
   // it does everywhere else -- in this capture, or the next.
@@ -1356,7 +1698,8 @@ async function send() {
  *  action: it sends while an AI tool's ask waits, and copies and closes
  *  otherwise. One function, so no way to it can do the other thing. */
 function primary() {
-  if (request) void send(); else void copyCapture(true);
+  // An ask is for a screenshot: a recording open meanwhile is copied as ever.
+  if (request && !capture?.video) void send(); else void copyCapture(true);
 }
 
 function on<K extends keyof HTMLElementEventMap>(element: HTMLElement, name: K, handler: (event: HTMLElementEventMap[K]) => void) {
@@ -1373,6 +1716,7 @@ on(copyOnly, 'click', () => { void copyCapture(false); });
 // ⌘W's button: out without copying, and nothing lost, since what closes waits in Recent.
 on(closeButton, 'click', () => { void dismiss().catch(report); });
 on(saveButton, 'click', () => { void exportImage('save_image'); });
+on(gifButton, 'click', () => { void exportVideo('gif'); });
 on(copyTextButton, 'click', () => { void copyText(); });
 on(hideButton, 'click', () => { void hideSensitive(); });
 on(shareButton, 'click', () => { void exportImage('share_image'); });
@@ -1750,7 +2094,7 @@ function applyZoom() {
  *  Says whether it laid the stage out; off, the backdrop and the card are no
  *  boxes at all and the stage is left to lay out as it always has. */
 function layoutFrame(): boolean {
-  const on = frame.on && !!capture;
+  const on = frame.on && !!capture && !capture.video;
   canvasArea.classList.toggle('framed', on);
   if (!on) {
     for (const element of [backdrop, card, chrome]) element.removeAttribute('style');
@@ -1888,6 +2232,7 @@ function startCapture(mode: CaptureMode) {
   if (!isTauri) { input.click(); return; }
   const call = mode === 'display' ? command('capture_display', {})
     : mode === 'window' ? command('capture_region', { window: true })
+    : mode === 'record' ? command('capture_region', { record: true })
     : command('capture_region', mode === 'timed' ? { delay: 5 } : {});
   void call.catch(report);
 }
@@ -1918,7 +2263,8 @@ function thumbnail(source = image, annotations = layer.annotations, density = la
 /** Hold on to a capture that is leaving the editor. */
 function remember(leaving: CapturePreview) {
   if (!image.complete || !image.naturalWidth) return;
-  keep({ capture: leaving, thumb: thumbnail(), at: shownAt, annotations: layer.annotations.map(item => ({ ...item })) });
+  keep({ capture: leaving, thumb: thumbnail(), at: shownAt, annotations: layer.annotations.map(item => ({ ...item })),
+         trim: leaving.video && trim ? { ...trim } : undefined });
 }
 
 /** Captures copied straight from the overlay, which the editor never showed,
@@ -1960,6 +2306,7 @@ function restore(entry: Past) {
   layer.load(entry.annotations);
   shown = entry.capture; shownAt = entry.at;
   zoom = startingZoom(entry.capture);
+  showMovie(entry.capture, entry.trim);
   render();
 }
 
@@ -1974,10 +2321,12 @@ function drawRecents() {
   const now = Date.now();
   recentList.replaceChildren(...past.map(entry => {
     const size = `${entry.capture.width} × ${entry.capture.height}`;
+    const video = entry.capture.video;
+    const length = video ? clock(entry.trim ? entry.trim.end - entry.trim.start : video.duration) : '';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'recent';
-    button.dataset.tip = `Reopen this ${size} capture`;
+    button.dataset.tip = video ? `Reopen this ${length} recording` : `Reopen this ${size} capture`;
     const thumb = document.createElement('img');
     thumb.src = entry.thumb; thumb.alt = '';
     const when = document.createElement('time');
@@ -1986,8 +2335,15 @@ function drawRecents() {
     when.textContent = ago(entry.at, now);
     const spoken = document.createElement('span');
     spoken.className = 'sr';
-    spoken.textContent = `, ${size}`;
+    spoken.textContent = video ? `, a recording ${length} long` : `, ${size}`;
     button.append(thumb, when, spoken);
+    if (video) {
+      const badge = document.createElement('span');
+      badge.className = 'recent-length';
+      badge.setAttribute('aria-hidden', 'true');
+      badge.innerHTML = `<svg viewBox="0 0 10 10"><path d="M3 2v6l5-3z"/></svg>${length}`;
+      button.append(badge);
+    }
     button.addEventListener('click', () => restore(entry), { signal: abort.signal });
     return button;
   }));
@@ -2113,6 +2469,7 @@ document.addEventListener('keydown', event => {
         && ((key === 'z' && !emptyField)
             || (!event.shiftKey && !event.altKey && ['a', 'c', 'v', 'x'].includes(key))));
   if (typing && fieldKey) return;
+  if (capture?.video && !typing && !layer.pendingCrop && videoKey(event, key)) return;
   if (key === 'escape') {
     // Escape backs out one level: the crop, then the selection, then the editor.
     event.preventDefault();
@@ -2217,6 +2574,7 @@ async function init() {
     const gear = app.querySelector<HTMLButtonElement>('.settings-button')!;
     gear.hidden = false;
     on(gear, 'click', () => { void command('open_settings').catch(report); });
+    void command<boolean>('recording_supported').then(can => { recordable = can === true; render(); }).catch(() => {});
     void command<Partial<SavedSettings>>('get_settings').then(saved => {
       frame = sanitizeFrame(saved?.frame); syncFramePanel(); render();
       if (saved) showShortcuts(saved);

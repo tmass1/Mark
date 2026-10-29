@@ -99,18 +99,22 @@ notarization; an Apple Development certificate is only good for this Mac.
    start is deliberately silent, while every other launch still opens the
    editor, because a start with no window at all reads as a failed launch.
 2. Press **⌘4**, choose **Capture Region** or **Capture Window** from Mark's
-   menu, or pick one of the four tiles the editor opens on: **Region**,
+   menu, or pick one of the tiles the editor opens on: **Region**,
    **Window**, **Screen** — the display the pointer is on, grabbed straight
    away with no overlay — and **Timed**, which opens the overlay with a five
-   second delay already armed. The **Capture** button in the editor's title
-   bar offers the same four, and stays put while a capture is open, so a
-   second shot does not mean closing the first. Each of the four can have a
-   shortcut of its own, chosen in **Settings** (⌘,): Region's is ⌘4, and the
-   others have none until you pick one, since a key taken for the whole Mac
-   is a key taken from every other app. Two ways can't share a key, and ⌫ in
-   a recorder clears its shortcut — Region's goes back to ⌘4.
-3. Grant Screen Recording access when macOS asks. This permission is also used
-   for still screenshots; Mark does not capture audio or video.
+   second delay already armed. On macOS 15 or later a fifth, **Record**, on a
+   row of its own, records rather than takes a picture (step 11). The
+   **Capture** button in the editor's title bar offers the same ways, and
+   stays put while a capture is open, so a second shot does not mean closing
+   the first. Each can have a shortcut of its own, chosen in **Settings**
+   (⌘,): Region's is ⌘4, and the others have none until you pick one, since a
+   key taken for the whole Mac is a key taken from every other app. Two ways
+   can't share a key, and ⌫ in a recorder clears its shortcut — Region's goes
+   back to ⌘4.
+3. Grant Screen Recording access when macOS asks: Mark needs it for still
+   screenshots and recordings alike. It records the microphone only when you
+   turn it on for a recording, and macOS asks about that separately, the first
+   time.
 4. Drag to select a region. Guides run the full width and height of the display
    through the pointer while you aim, so an edge can be lined up with something
    on the far side of the screen; they step aside once the region is settled,
@@ -402,8 +406,10 @@ notarization; an Apple Development certificate is only good for this Mac.
 9. A closed capture is not gone. **Recent** on the empty state holds the last
    six, drawing and all, so closing one by accident costs a click rather than
    the shot. Four show across, each labelled with when it was taken; the rest
-   scroll. A capture copied straight from the overlay is there too. It lives in memory only and does not survive quitting Mark:
-   it is an undo for closing, not a library.
+   scroll. A capture copied straight from the overlay is there too, and so is a
+   recording, with its length on it, reopened trimmed as it was left. It lives
+   in memory only and does not survive quitting Mark: it is an undo for
+   closing, not a library.
 10. **A thumbnail instead of the editor.** With **Show a thumbnail instead of
     the editor** on in Settings, a capture taken from another app is copied at
     once and waits in the corner of the screen it came from, as macOS's own
@@ -419,7 +425,43 @@ notarization; an Apple Development certificate is only good for this Mac.
     full-screen app too. A capture taken while the editor is open, or one an
     AI tool asked for, opens in the editor as before. What the thumbnail copies
     and drags is the capture as taken: framing is the editor's.
-11. **Updates** come to Mark by themselves. It looks for a new version shortly
+11. **Short recordings.** On macOS 15 or later, press **Record** on the start
+    screen, choose **Record Video** from Mark's menu, or give it a shortcut in
+    Settings. The overlay opens as it does for a screenshot — drag out a
+    region, Space for a window, ⌘A for the whole display, the clock for a
+    delay — with **Record** in place of Capture and Copy, and a **microphone**
+    button beside the clock that is remembered from one recording to the next.
+    While it records, a small bar sits just outside what is being recorded,
+    with how long it has run, **Stop**, and **×** to throw it away, and a thin
+    line marks a region; neither is in the recording, since Mark leaves its
+    own windows out of it. The menu bar counts too, and Mark's menu offers
+    **Stop Recording**; Record Video's shortcut stops it as well, and so does
+    macOS's own recording indicator, which keeps what was recorded. A
+    recording stops by itself at five minutes. Clicks show as rings unless
+    **Show clicks in recordings** is off in Settings.
+
+    The editor then plays it, over a strip of its frames: drag the yellow
+    handles to keep only part of it, or press **I** and **O** to trim to the
+    playhead, and Space to play and pause; playing loops the part kept.
+    **Copy** puts the movie on the clipboard as a file, which Slack, Messages
+    and Mail take as an attachment. **Save** writes an MP4, **GIF** a GIF that
+    loops (15 frames a second, at most 1280 pixels across), and **Share** hands
+    it to the share sheet. Each takes only the part kept, trimmed to the frame.
+
+    Mark it up as you would a screenshot: arrows, boxes, numbered steps, text,
+    the pen, the highlighter and redaction. A mark appears from the moment it
+    was drawn at, so pause where it belongs and draw — drawing on a recording
+    that is playing pauses it there — and it stays to the end; drawn at 0:00,
+    it is there throughout. Select one and a blue flag on the strip says when
+    it appears; drag the flag to change it. A redaction is pixelated afresh in
+    every frame, since what is under it moves; the editor shows a block where
+    it will be. Copy, Save, GIF and Share draw the marks into the movie.
+    Cropping, the frame, Copy Text and Hide Sensitive are a screenshot's.
+    With the thumbnail on, a recording is
+    copied at once and its thumbnail drags out the MP4. Recordings are kept
+    only while Recent could reopen them, and cleared when Mark quits; Save the
+    ones to keep.
+12. **Updates** come to Mark by themselves. It looks for a new version shortly
     after it opens and once a day after that, and when there is one, Software
     Update says what changed and offers **Install and Relaunch**, **Remind Me
     Later** or **Skip This Version**. Installing downloads the new version,
@@ -549,7 +591,31 @@ default anyway.
   casts a shadow per call — which is what keeps the copy and the screen alike.
 - `src/platform.ts` is the only frontend boundary for native commands.
 - `src-tauri/src/capture.rs` owns region capture, PNG validation, cancellation,
-  and temporary-file cleanup.
+  and temporary-file cleanup. A recording is a capture too: its picture is the
+  movie's first frame, which is what Recent, the thumbnail and the window's
+  size go by, with the movie beside it.
+- `src-tauri/src/sck.rs` records with ScreenCaptureKit, straight to an MP4
+  through the recording output macOS 15 added. A region or a display is a
+  stream of the display with Mark's own app left out, so the overlay, the bar
+  and the outline are never in the movie; a window is that window alone,
+  wherever it moves. Whether recording is there at all is asked of the
+  runtime, so one build runs on macOS 13 and 14 with it left out.
+- `src-tauri/src/movie.rs` reads a finished recording back with AVFoundation:
+  its length and size, its first frame, the trim strip's frames, and a copy
+  of it, re-encoded, so it starts on the exact frame in any player, as an MP4
+  or a GIF through ImageIO. What was drawn goes into that copy through a Core
+  Image video composition: the editor sends a picture of the marks for each
+  moment one appears at, and each frame gets the latest one due laid over it,
+  after any redaction due is pixelated from that frame's own pixels. Frames
+  are timed in the recording's own seconds, so a trimmed copy keeps each
+  mark's moment. It also asks for the microphone.
+- `src-tauri/src/recording.rs` runs a recording from the overlay to the
+  editor: the bar and the outline, two more non-activating panels; the clock
+  in the menu bar; the five-minute limit; and the commands that copy, save and
+  share all of a recording or the part kept. Recordings live in a folder of
+  Mark's in the caches, each in its own, beside its last trim, for as long as
+  the editor could still reopen it, and the folder is emptied at launch.
+  The editor plays them through Tauri's asset protocol, scoped to that folder.
 - `src-tauri/src/macos.rs` contains the small AppKit/Core Graphics bridge for
   permissions, clipboard output, focus restoration, overlay window level,
   login-item registration, and the share sheet. Sharing hands over a file, and
@@ -738,9 +804,16 @@ a colour, or choosing another slot's way never changes what a mark is. Recent ca
 drawing through a close, for ordering, and for copying something restored after
 Rust has forgotten it. Zoom is covered for scaling, for the keyboard, for
 resetting on a new capture, and for drawing landing on the same image pixels
-whatever the zoom. Rust tests cover PNG preservation and validation,
+whatever the zoom. Recordings are covered for the player standing in for the
+tools, for the handles and I and O, for Copy, Save, GIF and Share taking the
+part kept, for a recording's round trip through Recent with its trim, for an
+ask never being answered with one, and for the overlay, the bar and Settings
+offering recording only where the Mac can. Rust tests cover PNG preservation and validation,
 cancellation/error classification, capture re-entry, child-process
-cancellation, and temporary cleanup.
+cancellation, and temporary cleanup -- and, on a two-second clip made by
+ffmpeg, AVFoundation reading a recording's length, size and sound, its poster
+and strip, an exact trim, and a GIF with a frame for each fifteenth of a
+second that loops.
 
 A stand-in for Tauri's bridge (`tests/bridge.ts`) lets the browser tests run the
 editor's real native path — `isTauri` true, the real `invoke`, the real plugin
@@ -753,7 +826,7 @@ while a drawing switches to the flattened path, and the overlay reporting its
 selection in global points — the display's own origin added, which is what keeps
 a second monitor from capturing whatever sits at those coordinates on the first.
 
-Five things no test can reach, because they need a real screen, a real pointer,
+Things no test can reach, because they need a real screen, a real pointer,
 or a restart:
 
 1. **Whole Screen** grabs the display the pointer is on, not another one.
@@ -765,6 +838,15 @@ or a restart:
 5. **Capture Window** takes the window alone: all of it where another window
    covers part of it, nothing of what is in front, no shadow, at the density
    of the display it is on.
+6. **Record Video** records a region, a window and a whole display; the bar
+   and the outline are never in the movie; Stop, the menu, the shortcut and
+   macOS's own indicator each stop it, × throws it away, and quitting
+   mid-recording leaves nothing behind. A build with the `record-selftest`
+   feature, run with `MARK_SELFTEST_RECORD` set to an area (or `window`),
+   records it with the editor laid over it and writes out the movie, its
+   poster, a trim and a GIF to check.
+7. A copied recording pastes into Slack, Messages and Mail as a video, and a
+   recording's thumbnail drags into Finder and Slack as the MP4.
 
 Beyond those, check the shortcut from another app, screen-access grant and
 denial, Copy and Close into Preview, cancellation with an existing editor,

@@ -18,17 +18,42 @@ declare global {
     __MARK_MODE__?: Mode;
     /** Where the pointer was as the overlay opened, in global points. */
     __MARK_POINTER__?: { x: number; y: number } | null;
+    /** "video" when what is picked is to be recorded rather than captured. */
+    __MARK_KIND__?: 'shot' | 'video';
+    /** For a recording, whether the microphone was on last time. */
+    __MARK_MIC__?: boolean;
   }
 }
 const display = window.__MARK_DISPLAY__ ?? { x: 0, y: 0, width: innerWidth, height: innerHeight, scale: 1 };
 const inTauri = '__TAURI_INTERNALS__' in window;
 const DELAYS = [0, 3, 5, 10];
 const windows = (window.__MARK_WINDOWS__ ?? []).filter(w => [w.x, w.y, w.width, w.height].every(Number.isFinite) && w.width > 0 && w.height > 0);
-const HINTS: Record<Mode, string> = {
+/** Picking something to record rather than to capture: the same overlay, with
+ *  Record in place of Capture and Copy, and the microphone beside the delay. */
+const recording = window.__MARK_KIND__ === 'video';
+/** A recording's first step: what it is to be of, before anything is aimed. */
+const CHOOSE_HINT = 'Choose what to record · Escape to cancel';
+const HINTS: Record<Mode, string> = recording ? {
+  region: 'Drag to select a region to record · Escape to cancel',
+  window: windows.length ? 'Click a window to record it · Escape to cancel' : 'No windows to record · Escape to cancel',
+} : {
   region: 'Drag to select a region · Space for a window · Escape to cancel',
   window: windows.length ? 'Click a window to capture it, ⌘-click to copy it · Space for a region · Escape to cancel'
                          : 'No windows to capture · Space for a region · Escape to cancel',
 };
+
+/** What a recording can be of, offered up front -- as macOS's own recording
+ *  toolbar does -- rather than behind Space and ⌘A: part of the screen, one
+ *  window, or all of this display. Drawn as the editor's tiles draw them. */
+type Choice = 'region' | 'window' | 'screen';
+const CHOICES: { id: Choice; name: string; tip: string; art: string }[] = [
+  { id: 'region', name: 'Region', tip: 'Drag out part of the screen to record', art:
+    '<path d="M4.4 7.7V5.9a1.5 1.5 0 0 1 1.5-1.5h1.8M12.3 4.4h1.8a1.5 1.5 0 0 1 1.5 1.5v1.8M15.6 12.3v1.8a1.5 1.5 0 0 1-1.5 1.5h-1.8M7.7 15.6H5.9a1.5 1.5 0 0 1-1.5-1.5v-1.8"/>' },
+  { id: 'window', name: 'Window', tip: 'Click a window to record it, even as it moves (Space)', art:
+    '<rect x="3.2" y="4.4" width="13.6" height="11.2" rx="1.8"/><path d="M3.2 7.8h13.6"/>' },
+  { id: 'screen', name: 'Screen', tip: 'Record all of this display (⌘A)', art:
+    '<rect x="3.2" y="4.5" width="13.6" height="9.6" rx="1.8"/><path d="M7.6 16.6h4.8"/>' },
+];
 
 const root = document.querySelector<HTMLDivElement>('#selector')!;
 root.innerHTML = `
@@ -42,6 +67,10 @@ root.innerHTML = `
   <div class="pick-label" hidden><span class="pick-name"></span><span class="pick-size"></span></div>
   <div class="readout" hidden></div>
   <div class="hint"></div>
+  ${recording ? `<div class="choices" role="radiogroup" aria-label="What to record">${CHOICES.map(choice =>
+    `<button class="choice" type="button" role="radio" aria-checked="false" data-choice="${choice.id}" title="${choice.tip}">`
+    + `<svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${choice.art}</svg>`
+    + `${choice.name}</button>`).join('')}</div>` : ''}
   <div class="panel" hidden>
     <label class="field">Width <input class="w" type="number" min="1" step="1" /></label>
     <label class="field">Height <input class="h" type="number" min="1" step="1" /></label>
@@ -55,12 +84,16 @@ root.innerHTML = `
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="10" cy="10.5" r="6.6"/><path d="M10 6.6v4l2.6 1.7"/><path d="M7.6 2.6h4.8"/></svg>
     </button>
+    <button class="mic icon" type="button" aria-pressed="false" aria-label="Record the microphone too" title="Record the microphone too"${recording ? '' : ' hidden'}>
+      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="7.4" y="2.8" width="5.2" height="9.2" rx="2.6"/><path d="M4.6 9.6a5.4 5.4 0 0 0 10.8 0M10 15v2.4"/></svg>
+    </button>
     <button class="full icon" type="button" aria-label="Whole display" title="Whole display">
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
         <path d="M4 8V5.2A1.2 1.2 0 0 1 5.2 4H8M12 4h2.8A1.2 1.2 0 0 1 16 5.2V8M16 12v2.8a1.2 1.2 0 0 1-1.2 1.2H12M8 16H5.2A1.2 1.2 0 0 1 4 14.8V12"/></svg>
     </button>
-    <button class="copy" type="button" title="Copy it without opening the editor (⌘C)">Copy</button>
-    <button class="go" type="button">Capture</button>
+    <button class="copy" type="button" title="Copy it without opening the editor (⌘C)"${recording ? ' hidden' : ''}>Copy</button>
+    <button class="go" type="button">${recording ? '<span class="dot" aria-hidden="true"></span>Record' : 'Capture'}</button>
   </div>
 `;
 const veil = root.querySelector<HTMLElement>('.veil')!;
@@ -76,6 +109,9 @@ const widthField = root.querySelector<HTMLInputElement>('.w')!;
 const heightField = root.querySelector<HTMLInputElement>('.h')!;
 const lock = root.querySelector<HTMLButtonElement>('.lock')!;
 const delayButton = root.querySelector<HTMLButtonElement>('.delay')!;
+const micButton = root.querySelector<HTMLButtonElement>('.mic')!;
+const choices = root.querySelector<HTMLElement>('.choices');
+document.documentElement.dataset.kind = recording ? 'video' : 'shot';
 
 let rect: Rect | null = null;
 let ratio = 1;
@@ -87,7 +123,13 @@ const armed = window.__MARK_DELAY__ ?? 0;
 let delay = DELAYS.includes(armed) ? armed : 0;
 let drag: { kind: 'new' | 'move' | 'grip'; grip?: string; ox: number; oy: number; from: Rect } | null = null;
 let sent = false;
+let mic = recording && window.__MARK_MIC__ === true;
 let mode: Mode = window.__MARK_MODE__ === 'window' ? 'window' : 'region';
+/** A recording starts by asking what it is of -- a region, a window or the
+ *  screen -- with nothing to aim yet: no crosshair, no guides, and a press on
+ *  the screen does nothing until one is chosen. Asked for a window, it is
+ *  already chosen. */
+let choosing = recording && mode !== 'window';
 /** In window mode, the window under the pointer: the one a click takes. */
 let picked: ScreenWindow | null = null;
 /** Where the pointer last was, so switching to window mode can pick at once --
@@ -116,7 +158,7 @@ async function announce() {
  *  shown while choosing a corner or dragging one, and out of the way once a
  *  region is settled and the panel has taken over. */
 function guide(x: number | null, y: number | null) {
-  const aiming = drag !== null || rect === null;
+  const aiming = !choosing && (drag !== null || rect === null);
   const on = aiming && x !== null && y !== null;
   guideX.hidden = guideY.hidden = !on;
   if (!on) return;
@@ -124,9 +166,25 @@ function guide(x: number | null, y: number | null) {
   guideY.style.left = `${x}px`;
 }
 
+/** Whether the selection is this whole display: Screen, as a recording's
+ *  choices name it. */
+const whole = () => rect !== null && rect.x <= 0 && rect.y <= 0
+  && rect.width >= display.width - 0.5 && rect.height >= display.height - 0.5;
+
 function show() {
-  hint.textContent = hint.dataset.error ?? HINTS[mode];
-  document.documentElement.dataset.mode = mode;
+  hint.textContent = hint.dataset.error ?? (choosing ? CHOOSE_HINT : HINTS[mode]);
+  const chosen: Choice | null = choosing ? null : mode === 'window' ? 'window' : whole() ? 'screen' : 'region';
+  for (const button of choices?.querySelectorAll<HTMLButtonElement>('.choice') ?? []) {
+    button.setAttribute('aria-checked', String(button.dataset.choice === chosen));
+  }
+  document.documentElement.dataset.mode = choosing ? 'choose' : mode;
+  if (choosing) {
+    veil.hidden = hint.hidden = false;
+    veil.classList.remove('clear');
+    shot.hidden = panel.hidden = readout.hidden = pick.hidden = pickLabel.hidden = true;
+    guideX.hidden = guideY.hidden = true;
+    return;
+  }
   pick.hidden = pickLabel.hidden = mode !== 'window' || picked === null;
   // The veil is what the pointer lands on, so in window mode it stays, and only
   // goes clear while the picked window -- a hole in the dimming, as a region
@@ -160,16 +218,17 @@ function show() {
 }
 
 /** Below the selection when there is room, above it otherwise, and inside as a
- *  last resort on a very tall selection. */
+ *  last resort on a very tall selection -- never over a recording's choices. */
 function placePanel() {
   if (!rect) return;
   const box = panel.getBoundingClientRect();
+  const floor = choices ? choices.getBoundingClientRect().top - 10 : innerHeight - 8;
   const left = Math.min(Math.max(rect.x + rect.width / 2 - box.width / 2, 8), innerWidth - box.width - 8);
   const below = rect.y + rect.height + 10;
   const above = rect.y - box.height - 10;
-  const top = below + box.height <= innerHeight - 8 ? below
+  const top = below + box.height <= floor ? below
             : above >= 8 ? above
-            : Math.max(8, rect.y + rect.height - box.height - 10);
+            : Math.max(8, Math.min(rect.y + rect.height, floor) - box.height - 10);
   Object.assign(panel.style, { left: `${left}px`, top: `${top}px` });
 }
 
@@ -205,7 +264,8 @@ function hover(next: ScreenWindow | null) {
 /** Region or window. Every display's overlay switches together, so the mode
  *  does not depend on which one happens to have the keyboard. */
 function setMode(next: Mode, tell: boolean) {
-  if (next === mode) return;
+  if (next === mode && !choosing) return;
+  choosing = false;
   mode = next;
   drag = null; rect = null; delete hint.dataset.error;
   picked = mode === 'window' && pointer ? windowAt(...pointer) : null;
@@ -224,6 +284,9 @@ function point(event: PointerEvent): [number, number] { return [event.clientX, e
 
 root.addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
+  // The choices are buttons to press, not somewhere to start a selection; and
+  // until one is chosen there is nothing to start.
+  if ((event.target as Element).closest('.choices') || choosing) return;
   if (mode === 'window') {
     event.preventDefault();
     const under = windowAt(event.clientX, event.clientY);
@@ -248,7 +311,8 @@ root.addEventListener('pointerdown', event => {
 
 root.addEventListener('pointermove', event => {
   pointer = [event.clientX, event.clientY];
-  if (mode === 'window') { hover(windowAt(event.clientX, event.clientY)); return; }
+  const overChoices = (event.target as Element).closest?.('.choices');
+  if (mode === 'window') { hover(overChoices ? picked : windowAt(event.clientX, event.clientY)); return; }
   // The panel is a place to click, not to aim through.
   const overPanel = (event.target as Element).closest?.('.panel');
   guide(overPanel ? null : event.clientX, overPanel ? null : event.clientY);
@@ -307,7 +371,9 @@ lock.addEventListener('click', () => {
 });
 function showDelay() {
   delayButton.classList.toggle('armed', delay > 0);
-  delayButton.title = delay ? `Capture ${delay} seconds after you press Capture` : 'Capture after a delay';
+  const verb = recording ? 'Record' : 'Capture';
+  delayButton.title = delay ? `${verb} ${delay} seconds after you press ${verb}` : `${verb} after a delay`;
+  delayButton.setAttribute('aria-label', delayButton.title);
   const label = delayButton.querySelector('.delay-label');
   if (delay) {
     if (label) label.textContent = `${delay}s`;
@@ -319,27 +385,56 @@ delayButton.addEventListener('click', () => {
   showDelay();
 });
 showDelay();
+function showMic() {
+  micButton.setAttribute('aria-pressed', String(mic));
+  micButton.title = mic ? 'Recording the microphone too' : 'Record the microphone too';
+}
+micButton.addEventListener('click', () => { mic = !mic; showMic(); });
+showMic();
 root.querySelector('.full')!.addEventListener('click', () => {
   setRect({ x: 0, y: 0, width: display.width, height: display.height });
 });
+choices?.addEventListener('click', event => {
+  const choice = (event.target as Element).closest<HTMLButtonElement>('.choice')?.dataset.choice as Choice | undefined;
+  if (choice) choose(choice);
+});
+/** A recording's choice, from its buttons or their keys: picking a window,
+ *  all of this display, or part of it, to drag out. */
+function choose(choice: Choice) {
+  if (choice === 'window') setMode('window', true);
+  else if (choice === 'screen') {
+    setMode('region', true);
+    setRect({ x: 0, y: 0, width: display.width, height: display.height });
+    // This display, so not another's: a selection there gives way.
+    void announce();
+  } else {
+    setMode('region', true);
+    // From all of it back to choosing part of it.
+    if (whole()) setRect(null);
+  }
+}
 root.querySelector('.cancel')!.addEventListener('click', () => void cancel());
 root.querySelector('.go')!.addEventListener('click', () => void capture());
 root.querySelector('.copy')!.addEventListener('click', () => void capture(true));
 
-/** `copy`: straight to the clipboard, without opening the editor. */
+/** What a recording takes with it: that it is one, and the microphone or not. */
+const asRecording = () => (recording ? { record: true, mic } : {});
+
+/** `copy`: straight to the clipboard, without opening the editor. A recording
+ *  is never copied from here: it has not been made yet. */
 async function capture(copy = false) {
   if (!rect || sent) return;
   const { x, y, width, height } = rect;
   if (width < 1 || height < 1) return;
   sent = true;
   await invoke('capture_rect', {
-    x: display.x + x, y: display.y + y, width, height, delay, copy,
+    x: display.x + x, y: display.y + y, width, height, delay, copy: copy && !recording, ...asRecording(),
   }).catch(error => { sent = false; console.error('[Mark]', error); });
 }
 async function captureWindow(target: ScreenWindow, copy = false) {
   if (sent) return;
   sent = true;
-  await invoke('capture_window', { id: target.id, delay, copy }).catch(error => {
+  await invoke('capture_window', { id: target.id, delay, copy: copy && !recording, ...asRecording() }).catch(error => {
     // Most likely the window closed while the overlay was up: say so, and let
     // another be picked.
     sent = false;
@@ -369,8 +464,9 @@ document.addEventListener('keydown', event => {
     else void capture();
   } else if (mode === 'region' && !typing && event.key === 'a' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
-    setRect({ x: 0, y: 0, width: display.width, height: display.height });
-  } else if (!typing && event.key === 'c' && (event.metaKey || event.ctrlKey)) {
+    if (recording) choose('screen');
+    else setRect({ x: 0, y: 0, width: display.width, height: display.height });
+  } else if (!recording && !typing && event.key === 'c' && (event.metaKey || event.ctrlKey)) {
     // Copy: what Capture would take, but to the clipboard, without the editor.
     event.preventDefault();
     if (mode === 'window') { if (picked) void captureWindow(picked, true); }

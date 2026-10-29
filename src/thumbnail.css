@@ -41,3 +41,12 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .thumb, .thumb.out { transform: none; transition: opacity .15s ease; }
 }
+
+/* A recording: how long it runs, over its first frame, as Recent shows it. */
+.thumb-length {
+  position: absolute; left: 7px; bottom: 7px; display: flex; align-items: center; gap: 3px; padding: 1px 6px 1px 4px;
+  border-radius: 6px; background: #000000a6; color: #fff; font-size: 10.5px; font-weight: 600;
+  font-variant-numeric: tabular-nums; pointer-events: none;
+}
+.thumb-length svg { width: 9px; height: 9px; fill: currentColor; }
+[hidden] { display: none !important; }

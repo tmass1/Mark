@@ -55,7 +55,7 @@ pub fn frame(work: capture::Rect, width: f64, height: f64) -> capture::Rect {
 
 /// The work area -- the screen less the menu bar and the Dock -- of the display
 /// a point is on, in global points.
-fn work_area(app: &AppHandle, x: f64, y: f64) -> Option<capture::Rect> {
+pub(crate) fn work_area(app: &AppHandle, x: f64, y: f64) -> Option<capture::Rect> {
     let monitors = app.available_monitors().ok()?;
     let contains = |monitor: &&tauri::Monitor| {
         let scale = monitor.scale_factor();
@@ -94,13 +94,16 @@ fn window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
 }
 
 /// Float this capture in the corner of the display it came from, in place of
-/// any thumbnail before it. Main thread.
-pub fn show(app: &AppHandle, png: Vec<u8>, width: u32, height: u32, scale: f64, from: capture::Rect) -> Result<(), String> {
+/// any thumbnail before it. A recording floats as its first frame, and drags
+/// out as its movie. Main thread.
+pub fn show(app: &AppHandle, png: Vec<u8>, width: u32, height: u32, scale: f64, from: capture::Rect,
+            video: Option<capture::Video>) -> Result<(), String> {
     let window = window(app)?;
     let area = work_area(app, from.x + from.width / 2.0, from.y + from.height / 2.0)
         .ok_or("No display was found to show the thumbnail on.")?;
     let at = frame(area, f64::from(width) / scale, f64::from(height) / scale);
-    let id = app.state::<State>().lock().unwrap().show_thumb(png, width, height);
+    let video = video.map(|video| (std::path::PathBuf::from(video.path), video.duration));
+    let id = app.state::<State>().lock().unwrap().show_thumb(png, width, height, video);
     window.set_size(tauri::LogicalSize::new(at.width, at.height)).map_err(|e| e.to_string())?;
     window.set_position(tauri::LogicalPosition::new(at.x, at.y)).map_err(|e| e.to_string())?;
     // The page asks for the picture when it hears this; a page still loading
@@ -140,10 +143,14 @@ pub fn sweep() {
     }
 }
 
-/// The picture, as the page shows it.
+/// The picture, as the page shows it, and for a recording how long it runs.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Shown { id: u64, data_url: String, width: u32, height: u32 }
+pub struct Shown {
+    id: u64, data_url: String, width: u32, height: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    duration: Option<f64>,
+}
 
 #[tauri::command]
 pub fn thumbnail_image(app: AppHandle) -> Option<Shown> {
@@ -151,7 +158,7 @@ pub fn thumbnail_image(app: AppHandle) -> Option<Shown> {
     let session = state.lock().unwrap();
     session.thumb.as_ref().map(|thumb| Shown {
         id: thumb.id, data_url: format!("data:image/png;base64,{}", STANDARD.encode(&thumb.png)),
-        width: thumb.width, height: thumb.height,
+        width: thumb.width, height: thumb.height, duration: thumb.video.as_ref().map(|(_, duration)| *duration),
     })
 }
 
@@ -173,25 +180,30 @@ pub fn close_thumbnail(app: AppHandle, id: u64) {
 
 /// Dragged: the capture, as a file named as Save names one, picked up from
 /// where the picture sits in the window -- `x`, `y`, `width` and `height`, in
-/// the page's points.
+/// the page's points. A recording is its movie, which is already named so.
 #[tauri::command]
 pub fn drag_thumbnail(app: AppHandle, id: u64, name: String, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
     if ![x, y, width, height].iter().all(|value| value.is_finite()) || width <= 0.0 || height <= 0.0 {
         return Err("That isn't where the thumbnail is.".into());
     }
-    let png = {
+    let (png, movie) = {
         let state = app.state::<State>();
         let session = state.lock().unwrap();
-        session.thumb.as_ref().filter(|thumb| thumb.id == id).map(|thumb| thumb.png.clone()).ok_or("That thumbnail has gone.")?
+        session.thumb.as_ref().filter(|thumb| thumb.id == id)
+            .map(|thumb| (thumb.png.clone(), thumb.video.as_ref().map(|(movie, _)| movie.clone()))).ok_or("That thumbnail has gone.")?
     };
-    let directory = tempfile::Builder::new().prefix(DRAG_PREFIX).tempdir()
-        .map_err(|e| format!("Nowhere to put the image to drag it ({e})."))?;
-    let file = directory.path().join(crate::safe_name(&name));
-    std::fs::write(&file, &png).map_err(|e| format!("The image couldn't be prepared ({e})."))?;
     let window = app.get_webview_window(LABEL).ok_or("The thumbnail isn't open.")?;
     let handle = app.clone();
-    macos::drag_file(window.ns_window().map_err(|e| e.to_string())?, &file, &png, capture::Rect { x, y, width, height },
-                     move |landed| { let _ = handle.emit_to(LABEL, "thumbnail-dropped", landed); })?;
+    let dropped = move |landed| { let _ = handle.emit_to(LABEL, "thumbnail-dropped", landed); };
+    let at = capture::Rect { x, y, width, height };
+    if let Some(movie) = movie {
+        return macos::drag_file(window.ns_window().map_err(|e| e.to_string())?, &movie, &png, at, dropped);
+    }
+    let directory = tempfile::Builder::new().prefix(DRAG_PREFIX).tempdir()
+        .map_err(|e| format!("Nowhere to put the image to drag it ({e})."))?;
+    let file = directory.path().join(crate::safe_name(&name, "png"));
+    std::fs::write(&file, &png).map_err(|e| format!("The image couldn't be prepared ({e})."))?;
+    macos::drag_file(window.ns_window().map_err(|e| e.to_string())?, &file, &png, at, dropped)?;
     // Replacing the last drag's directory removes it; this one stays for
     // whatever app it lands in to read.
     app.state::<State>().lock().unwrap().drag_dir = Some(directory);

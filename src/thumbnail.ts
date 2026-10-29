@@ -1,6 +1,7 @@
 import './thumbnail.css';
 import { command, isTauri } from './platform';
 import { suggestedName } from './names';
+import { clock } from './trim';
 
 /** The floating thumbnail's page: the capture just taken, waiting in the
  *  corner of the screen. Rust has the window -- a panel that never takes the
@@ -13,12 +14,14 @@ export const STAYS = 5000;
 /** How far a two-finger swipe to the right goes before it sends it away. */
 const SWIPE = 56;
 
-interface Shown { id: number; dataUrl: string; width: number; height: number }
+/** A recording's thumbnail is its first frame, with how long it runs. */
+interface Shown { id: number; dataUrl: string; width: number; height: number; duration?: number }
 
 const root = document.querySelector<HTMLDivElement>('#thumbnail')!;
 root.innerHTML = `
   <figure class="thumb">
     <img class="thumb-image" alt="The capture just taken" draggable="true" />
+    <span class="thumb-length" aria-hidden="true" hidden><svg viewBox="0 0 10 10"><path d="M3 2v6l5-3z"/></svg><span></span></span>
     <button class="thumb-close" type="button" aria-label="Close" tabindex="-1">
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.6 3.6l4.8 4.8M8.4 3.6l-4.8 4.8"/></svg>
     </button>
@@ -26,6 +29,7 @@ root.innerHTML = `
 const figure = root.querySelector<HTMLElement>('.thumb')!;
 const image = root.querySelector<HTMLImageElement>('.thumb-image')!;
 const close = root.querySelector<HTMLButtonElement>('.thumb-close')!;
+const length = root.querySelector<HTMLElement>('.thumb-length')!;
 
 let shown: Shown | null = null;
 let timer: number | undefined;
@@ -66,6 +70,10 @@ async function load() {
   figure.classList.remove('in', 'out');
   figure.style.transform = '';
   image.src = next.dataUrl;
+  const recording = typeof next.duration === 'number';
+  image.alt = recording ? 'The recording just made' : 'The capture just taken';
+  length.hidden = !recording;
+  length.querySelector('span')!.textContent = recording ? clock(next.duration!) : '';
   await image.decode().catch(() => {});
   if (shown !== next) return;
   void figure.offsetWidth;             // from off to the right, every time

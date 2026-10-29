@@ -607,6 +607,45 @@ footer > * { flex: none; }
 .stage.zoomed { aspect-ratio: auto; max-width: none; max-height: none; flex: none; }
 .capture { display: block; width: 100%; height: 100%; border-radius: inherit; user-select: none; -webkit-user-select: none; }
 
+/* ---- a recording -------------------------------------------------------- */
+
+/* The movie, over its own first frame in the stage's box, and the marks over
+   it as over a screenshot: each shown from the moment it was drawn at. */
+.movie { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; background: #000; object-fit: fill; }
+/* A redaction on a recording stands for the pixelation each frame gets when
+   it is copied or saved, which no one frame's pixels could show. */
+.redact-live { fill: #3a3a3c; fill-opacity: .94; stroke: #ffffff8c; stroke-dasharray: 5 4; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+
+/* The trim, under the canvas where a capture's toolbar would be over it: play,
+   the strip of frames with the part kept between two handles, and how long
+   that part is. 12 above and 52 tall is STRIP in recording.rs; change both.
+   Yellow, as trimming is everywhere on a Mac. */
+.trim { --trim: #ffc800; flex: 0 0 52px; display: flex; align-items: center; gap: 12px; margin: 12px 12px 0; }
+.play { flex: none; width: 40px; height: 40px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.trim .play svg { width: 18px; height: 18px; }
+.strip { position: relative; flex: 1; min-width: 0; height: 44px; border-radius: 9px; overflow: hidden; touch-action: none;
+  background: var(--sunken); box-shadow: inset 0 0 0 .5px var(--control-line); }
+.frames { position: absolute; inset: 0; display: flex; }
+.frames img { flex: 1; min-width: 0; height: 100%; object-fit: cover; }
+.kept { position: absolute; top: 0; bottom: 0; border-block: 3px solid var(--trim); box-shadow: 0 0 0 999px #00000094; pointer-events: none; }
+.edge { position: absolute; top: 0; bottom: 0; width: 12px; display: grid; place-items: center; background: var(--trim); cursor: ew-resize; }
+.edge[data-edge="start"] { border-radius: 9px 0 0 9px; }
+.edge[data-edge="end"] { transform: translateX(-100%); border-radius: 0 9px 9px 0; }
+.edge::after { content: ""; width: 2px; height: 14px; border-radius: 1px; background: #0000008c; }
+.edge:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--blue); }
+.playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; border-radius: 1px; background: #fff;
+  box-shadow: 0 0 0 .5px #00000080, 0 1px 3px #00000066; pointer-events: none; }
+/* When the selected mark appears: a blue line with a tab to drag it by. */
+.mark-at { position: absolute; top: 0; bottom: 0; width: 14px; margin-left: -7px; cursor: ew-resize; }
+.mark-at::before { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: var(--blue); }
+.mark-at::after { content: ""; position: absolute; left: 1px; top: 0; width: 12px; height: 10px; border-radius: 0 0 6px 6px; background: var(--blue);
+  box-shadow: 0 1px 3px #00000066; }
+.trim-time { flex: none; min-width: 70px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.trim.trimmed .trim-time { color: var(--ink); }
+/* GIF sits after Save in the exports' pill, and with Copy Text gone ends it. */
+.save-gif { font-size: 11px; font-weight: 650; letter-spacing: .4px; }
+#app.video .exports .save-gif { border-radius: 0 999px 999px 0; padding-right: 13px; }
+
 /* ---- the frame ---------------------------------------------------------- */
 
 /* Off, the backdrop and the card are no boxes at all, so the stage lays out
@@ -686,6 +725,11 @@ h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -.45px; line-
   font-size: 10.5px; font-weight: 500; line-height: 1.6; letter-spacing: 0; opacity: 1; font-variant-numeric: tabular-nums;
   color: var(--muted); background: var(--control); box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--control-line); }
 .mode.primary .mode-hint { color: #fff; background: #ffffff2e; box-shadow: inset 0 0 0 .5px #ffffff40; }
+/* Recording is a different kind of capture, so it has a row of its own under
+   the four, and its dot is red, as a Mac's is wherever it records. */
+.mode[data-start="record"] { grid-column: 1 / -1; min-height: 64px; }
+.record-dot { fill: #ff3b30; }
+.mode.primary .record-dot { fill: #fff; }
 /* In the browser preview the one tile left is a file chooser: a button's shape suits it. */
 .browser .modes { display: flex; justify-content: center; }
 .browser .mode.start { min-height: 0; padding: 9px 18px; border-radius: 999px; }
@@ -716,6 +760,11 @@ h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -.45px; line-
   box-shadow: 0 0 0 .5px var(--hairline), 0 4px 12px -4px var(--shadow); transition: box-shadow .15s; }
 .recent:hover img, .recent:focus-visible img { box-shadow: 0 0 0 2px var(--blue), 0 6px 16px -4px var(--shadow); }
 .recent time { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* A recording carries how long it runs on its picture. */
+.recent { position: relative; }
+.recent-length { position: absolute; top: 6px; left: 6px; display: flex; align-items: center; gap: 3px; padding: 1px 6px 1px 4px;
+  border-radius: 6px; background: #000000a6; color: #fff; font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; pointer-events: none; }
+.recent-length svg { width: 9px; height: 9px; fill: currentColor; }
 
 /* In a narrow window the tiles give up a little of their icons' wells so the
    words beside them keep room, and the strip its gaps. */

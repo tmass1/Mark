@@ -15,7 +15,7 @@ tauri-build = { version = "2.6", features = [] }
 [dependencies]
 # macos-private-api backs the transparent selection overlay. It rules out Mac
 # App Store distribution, which Mark does not target.
-tauri = { version = "2.11", features = ["tray-icon", "image-png", "macos-private-api"] }
+tauri = { version = "2.11", features = ["tray-icon", "image-png", "macos-private-api", "protocol-asset"] }
 tauri-plugin-global-shortcut = "2.3"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
@@ -36,7 +36,17 @@ tauri-nspanel = "2.1.1"
 # Copy Text and Hide Sensitive: macOS's own text and face recognition, on the
 # Mac, so a capture never leaves it to be read.
 objc2-vision = { version = "0.3", default-features = false, features = ["std", "VNRequest", "VNRecognizeTextRequest", "VNDetectFaceRectanglesRequest", "VNRequestHandler", "VNObservation", "VNTypes", "objc2-core-foundation"] }
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes", "CFString", "CFDictionary", "CFURL", "CFData", "CFNumber"] }
+# Screen recordings: ScreenCaptureKit writes the movie, AVFoundation reads it
+# back for its poster, trim and frames, and ImageIO writes GIFs and stills.
+objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "SCShareableContent", "SCStream", "SCRecordingOutput", "SCError", "block2", "libc", "objc2-core-foundation", "objc2-core-graphics", "objc2-core-media", "objc2-av-foundation"] }
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "AVAsset", "AVAssetTrack", "AVAssetImageGenerator", "AVAssetExportSession", "AVCaptureDevice", "AVMediaFormat", "AVVideoSettings", "AVVideoComposition", "AVVideoCompositing", "block2", "objc2-core-foundation", "objc2-core-graphics", "objc2-core-media", "objc2-core-image"] }
+# Marks and redactions drawn into a recording's frames as it is exported.
+objc2-core-image = { version = "0.3", default-features = false, features = ["std", "CIImage", "CIContext", "objc2-core-foundation", "objc2-core-graphics"] }
+objc2-image-io = { version = "0.3", default-features = false, features = ["std", "CGImageDestination", "CGImageProperties", "objc2-core-graphics"] }
+objc2-core-media = { version = "0.3", default-features = false, features = ["std", "CMTime", "CMTimeRange"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGImage", "CGDirectDisplay"] }
+block2 = "0.6"
 
 [features]
 # A build made only to test updating end to end: when its own check finds a
@@ -45,6 +55,10 @@ update-selftest = []
 # A build made only to test the AI-tools bridge end to end: it answers an ask
 # itself, with a fixed image, a moment after showing it. Never part of a release.
 mcp-selftest = []
+# A build made only to test recording end to end: told an area, it records it
+# for a few seconds with the editor laid over it, and writes out what it made.
+# Never part of a release.
+record-selftest = []
 
 [profile.release]
 opt-level = "s"

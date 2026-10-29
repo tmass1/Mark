@@ -63,7 +63,10 @@ impl Glass {
     }
 
     /// The panes exist only while a capture is open; the empty state has none.
-    pub fn set_visible(&self, visible: bool) {
-        for pane in &self.panes { pane.setHidden(!visible); }
+    /// The last is the crop tool's well, which a recording, having no crop,
+    /// goes without.
+    pub fn set_visible(&self, visible: bool, crop: bool) {
+        let last = self.panes.len().saturating_sub(1);
+        for (index, pane) in self.panes.iter().enumerate() { pane.setHidden(!visible || (index == last && !crop)); }
     }
 }

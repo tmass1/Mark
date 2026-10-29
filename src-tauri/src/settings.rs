@@ -3,8 +3,8 @@
 //! Which appearance the windows take, which keys start a capture, what follows
 //! a capture, whether Mark looks for updates by itself and which version it was
 //! told to skip, how a capture is framed, whether AI tools may ask for a
-//! screenshot, and -- read from macOS rather than stored -- whether Mark opens
-//! at login. The file
+//! screenshot, whether a recording takes in the microphone and shows clicks,
+//! and -- read from macOS rather than stored -- whether Mark opens at login. The file
 //! is written only when a setting changes, so a Mark that has never been
 //! configured has written nothing.
 
@@ -39,13 +39,18 @@ pub struct Settings {
     /// Whether AI tools may ask for a screenshot. Each ask still waits for the
     /// user to send one.
     pub mcp: bool,
+    /// Whether a screen recording takes in the microphone too: off until
+    /// turned on, in the overlay or here, and remembered after.
+    pub record_mic: bool,
+    /// Whether a screen recording shows where the pointer clicked.
+    pub record_clicks: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings { appearance: "dark".into(), shortcut: DEFAULT_SHORTCUT.into(), shortcuts: Shortcuts::default(),
                    check_updates: true, skipped_version: None, frame: Frame::default(),
-                   after_capture: "editor".into(), mcp: true }
+                   after_capture: "editor".into(), mcp: true, record_mic: false, record_clicks: true }
     }
 }
 
@@ -55,7 +60,7 @@ impl Settings {
     pub fn thumbnail(&self) -> bool { self.after_capture == "thumbnail" }
 }
 
-/// Shortcuts for a window, the whole screen and a timed region. None comes
+/// Shortcuts for a window, the whole screen, a timed region and a recording. None comes
 /// set: a key taken globally is taken from every other app, so it is for the
 /// person who wants it to choose.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -67,6 +72,8 @@ pub struct Shortcuts {
     pub display: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timed: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub record: Option<String>,
 }
 
 /// A background, room around the capture, rounded corners, a shadow and a
@@ -125,7 +132,8 @@ pub fn parse(bytes: &[u8]) -> Option<Settings> {
     if !Settings::after_capture_is_valid(&settings.after_capture) { settings.after_capture = Settings::default().after_capture; }
     if settings.shortcut.trim().is_empty() { settings.shortcut = DEFAULT_SHORTCUT.into(); }
     // A shortcut cleared by hand is no shortcut, not an empty one to register.
-    for slot in [&mut settings.shortcuts.window, &mut settings.shortcuts.display, &mut settings.shortcuts.timed] {
+    for slot in [&mut settings.shortcuts.window, &mut settings.shortcuts.display, &mut settings.shortcuts.timed,
+                 &mut settings.shortcuts.record] {
         if slot.as_deref().is_some_and(|s| s.trim().is_empty()) { *slot = None; }
     }
     settings.frame = settings.frame.sanitized();
@@ -158,10 +166,11 @@ mod tests {
     fn a_saved_file_round_trips() {
         let settings = Settings {
             appearance: "light".into(), shortcut: "Control+Alt+Super+Digit4".into(),
-            shortcuts: Shortcuts { window: Some("Alt+Super+Digit5".into()), display: None, timed: Some("Shift+Super+KeyT".into()) },
+            shortcuts: Shortcuts { window: Some("Alt+Super+Digit5".into()), display: None, timed: Some("Shift+Super+KeyT".into()),
+                                   record: Some("Shift+Super+Digit5".into()) },
             check_updates: false, skipped_version: Some("0.5.0".into()),
             frame: Frame { on: true, background: "midnight".into(), padding: 0.25, radius: 0.75, shadow: 0.0, chrome: true },
-            after_capture: "thumbnail".into(), mcp: false,
+            after_capture: "thumbnail".into(), mcp: false, record_mic: true, record_clicks: false,
         };
         let json = serde_json::to_vec(&settings).unwrap();
         assert_eq!(parse(&json).unwrap(), settings);
@@ -213,8 +222,8 @@ mod tests {
         // And none is written until one is chosen.
         assert!(!String::from_utf8(serde_json::to_vec(&Settings::default()).unwrap()).unwrap().contains("window"));
         // A blank one left in the file is no shortcut at all.
-        assert_eq!(parse(br#"{"shortcuts":{"window":"  ","timed":"Super+KeyT"}}"#).unwrap().shortcuts,
-                   Shortcuts { window: None, display: None, timed: Some("Super+KeyT".into()) });
+        assert_eq!(parse(br#"{"shortcuts":{"window":"  ","timed":"Super+KeyT","record":""}}"#).unwrap().shortcuts,
+                   Shortcuts { window: None, display: None, timed: Some("Super+KeyT".into()), record: None });
     }
 
     #[test]
@@ -229,5 +238,14 @@ mod tests {
         // A hand-edited choice that is neither is the editor.
         assert_eq!(parse(br#"{"afterCapture":"popup"}"#).unwrap().after_capture, "editor");
         assert!(parse(br#"{"afterCapture":"thumbnail","mcp":false}"#).map(|s| s.thumbnail() && !s.mcp).unwrap());
+    }
+
+    #[test]
+    fn a_file_from_before_recordings_records_without_the_microphone_and_shows_clicks() {
+        let settings = parse(br#"{"appearance":"light","shortcut":"Super+Digit4"}"#).unwrap();
+        assert!(!settings.record_mic && settings.record_clicks);
+        assert_eq!(settings.shortcuts.record, None);
+        let json = String::from_utf8(serde_json::to_vec(&Settings::default()).unwrap()).unwrap();
+        assert!(json.contains("\"recordMic\":false") && json.contains("\"recordClicks\":true"));
     }
 }

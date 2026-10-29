@@ -9,7 +9,10 @@
  *  head is drawn, so they share every behaviour that moves or reshapes them.
  *  Separate interfaces rather than one with a union discriminant, because
  *  TypeScript narrows a union of types and not a union inside one. */
-interface Ends { id: number; x1: number; y1: number; x2: number; y2: number; color: string; weight: number }
+/** On a recording, a mark is shown from a moment on: the seconds into it when
+ *  it was drawn. Absent, as on a screenshot, it is there throughout. */
+export interface Timed { at?: number }
+interface Ends extends Timed { id: number; x1: number; y1: number; x2: number; y2: number; color: string; weight: number }
 /** Three shapes for the same gesture. Taper is Mark's own; straight is the
  *  plain solid arrow; line is the thin diagram arrow that does not cover what
  *  it points at. */
@@ -31,14 +34,14 @@ export interface Line extends Ends { kind: 'line' }
  *  length in a pill on its middle -- a designer's measure. */
 export interface Measurement extends Ends { kind: 'measure' }
 export type Segment = Arrow | Line | Measurement;
-export interface Stroke { kind: 'pen'; id: number; points: Point[]; color: string; weight: number }
-export interface Note { kind: 'text'; id: number; x: number; y: number; text: string; color: string; size: number }
+export interface Stroke extends Timed { kind: 'pen'; id: number; points: Point[]; color: string; weight: number }
+export interface Note extends Timed { kind: 'text'; id: number; x: number; y: number; text: string; color: string; size: number }
 /** Everything drawn as a rectangle: outlines, marker ink, and redaction. */
 export type ShapeKind = 'box' | 'ellipse' | 'highlight' | 'redact';
 /** An outline shows what is inside it; a solid shape covers it. */
 export type ShapeFill = 'outline' | 'solid';
 export const SHAPE_FILLS: readonly ShapeFill[] = ['outline', 'solid'];
-export interface Shape {
+export interface Shape extends Timed {
   kind: ShapeKind; id: number; x: number; y: number; width: number; height: number;
   color: string; weight: number;
   /** Boxes and ellipses only. Shapes drawn before fills existed are outlines. */
@@ -61,7 +64,7 @@ export function fillable(item: Annotation): item is Shape { return item.kind ===
  *  Its number is nowhere in here -- it is the badge's place among the steps, so
  *  deleting, undoing or pasting one renumbers the rest and nothing can fall out
  *  of step with anything else. */
-export interface Step extends Looks {
+export interface Step extends Looks, Timed {
   kind: 'step'; id: number; x: number; y: number;
   /** The head of the arrow, when the step was dragged rather than clicked. */
   to?: Point;
@@ -747,6 +750,9 @@ export interface DrawOptions {
   /** Image pixels per point, which a measure's label divides by: 2 for a
    *  Retina capture. */
   density?: number;
+  /** Which marks to paint, for a recording at one moment of it. The rest are
+   *  passed all the same, since a step is numbered by its place among all. */
+  showing?: (item: Annotation) => boolean;
 }
 
 /** Paint onto a 2D context at natural size, so the copied PNG matches the screen.
@@ -803,6 +809,7 @@ export function drawAnnotations(
     ctx.textBaseline = 'alphabetic';
   };
   for (const item of items) {
+    if (options.showing && !options.showing(item)) continue;
     ctx.fillStyle = item.color;
     if (takesLooks(item)) {
       const pill = item.kind === 'step' ? pillOf(item) : null;
@@ -1039,6 +1046,15 @@ export class AnnotationLayer {
   /** Image pixels per point: 2 for a Retina capture. A measure's label divides
    *  by it, so it reads in the sizes a design is made in. */
   density = 1;
+  /** On a recording: what a new mark is stamped with -- when it is shown from
+   *  -- and which marks are on screen at the moment shown. Each is null on a
+   *  screenshot, where every mark is there throughout. */
+  stamp: (() => Timed) | null = null;
+  showing: ((item: Annotation) => boolean) | null = null;
+  /** On a recording, whose frames change under it, a redaction is a block
+   *  standing for the pixelation every frame gets when it is copied or saved:
+   *  a patch sampled from one frame would be the wrong frame's pixels. */
+  live = false;
   tool: Tool = 'arrow';
   base = 12;
   style: LayerStyle = { color: COLORS[0].value, scale: 1, arrow: 'taper', fill: 'outline', numbered: false,
@@ -1239,9 +1255,20 @@ export class AnnotationLayer {
   }
 
   selectAll(): boolean {
-    if (this.editing !== null || !this.items.length) return false;
-    if (this.chosen.size === this.items.length) return false;
-    this.items.forEach(item => this.chosen.add(item.id));
+    const seen = this.items.filter(item => !this.showing || this.showing(item));
+    if (this.editing !== null || !seen.length) return false;
+    if (seen.every(item => this.chosen.has(item.id))) return false;
+    seen.forEach(item => this.chosen.add(item.id));
+    this.render(); this.onChange();
+    return true;
+  }
+
+  /** On a recording, when a mark is shown from, as one step to undo. */
+  retime(id: number, at: number): boolean {
+    const item = this.find(id);
+    if (!item || !Number.isFinite(at) || item.at === at) return false;
+    this.commitHistory();
+    this.items = this.items.map(other => other.id === id ? { ...other, at } : other);
     this.render(); this.onChange();
     return true;
   }
@@ -1299,7 +1326,7 @@ export class AnnotationLayer {
     if (!this.clipboard.length) return [];
     this.commitHistory();
     let copies = this.clipboard.map(item =>
-      ({ ...offsetBy(item, this.base * 0.9), id: this.nextId++ }));
+      ({ ...offsetBy(item, this.base * 0.9), id: this.nextId++, ...this.stamp?.() }));
     // A paste lands on the image. The cascade walks towards a corner, and what
     // is held can have come from a bigger capture than this one.
     const [dx, dy] = onto(copies.map(copy => bounds(copy)), this.width, this.height);
@@ -1333,7 +1360,8 @@ export class AnnotationLayer {
     if (!marks.length) return [];
     if (this.editing !== null) this.commit();
     this.commitHistory();
-    const added: Shape[] = marks.map(area => ({ kind: 'redact', id: this.nextId++, ...area, color: this.style.color, weight: this.weight }));
+    const added: Shape[] = marks.map(area => ({ kind: 'redact', id: this.nextId++, ...area, color: this.style.color, weight: this.weight,
+                                                  ...this.stamp?.() }));
     this.items.push(...added);
     this.chosen = new Set(added.map(mark => mark.id));
     for (const mark of added) this.settle(mark);
@@ -1519,7 +1547,8 @@ export class AnnotationLayer {
       this.drag = { kind: 'move', id: hit, ox: x, oy: y, from: this.selection.map(item => ({ ...item })) };
     } else if (this.tool === 'text') {
       this.commitHistory();
-      const note: Note = { kind: 'text', id: this.nextId++, x, y, text: '', color: this.style.color, size: textSize(this.weight) };
+      const note: Note = { kind: 'text', id: this.nextId++, x, y, text: '', color: this.style.color, size: textSize(this.weight),
+                           ...this.stamp?.() };
       this.items.push(note);
       this.svg.releasePointerCapture(event.pointerId);
       this.edit(note, true);
@@ -1531,7 +1560,7 @@ export class AnnotationLayer {
       this.commitHistory();
       const step: Step = { kind: 'step', id: this.nextId++, x, y,
                            color: this.style.color, weight: this.weight, style: this.style.arrow,
-                           shadow: this.style.shadow, border: this.style.border };
+                           shadow: this.style.shadow, border: this.style.border, ...this.stamp?.() };
       this.items.push(step);
       this.chosen = new Set([step.id]);
       this.drag = { kind: 'create', id: step.id, ox: x, oy: y };
@@ -1541,16 +1570,16 @@ export class AnnotationLayer {
       const segment: Segment = tool === 'arrow'
         ? { kind: 'arrow', id: this.nextId++, x1: x, y1: y, x2: x, y2: y,
             color: this.style.color, weight: this.weight, style: this.style.arrow,
-            shadow: this.style.shadow, border: this.style.border }
+            shadow: this.style.shadow, border: this.style.border, ...this.stamp?.() }
         : { kind: tool, id: this.nextId++, x1: x, y1: y, x2: x, y2: y,
-            color: this.style.color, weight: this.weight };
+            color: this.style.color, weight: this.weight, ...this.stamp?.() };
       this.items.push(segment);
       this.chosen = new Set([segment.id]);
       this.drag = { kind: 'create', id: segment.id, ox: x, oy: y };
     } else if (this.tool === 'pen') {
       this.commitHistory();
       const stroke: Stroke = { kind: 'pen', id: this.nextId++, points: [[x, y]],
-                               color: this.style.color, weight: this.weight * 0.7 };
+                               color: this.style.color, weight: this.weight * 0.7, ...this.stamp?.() };
       this.items.push(stroke);
       this.chosen = new Set([stroke.id]);
       this.drag = { kind: 'create', id: stroke.id, ox: x, oy: y };
@@ -1558,7 +1587,7 @@ export class AnnotationLayer {
       this.commitHistory();
       const shape: Shape = {
         kind: this.tool as ShapeKind, id: this.nextId++, x, y, width: 0, height: 0,
-        color: this.style.color, weight: this.weight,
+        color: this.style.color, weight: this.weight, ...this.stamp?.(),
       };
       if (fillable(shape)) { shape.fill = this.style.fill; shape.numbered = this.style.numbered; }
       this.items.push(shape);
@@ -1699,6 +1728,8 @@ export class AnnotationLayer {
     const numbers = stepNumbers(this.items);
     for (const item of this.items) {
       if (item.id === this.editing) continue;   // the textarea stands in while editing
+      // Not yet shown at this moment of a recording, so not there to take hold of.
+      if (this.showing && !this.showing(item) && !this.chosen.has(item.id)) continue;
       if (item.kind === 'step') { this.svg.append(this.stepNode(item, numbers.get(item.id) ?? 1)); continue; }
       if (item.kind === 'arrow') {
         this.svg.append(this.plainArrowNode(item));
@@ -2098,7 +2129,11 @@ export class AnnotationLayer {
     };
 
     if (item.kind === 'redact') {
-      if (item.pixels) {
+      if (this.live) {
+        const block = cover(document.createElementNS(SVG, 'rect'));
+        block.setAttribute('class', 'redact-live');
+        group.append(block);
+      } else if (item.pixels) {
         const patch = cover(document.createElementNS(SVG, 'image'));
         patch.setAttribute('href', item.pixels);
         patch.setAttribute('preserveAspectRatio', 'none');

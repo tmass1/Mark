@@ -20,16 +20,17 @@
       }
     }],
     "security": {
-      "capabilities": ["editor", "selector", "settings", "update", "thumbnail"],
-      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'self'",
-      "devCsp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; frame-src 'none'; base-uri 'self'"
+      "capabilities": ["editor", "selector", "settings", "update", "thumbnail", "recording"],
+      "assetProtocol": { "enable": true, "scope": ["$APPCACHE/Recordings/**", "$APPCACHE/Recordings-dev/**"] },
+      "csp": "default-src 'self'; img-src 'self' data: blob:; media-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'self'",
+      "devCsp": "default-src 'self'; img-src 'self' data: blob:; media-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; frame-src 'none'; base-uri 'self'"
     }
   },
   "bundle": {
     "active": true, "targets": ["app"], "category": "Utility",
     "shortDescription": "Capture a region. Copy and close.",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"],
-    "macOS": { "minimumSystemVersion": "13.0", "signingIdentity": "4D33F3C596D8273A3BD4E6DC356F22FB87C779A5", "infoPlist": "Info.plist" }
+    "macOS": { "minimumSystemVersion": "13.0", "signingIdentity": "4D33F3C596D8273A3BD4E6DC356F22FB87C779A5", "infoPlist": "Info.plist", "entitlements": "Entitlements.plist" }
   },
   "plugins": {
     "updater": {

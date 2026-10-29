@@ -1240,9 +1240,11 @@ test('the capture menu offers the three ways in, and closes again', async ({ pag
   await expect(page.locator('.capture-menu')).toBeHidden();
   await page.locator('.capture-more').click();
   await expect(page.locator('.capture-menu')).toBeVisible();
-  await expect(page.locator('.capture-menu button')).toHaveText([
+  await expect(page.locator('.capture-menu button:visible')).toHaveText([
     /Region\s*⌘4/, /Window/, /Whole Screen/, /Timed Region\s*5s/,
   ]);
+  // Recording is the Mac app's, on a Mac that can: none here.
+  await expect(page.locator('.capture-menu [data-mode="record"]')).toBeHidden();
   await expect(page.locator('.capture-more')).toHaveAttribute('aria-expanded', 'true');
 
   await page.locator('.titlebar').click({ position: { x: 5, y: 5 } });

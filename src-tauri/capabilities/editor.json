@@ -1,13 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "editor",
-  "description": "Only Mark's local editor can capture, annotate, frame, read text from, copy, save and share, and send a screenshot to an AI tool that asked for one.",
+  "description": "Only Mark's local editor can capture, annotate, frame, read text from, copy, save and share, and send a screenshot to an AI tool that asked for one; and play, trim, copy, save and share a recording.",
   "windows": ["editor"], "platforms": ["macOS"],
   "permissions": [
     "allow-current-capture", "allow-capture-region", "allow-capture-display", "allow-take-copied",
     "allow-copy-capture", "allow-copy-edited", "allow-copy-text", "allow-recognize-text", "allow-scan-image", "allow-save-image", "allow-share-image",
     "allow-dismiss-editor", "allow-open-screen-settings", "allow-quit-app", "allow-send-capture", "allow-decline-request",
     "allow-glass-available", "allow-set-glass",
+    "allow-recording-supported", "allow-video-frames", "allow-copy-video", "allow-save-video", "allow-share-video",
     "allow-get-settings", "allow-set-frame", "allow-open-settings",
     "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize",
     "core:event:allow-listen", "core:event:allow-unlisten"

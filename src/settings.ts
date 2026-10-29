@@ -8,13 +8,16 @@ import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent, shortcutProblem } 
  *  tools and updates are Mark's own; login is read from and written to macOS,
  *  which is the only source of truth for it. */
 
-type Way = 'region' | 'window' | 'display' | 'timed';
+type Way = 'region' | 'window' | 'display' | 'timed' | 'record';
 interface Settings {
   appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates?: boolean;
   /** The other ways in; each has one only once it is chosen. */
   shortcuts?: Partial<Record<Exclude<Way, 'region'>, string>>;
   afterCapture?: 'editor' | 'thumbnail';
   mcp?: boolean;
+  /** Whether a recording takes in the microphone, and shows clicks. */
+  recordMic?: boolean;
+  recordClicks?: boolean;
 }
 /** One AI tool Mark can be added to, and how -- made by Rust for the copy of
  *  Mark that is running, so what is copied starts this very copy. */
@@ -26,12 +29,13 @@ interface Agent {
   hint?: string;
 }
 
-/** The four ways into a capture, each with a shortcut of its own. Capture
- *  Region always has one; the rest start without, since a key taken globally
- *  is taken from every other app. */
+/** The ways into a capture, each with a shortcut of its own. Capture Region
+ *  always has one; the rest start without, since a key taken globally is
+ *  taken from every other app. Record Video shows only on a Mac that can
+ *  record: macOS 15 or later. */
 const WAYS: { way: Way; name: string }[] = [
   { way: 'region', name: 'Region' }, { way: 'window', name: 'Window' },
-  { way: 'display', name: 'Whole Screen' }, { way: 'timed', name: 'Timed Region' },
+  { way: 'display', name: 'Whole Screen' }, { way: 'timed', name: 'Timed Region' }, { way: 'record', name: 'Record Video' },
 ];
 const shortcutOf = (settings: Settings, way: Way) => way === 'region' ? settings.shortcut : settings.shortcuts?.[way] ?? '';
 
@@ -54,14 +58,23 @@ root.innerHTML = `
     <h2 class="pref-label">Capture</h2>
     <div class="pref-control">
       <div class="ways">
-        ${WAYS.map(({ way, name }) => `<span class="way-name" id="way-${way}">${name}</span>
-          <button class="recorder glassy" type="button" data-way="${way}" aria-labelledby="way-${way}" aria-describedby="recorder-hint"><kbd>${way === 'region' ? prettyShortcut(DEFAULT_SHORTCUT) : 'None'}</kbd></button>`).join('')}
+        ${WAYS.map(({ way, name }) => `<span class="way-name" id="way-${way}"${way === 'record' ? ' data-records hidden' : ''}>${name}</span>
+          <button class="recorder glassy" type="button" data-way="${way}" aria-labelledby="way-${way}" aria-describedby="recorder-hint"${way === 'record' ? ' data-records hidden' : ''}><kbd>${way === 'region' ? prettyShortcut(DEFAULT_SHORTCUT) : 'None'}</kbd></button>`).join('')}
       </div>
       <p class="pref-hint" id="recorder-hint">Click one, then press the keys you want. ⌫ clears it; Region’s goes back to ${prettyShortcut(DEFAULT_SHORTCUT)}.</p>
       <p class="pref-note shortcut-note" role="status" hidden></p>
       <label class="check"><input class="thumbnail-after" type="checkbox" aria-describedby="thumbnail-hint" /> Show a thumbnail instead of the editor</label>
       <p class="pref-hint" id="thumbnail-hint">Copied at once, it waits in the corner: click it to mark it up, or drag it into any app.</p>
       <p class="pref-note after-note" role="status" hidden></p>
+    </div>
+  </section>
+  <section class="pref" data-records hidden>
+    <h2 class="pref-label">Recording</h2>
+    <div class="pref-control">
+      <label class="check"><input class="record-mic" type="checkbox" aria-describedby="record-mic-hint" /> Record the microphone too</label>
+      <p class="pref-hint" id="record-mic-hint">macOS asks the first time. The microphone button beside Record turns it on and off too.</p>
+      <label class="check"><input class="record-clicks" type="checkbox" checked /> Show clicks in recordings</label>
+      <p class="pref-note record-note" role="status" hidden></p>
     </div>
   </section>
   <section class="pref">
@@ -106,6 +119,9 @@ const thumbnailAfter = root.querySelector<HTMLInputElement>('.thumbnail-after')!
 const afterNote = root.querySelector<HTMLElement>('.after-note')!;
 const mcp = root.querySelector<HTMLInputElement>('.mcp')!;
 const mcpNote = root.querySelector<HTMLElement>('.mcp-note')!;
+const recordMic = root.querySelector<HTMLInputElement>('.record-mic')!;
+const recordClicks = root.querySelector<HTMLInputElement>('.record-clicks')!;
+const recordNote = root.querySelector<HTMLElement>('.record-note')!;
 let current: Settings = { appearance: 'dark', shortcut: DEFAULT_SHORTCUT };
 /** The recorder listening for keys, if one is. */
 let recording: HTMLButtonElement | null = null;
@@ -129,6 +145,8 @@ function show(settings: Settings) {
   autoUpdate.checked = settings.checkUpdates !== false;
   thumbnailAfter.checked = settings.afterCapture === 'thumbnail';
   mcp.checked = settings.mcp !== false;
+  recordMic.checked = settings.recordMic === true;
+  recordClicks.checked = settings.recordClicks !== false;
   placeLens();
 }
 
@@ -229,6 +247,16 @@ mcp.addEventListener('change', () => {
     .catch(error => { note(mcpNote, String(error)); mcp.checked = current.mcp !== false; });
 });
 
+for (const [box, option] of [[recordMic, 'mic'], [recordClicks, 'clicks']] as const) {
+  box.addEventListener('change', () => {
+    note(recordNote, null);
+    void command<Settings>('set_record_options', { [option]: box.checked }).then(show).catch(error => {
+      note(recordNote, String(error));
+      box.checked = option === 'mic' ? current.recordMic === true : current.recordClicks !== false;
+    });
+  });
+}
+
 // Adding Mark to an AI tool, in the tool's own way: a link that opens it to ask,
 // a command for Terminal, or the lines for its settings file.
 const agentPick = root.querySelector<HTMLSelectElement>('.agent')!;
@@ -314,7 +342,9 @@ async function init() {
     show(current);
     return;
   }
-  const [settings, enabled] = await Promise.all([command<Settings>('get_settings'), command<boolean>('login_enabled')]);
+  const [settings, enabled, records] = await Promise.all([command<Settings>('get_settings'), command<boolean>('login_enabled'),
+    command<boolean>('recording_supported').catch(() => false)]);
+  for (const element of root.querySelectorAll<HTMLElement>('[data-records]')) element.hidden = !records;
   show(settings);
   void loadAgents();
   login.checked = enabled;

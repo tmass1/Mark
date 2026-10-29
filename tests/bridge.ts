@@ -12,7 +12,8 @@ import { CAPTURE } from './fixture';
 export interface Sent { cmd: string; args: Record<string, unknown> }
 
 export async function installBridge(page: Page, snapshot: {
-  capture?: { dataUrl: string; width: number; height: number } | null;
+  capture?: { dataUrl: string; width: number; height: number; scale?: number;
+              video?: { id: number; path: string; duration: number; sound: boolean } } | null;
   error?: string | null;
   busy?: boolean;
   /** An AI tool's ask, waiting, as Rust's snapshot carries it. */

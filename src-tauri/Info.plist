@@ -2,5 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>LSUIElement</key><true/>
-  <key>NSScreenCaptureUsageDescription</key><string>Mark captures only the screen region you select so you can copy it as an image.</string>
+  <key>NSScreenCaptureUsageDescription</key><string>Mark captures or records only the part of the screen you choose, so you can mark it up and share it.</string>
+  <key>NSMicrophoneUsageDescription</key><string>Mark records your microphone only when you turn it on for a screen recording.</string>
 </dict></plist>

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-record-options"
+description = "Enables the set_record_options command without any pre-configured scope."
+commands.allow = ["set_record_options"]
+
+[[permission]]
+identifier = "deny-set-record-options"
+description = "Denies the set_record_options command without any pre-configured scope."
+commands.deny = ["set_record_options"]

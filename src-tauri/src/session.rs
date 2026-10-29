@@ -1,5 +1,7 @@
 use crate::capture::{Capture, Preview};
+use crate::movie::Edit;
 use serde::Serialize;
+use std::path::PathBuf;
 use std::sync::{Mutex, Arc, atomic::{AtomicBool, Ordering}, mpsc::Sender};
 
 #[derive(Default)]
@@ -32,15 +34,41 @@ pub struct Session {
     /// Captures copied straight from the overlay, waiting for the editor to
     /// take them into Recent: it never showed them, so it has to ask.
     pub copied: Vec<Capture>,
+    /// The recording under way, while there is one: how to stop it.
+    pub recording: Option<Live>,
+    /// Finished recordings the editor may still ask for by number, oldest
+    /// first: the one open and those Recent keeps.
+    pub videos: Vec<Recorded>,
+    next_video: u64,
 }
+
+/// A recording under way, as whatever ends it reaches it: the bar's Stop and
+/// ×, the menu, the shortcut pressed again.
+pub struct Live { pub stop: Sender<Stop>, pub mic: bool, pub started: Option<std::time::Instant> }
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Stop { Keep, Discard }
+
+/// A finished recording. Its folder holds the movie, named as Save would name
+/// it, and the last copy made of it -- trimmed, drawn on or both -- so a copy
+/// made for Copy and then saved is made once.
+pub struct Recorded {
+    pub id: u64, pub folder: PathBuf, pub file: PathBuf,
+    pub duration: f64, pub pixels: (u32, u32), pub scale: f64,
+    pub edited: Option<(Edit, PathBuf)>,
+}
+
+/// As many recordings as the editor could ask for: Recent's six, and the one open.
+const VIDEOS_KEPT: usize = 7;
 
 /// As many copied captures as Recent keeps: an editor that hasn't asked for
 /// them yet would only keep that many anyway.
 const COPIES_KEPT: usize = 6;
 
 /// A capture floating in the corner. Numbered, so a click or a drag meant for
-/// one that has since gone acts on nothing.
-pub struct Thumb { pub id: u64, pub png: Vec<u8>, pub width: u32, pub height: u32 }
+/// one that has since gone acts on nothing. A recording's is its first frame,
+/// with the movie and how long it runs.
+pub struct Thumb { pub id: u64, pub png: Vec<u8>, pub width: u32, pub height: u32, pub video: Option<(PathBuf, f64)> }
 
 /// What an AI tool asked to see, and where its answer goes. The answer is sent
 /// once: whichever of Send, Don't Send, the editor closing or the tool giving up
@@ -75,6 +103,19 @@ pub struct Asked { pub id: u64, pub client: String, pub prompt: String, pub mode
 pub struct Snapshot { pub capture: Option<Preview>, pub error: Option<String>, pub busy: bool, pub request: Option<Asked> }
 
 impl Session {
+    /// A number for the next recording, which its folder is named by.
+    pub fn next_video_id(&mut self) -> u64 { self.next_video += 1; self.next_video }
+
+    /// Keep a finished recording. Returns the folders of any now too old for
+    /// the editor to ask for, for the caller to delete.
+    pub fn keep_video(&mut self, video: Recorded) -> Vec<PathBuf> {
+        self.videos.push(video);
+        let over = self.videos.len().saturating_sub(VIDEOS_KEPT);
+        self.videos.drain(..over).map(|video| video.folder).collect()
+    }
+
+    pub fn video(&mut self, id: u64) -> Option<&mut Recorded> { self.videos.iter_mut().find(|video| video.id == id) }
+
     /// Hold a capture copied straight from the overlay until the editor takes it.
     pub fn keep_copied(&mut self, capture: Capture) {
         self.copied.push(capture);
@@ -97,9 +138,9 @@ impl Session {
     }
 
     /// A new thumbnail, in place of any before it. Returns its number.
-    pub fn show_thumb(&mut self, png: Vec<u8>, width: u32, height: u32) -> u64 {
+    pub fn show_thumb(&mut self, png: Vec<u8>, width: u32, height: u32, video: Option<(PathBuf, f64)>) -> u64 {
         self.next_thumb += 1;
-        self.thumb = Some(Thumb { id: self.next_thumb, png, width, height });
+        self.thumb = Some(Thumb { id: self.next_thumb, png, width, height, video });
         self.next_thumb
     }
 
@@ -154,8 +195,22 @@ mod tests {
     #[test]
     fn copied_captures_wait_for_the_editor_no_more_than_recent_keeps() {
         let mut session = Session::default();
-        for width in 1..=8 { session.keep_copied(Capture { png: vec![], width, height: 1, scale: 1.0 }); }
+        for width in 1..=8 { session.keep_copied(Capture { png: vec![], width, height: 1, scale: 1.0, video: None }); }
         assert_eq!(session.copied.iter().map(|c| c.width).collect::<Vec<_>>(), [3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn recordings_are_kept_while_the_editor_could_ask_for_them() {
+        let mut session = Session::default();
+        let mut dropped = Vec::new();
+        for _ in 0..9 {
+            let id = session.next_video_id();
+            dropped.extend(session.keep_video(Recorded { id, folder: format!("/r/{id}").into(), file: format!("/r/{id}/m.mp4").into(),
+                                                         duration: 1.0, pixels: (2, 2), scale: 1.0, edited: None }));
+        }
+        assert_eq!(session.videos.iter().map(|v| v.id).collect::<Vec<_>>(), [3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(dropped, [PathBuf::from("/r/1"), PathBuf::from("/r/2")]);
+        assert!(session.video(2).is_none() && session.video(9).is_some());
     }
 
     #[test]
@@ -206,8 +261,8 @@ mod tests {
     #[test]
     fn a_thumbnail_is_acted_on_only_by_its_own_number() {
         let mut session = Session::default();
-        let first = session.show_thumb(vec![1], 10, 10);
-        let second = session.show_thumb(vec![2], 10, 10);
+        let first = session.show_thumb(vec![1], 10, 10, None);
+        let second = session.show_thumb(vec![2], 10, 10, Some(("/r/1/m.mp4".into(), 2.5)));
         assert!(!session.take_thumb(first), "replaced, so a click on the first finds nothing");
         assert!(session.take_thumb(second));
         assert!(session.thumb.is_none() && !session.take_thumb(second));

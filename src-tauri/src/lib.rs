@@ -7,6 +7,9 @@ mod settings;
 mod thumbnail;
 mod updates;
 mod vision;
+mod sck;
+mod movie;
+mod recording;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use tauri_plugin_dialog::DialogExt;
@@ -16,26 +19,32 @@ use tauri::{AppHandle, Emitter, Manager, menu::{CheckMenuItem, Menu, MenuItem, P
 
 /// Kept so the tick can be corrected when macOS disagrees with what was asked.
 struct LoginToggle(CheckMenuItem<tauri::Wry>);
-/// The menu's four ways in, kept so each shows the shortcut chosen for it.
-struct CaptureItems([MenuItem<tauri::Wry>; 4]);
+/// The menu's five ways in, kept so each shows the shortcut chosen for it, and
+/// so Record Video can become Stop Recording while one runs.
+struct CaptureItems([MenuItem<tauri::Wry>; 5]);
 
-/// The four ways into a capture, each of which can have a shortcut.
+/// The five ways into a capture, each of which can have a shortcut. The last
+/// one records rather than takes a picture.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Way { Region, Window, Display, Timed }
+enum Way { Region, Window, Display, Timed, Record }
 
 impl Way {
-    const ALL: [Way; 4] = [Way::Region, Way::Window, Way::Display, Way::Timed];
+    const ALL: [Way; 5] = [Way::Region, Way::Window, Way::Display, Way::Timed, Way::Record];
     fn named(mode: Option<&str>) -> Result<Way, String> {
         match mode {
             None | Some("region") => Ok(Way::Region),
             Some("window") => Ok(Way::Window),
             Some("display") => Ok(Way::Display),
             Some("timed") => Ok(Way::Timed),
+            Some("record") => Ok(Way::Record),
             Some(other) => Err(format!("{other} isn't a way to capture.")),
         }
     }
     fn name(self) -> &'static str {
-        match self { Way::Region => "Capture Region", Way::Window => "Capture Window", Way::Display => "Capture Whole Screen", Way::Timed => "Timed Region" }
+        match self {
+            Way::Region => "Capture Region", Way::Window => "Capture Window", Way::Display => "Capture Whole Screen",
+            Way::Timed => "Timed Region", Way::Record => "Record Video",
+        }
     }
     /// Its shortcut, if it has one.
     fn shortcut(self, prefs: &settings::Settings) -> Option<&str> {
@@ -44,14 +53,16 @@ impl Way {
             Way::Window => prefs.shortcuts.window.as_deref(),
             Way::Display => prefs.shortcuts.display.as_deref(),
             Way::Timed => prefs.shortcuts.timed.as_deref(),
+            Way::Record => prefs.shortcuts.record.as_deref(),
         }
     }
     fn start(self, app: &AppHandle) -> Result<(), String> {
         match self {
-            Way::Region => capture_region(app.clone(), None, None),
-            Way::Window => capture_region(app.clone(), None, Some(true)),
+            Way::Region => capture_region(app.clone(), None, None, None),
+            Way::Window => capture_region(app.clone(), None, Some(true), None),
             Way::Display => capture_display(app.clone(), None),
-            Way::Timed => capture_region(app.clone(), Some(5), None),
+            Way::Timed => capture_region(app.clone(), Some(5), None, None),
+            Way::Record => start_recording(app),
         }
     }
 }
@@ -105,6 +116,9 @@ const COMPACT: (f64, f64) = (560.0, CHROME + RAIL_HEIGHT);
 /// The bar an AI tool's ask is shown in, and the gap under it, kept clear at
 /// the top of the canvas while one waits. Mirrors .request-bar in style.css.
 const REQUEST_BAR: f64 = 44.0 + 10.0;
+/// Record Video's tile, a row of its own under the other four, and the gap
+/// above it. Mirrors .mode[data-start="record"] in style.css.
+const RECORD_ROW: f64 = 64.0 + 10.0;
 
 /// Size the window to its contents: the capture at actual size where the screen
 /// allows, and small when there is nothing to show. A screenshot editor whose
@@ -115,8 +129,10 @@ fn fit_window(app: &AppHandle, to: Option<(f64, f64)>) {
     let asked = app.state::<State>().lock().unwrap().request.is_some();
     let (mut width, mut height) = match to {
         Some((w, h)) => (w + SIDES + RAIL, h + CHROME + if asked { REQUEST_BAR } else { 0.0 }),
-        // The empty state too keeps the ask's bar clear above it.
-        None => (COMPACT.0, COMPACT.1 + if asked { REQUEST_BAR } else { 0.0 }),
+        // The empty state too keeps the ask's bar clear above it -- and, on a
+        // Mac that can record, the row Record Video has to itself, which
+        // makes way for the ask's bar.
+        None => (COMPACT.0, COMPACT.1 + if asked { REQUEST_BAR } else if sck::supported() { RECORD_ROW } else { 0.0 }),
     };
     // Never larger than the screen it will appear on, less a margin so the
     // window does not sit edge to edge.
@@ -152,12 +168,33 @@ fn current_capture(app: AppHandle) -> Snapshot { app.state::<State>().lock().unw
 
 /// The overlay, for a region -- or, asked for a window, already picking one.
 /// Space switches between the two either way, as it does in macOS's own.
+/// `record`: what is picked is recorded rather than captured.
 #[tauri::command]
-fn capture_region(app: AppHandle, delay: Option<u32>, window: Option<bool>) -> Result<(), String> {
+fn capture_region(app: AppHandle, delay: Option<u32>, window: Option<bool>, record: Option<bool>) -> Result<(), String> {
     let delay = delay.unwrap_or(0).min(60);
     let window = window.unwrap_or(false);
+    let record = record.unwrap_or(false);
+    if record { recordable(&app)?; }
     let handle = app.clone();
-    app.run_on_main_thread(move || begin_selection(&handle, delay, window)).map_err(|e| e.to_string())
+    app.run_on_main_thread(move || begin_selection(&handle, delay, window, record)).map_err(|e| e.to_string())
+}
+
+/// Record Video, from the menu, its shortcut or the editor: pressed while a
+/// recording runs, it stops it, kept; otherwise the overlay, to pick what to
+/// record.
+fn start_recording(app: &AppHandle) -> Result<(), String> {
+    if recording::stop(app, session::Stop::Keep) { return Ok(()); }
+    capture_region(app.clone(), None, None, Some(true))
+}
+
+/// Whether a recording can start now. An AI tool's ask waiting in the editor
+/// would have the recording open in place of the screenshot it is waiting for.
+fn recordable(app: &AppHandle) -> Result<(), String> {
+    if !sck::supported() { return Err("Recording the screen needs macOS 15 or later.".into()); }
+    if let Some(request) = &app.state::<State>().lock().unwrap().request {
+        return Err(format!("{} is waiting for a screenshot. Send one, or Don't Send, before recording.", request.client));
+    }
+    Ok(())
 }
 
 /// The whole display the pointer is on, with no overlay in between. The rest of
@@ -176,7 +213,7 @@ fn capture_display(app: AppHandle, delay: Option<u32>) -> Result<(), String> {
     let handle = app.clone();
     app.run_on_main_thread(move || {
         if !ready_to_capture(&handle) { return; }
-        take_selection(&handle, capture::Target::Region(rect), delay, false);
+        take_selection(&handle, capture::Target::Region(rect), delay, false, false);
     }).map_err(|e| e.to_string())
 }
 
@@ -195,7 +232,7 @@ fn ready_to_capture(app: &AppHandle) -> bool {
     thumbnail::put_down(app);
     if !macos::screen_access() {
         app.state::<State>().lock().unwrap().busy = false;
-        report(app, "Allow Mark's screen access in System Settings, then try Capture Region again. macOS may ask you to quit and reopen Mark.".into());
+        report(app, "Allow Mark's screen access in System Settings, then try again. macOS may ask you to quit and reopen Mark.".into());
         return false;
     }
     let visible = app.get_webview_window(EDITOR).is_some_and(|w| w.is_visible().unwrap_or(false));
@@ -208,22 +245,23 @@ fn ready_to_capture(app: &AppHandle) -> bool {
 /// Put Mark's own selection overlay on every display. macOS's picker is not used:
 /// it returns an image and nothing else, so it cannot keep a selection alive for
 /// resizing, exact sizing, or a delayed shutter.
-fn begin_selection(app: &AppHandle, delay: u32, window: bool) {
+fn begin_selection(app: &AppHandle, delay: u32, window: bool, record: bool) {
     if !ready_to_capture(app) { return; }
-    if let Err(error) = open_selectors(app, delay, window) {
+    if let Err(error) = open_selectors(app, delay, window, record) {
         close_selectors(app);
         app.state::<State>().lock().unwrap().busy = false;
         report(app, format!("The selection overlay couldn't open ({error})."));
     }
 }
 
-fn open_selectors(app: &AppHandle, delay: u32, window: bool) -> Result<(), String> {
+fn open_selectors(app: &AppHandle, delay: u32, window: bool, record: bool) -> Result<(), String> {
     let monitors = app.available_monitors().map_err(|e| e.to_string())?;
     if monitors.is_empty() { return Err("no display was found".into()); }
     // The windows that can be picked, read once, before the overlays cover them,
     // and the pointer, so one is picked under a pointer that has not moved yet.
     let windows = capture::capturable(macos::windows_on_screen(), std::process::id() as i32);
     let pointer = macos::pointer();
+    let mic = record && app.state::<Prefs>().0.lock().unwrap().record_mic;
     for (index, monitor) in monitors.iter().enumerate() {
         let scale = monitor.scale_factor();
         // Points, not pixels: window geometry and screencapture -R share this space.
@@ -239,7 +277,7 @@ fn open_selectors(app: &AppHandle, delay: u32, window: bool) -> Result<(), Strin
             .accept_first_mouse(true)
             .initialization_script(selector_globals(
                 capture::Rect { x: origin.x, y: origin.y, width: size.width, height: size.height }, scale,
-                delay, &windows, window, pointer)?)
+                delay, &windows, window, pointer, record.then_some(mic))?)
             .build().map_err(|e| e.to_string())?;
         if let Ok(handle) = window.ns_window() { macos::raise_overlay(handle); }
         window.show().map_err(|e| e.to_string())?;
@@ -252,9 +290,11 @@ fn open_selectors(app: &AppHandle, delay: u32, window: bool) -> Result<(), Strin
 /// What an overlay is told before its page runs. It reports a selection in
 /// global points, so it needs to know where on the desktop its display starts;
 /// and to pick a window, where the windows are, in the same points, and where
-/// the pointer is. JSON throughout, so a window's title is only ever a string.
+/// the pointer is; and for a recording, that it is one, and whether the
+/// microphone was on last time. JSON throughout, so a window's title is only
+/// ever a string.
 fn selector_globals(display: capture::Rect, scale: f64, delay: u32, windows: &[capture::Window], window: bool,
-                    pointer: Option<(f64, f64)>) -> Result<String, String> {
+                    pointer: Option<(f64, f64)>, record: Option<bool>) -> Result<String, String> {
     let json = |value: serde_json::Value| value.to_string();
     let globals = [
         ("__MARK_DISPLAY__", json(serde_json::json!({ "x": display.x, "y": display.y, "width": display.width,
@@ -263,6 +303,8 @@ fn selector_globals(display: capture::Rect, scale: f64, delay: u32, windows: &[c
         ("__MARK_WINDOWS__", serde_json::to_string(windows).map_err(|e| e.to_string())?),
         ("__MARK_MODE__", json((if window { "window" } else { "region" }).into())),
         ("__MARK_POINTER__", json(pointer.map_or(serde_json::Value::Null, |(x, y)| serde_json::json!({ "x": x, "y": y })))),
+        ("__MARK_KIND__", json((if record.is_some() { "video" } else { "shot" }).into())),
+        ("__MARK_MIC__", json(record.unwrap_or(false).into())),
     ];
     Ok(globals.iter().map(|(name, value)| format!("window.{name}={value};")).collect())
 }
@@ -279,10 +321,22 @@ fn set_tray_title(app: &AppHandle, text: Option<String>) {
     if let Some(tray) = app.tray_by_id("mark") { let _ = tray.set_title(text); }
 }
 
+/// While a recording runs, the menu's Record Video stops it, and the other
+/// ways in wait: Mark captures one thing at a time.
+fn recording_menu(app: &AppHandle, live: bool) {
+    let Some(items) = app.try_state::<CaptureItems>() else { return };
+    for (item, way) in items.0.iter().zip(Way::ALL) {
+        if way == Way::Record { let _ = item.set_text(if live { "Stop Recording" } else { way.name() }); }
+        else { let _ = item.set_enabled(!live); }
+    }
+}
+
 /// `copy`: straight to the clipboard and Recent, without the editor -- the
-/// overlay's Copy, ⌘C and ⌘-click.
+/// overlay's Copy, ⌘C and ⌘-click. `record`: recorded rather than captured,
+/// with the microphone or not, as the overlay last had it.
 #[tauri::command]
-fn capture_rect(app: AppHandle, x: f64, y: f64, width: f64, height: f64, delay: u32, copy: Option<bool>) -> Result<(), String> {
+fn capture_rect(app: AppHandle, x: f64, y: f64, width: f64, height: f64, delay: u32, copy: Option<bool>,
+                record: Option<bool>, mic: Option<bool>) -> Result<(), String> {
     if ![x, y, width, height].iter().all(|value| value.is_finite()) {
         return Err("That selection isn't a valid region.".into());
     }
@@ -291,14 +345,17 @@ fn capture_rect(app: AppHandle, x: f64, y: f64, width: f64, height: f64, delay: 
     let delay = delay.min(60);
     let handle = app.clone();
     let copy = copy.unwrap_or(false);
-    app.run_on_main_thread(move || take_selection(&handle, capture::Target::Region(rect), delay, copy)).map_err(|e| e.to_string())
+    let record = record.unwrap_or(false);
+    if record { remember_mic(&app, mic)?; }
+    app.run_on_main_thread(move || take_selection(&handle, capture::Target::Region(rect), delay, copy && !record, record))
+        .map_err(|e| e.to_string())
 }
 
 /// One window, picked in the overlay, by the number the window server gave it.
 /// It is looked up again rather than taken on trust: the window has to still be
 /// there, and its size here is what the image's density is worked out from.
 #[tauri::command]
-fn capture_window(app: AppHandle, id: u32, delay: u32, copy: Option<bool>) -> Result<(), String> {
+fn capture_window(app: AppHandle, id: u32, delay: u32, copy: Option<bool>, record: Option<bool>, mic: Option<bool>) -> Result<(), String> {
     let window = capture::capturable(macos::windows_on_screen(), std::process::id() as i32)
         .into_iter().find(|window| window.id == id)
         .ok_or("That window has closed. Pick another, or press Escape.")?;
@@ -306,10 +363,27 @@ fn capture_window(app: AppHandle, id: u32, delay: u32, copy: Option<bool>) -> Re
     let delay = delay.min(60);
     let handle = app.clone();
     let copy = copy.unwrap_or(false);
-    app.run_on_main_thread(move || take_selection(&handle, target, delay, copy)).map_err(|e| e.to_string())
+    let record = record.unwrap_or(false);
+    if record { remember_mic(&app, mic)?; }
+    app.run_on_main_thread(move || take_selection(&handle, target, delay, copy && !record, record)).map_err(|e| e.to_string())
 }
 
-fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bool) {
+/// The overlay's microphone switch, kept as the setting it is, so the next
+/// recording starts the same way.
+fn remember_mic(app: &AppHandle, mic: Option<bool>) -> Result<(), String> {
+    let Some(mic) = mic else { return Ok(()) };
+    let state = app.state::<Prefs>();
+    let updated = {
+        let mut prefs = state.0.lock().unwrap();
+        if prefs.record_mic == mic { return Ok(()); }
+        prefs.record_mic = mic; prefs.clone()
+    };
+    settings::save(app, &updated)?;
+    let _ = app.emit("settings-changed", &updated);
+    Ok(())
+}
+
+fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bool, record: bool) {
     close_selectors(app);
     let (cancelled, previous) = {
         let state = app.state::<State>();
@@ -333,13 +407,15 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bo
         let _ = app.run_on_main_thread(move || set_tray_title(&handle, None));
         // Let the overlay actually leave the screen before the shutter.
         std::thread::sleep(Duration::from_millis(180));
-        let result = capture::run_capture_cancellable(
-            Path::new("/usr/sbin/screencapture"), &std::env::temp_dir(), &cancelled, Some(target));
+        // A recording is a shutter held open: this thread waits until it ends.
+        let result = if record { recording::record(&app, target, &cancelled) } else {
+            capture::run_capture_cancellable(Path::new("/usr/sbin/screencapture"), &std::env::temp_dir(), &cancelled, Some(target))
+        };
         let handle = app.clone();
         if let Err(error) = app.run_on_main_thread(move || {
             let mut wanted: Option<(f64, f64)> = None;
             let thumbnail_wanted = handle.state::<Prefs>().0.lock().unwrap().thumbnail();
-            let mut thumb: Option<(Vec<u8>, u32, u32, f64)> = None;
+            let mut thumb: Option<(Vec<u8>, u32, u32, f64, Option<capture::Video>)> = None;
             let mut copied: Option<capture::Capture> = None;
             let mut restore = false;
             let show = {
@@ -350,9 +426,10 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bo
                 match result {
                     Ok(Some(mut capture)) => {
                         // Pixels divided by the points asked for: exactly the
-                        // density of the display it came off.
+                        // density of the display it came off. A recording
+                        // knows its own, from what it recorded.
                         let (width, height) = target.size();
-                        if width >= 1.0 { capture.scale = f64::from(capture.width) / width; }
+                        if width >= 1.0 && capture.video.is_none() { capture.scale = f64::from(capture.width) / width; }
                         // Copied straight from the overlay: the clipboard and
                         // Recent, and the editor back only if it was out before,
                         // as it was. An AI tool's ask still opens the editor,
@@ -362,11 +439,13 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bo
                             copied = Some(capture);
                             false
                         } else {
-                            wanted = Some((width, height));
+                            // A recording has its trim strip under it as well.
+                            let shown = (f64::from(capture.width) / capture.scale, f64::from(capture.height) / capture.scale);
+                            wanted = Some(if capture.video.is_some() { (shown.0, shown.1 + recording::STRIP) } else { (width, height) });
                             // Taken from another app with the thumbnail chosen, and no AI
                             // tool waiting on it: the corner, not the editor.
                             if thumbnail_wanted && session.request.is_none() && !session.editor_was_visible {
-                                thumb = Some((capture.png.clone(), capture.width, capture.height, capture.scale));
+                                thumb = Some((capture.png.clone(), capture.width, capture.height, capture.scale, capture.video.clone()));
                             }
                             session.capture = Some(capture);
                             true
@@ -383,12 +462,13 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bo
             // Resize before showing, so the window arrives at its size rather
             // than being seen to grow into it.
             if wanted.is_some() { fit_window(&handle, wanted); }
-            if let Some((png, width, height, scale)) = thumb {
+            if let Some((png, width, height, scale, video)) = thumb {
                 // Copied at once, so it is on the clipboard whether or not
-                // anyone opens it. If either fails, the editor says so, with
-                // the capture in it.
-                let floated = macos::copy_png(&png)
-                    .and_then(|()| thumbnail::show(&handle, png, width, height, scale, target.rect()));
+                // anyone opens it -- a recording as its movie. If either
+                // fails, the editor says so, with the capture in it.
+                let copied = match &video { Some(video) => macos::copy_file(Path::new(&video.path)), None => macos::copy_png(&png) };
+                let floated = copied
+                    .and_then(|()| thumbnail::show(&handle, png, width, height, scale, target.rect(), video));
                 if let Err(error) = floated { report(&handle, error); }
                 return;
             }
@@ -588,6 +668,9 @@ impl mcp::Host for AppHost {
             return Err("Mark can't capture the screen until the user allows it in System Settings, under Privacy & \
                         Security, Screen & System Audio Recording.".into());
         }
+        if app.state::<State>().lock().unwrap().recording.is_some() {
+            return Err("Mark is recording the screen. Ask again once it's done.".into());
+        }
         // Whatever arrives on the socket is cleaned here, once, so the editor
         // and anything after it only ever see text fit to show.
         let client = mcp::clean(&ask.client, 40);
@@ -708,7 +791,7 @@ mod selftest {
                 let before = macos::frontmost_pid();
                 let png = include_bytes!("../tests/text.png").to_vec();
                 let from = capture::Rect { x: x - 200.0, y: y - 150.0, width: 400.0, height: 300.0 };
-                let shown = thumbnail::show(&handle, png, 800, 600, 2.0, from);
+                let shown = thumbnail::show(&handle, png, 800, 600, 2.0, from, None);
                 let after = macos::frontmost_pid();
                 eprintln!("[Mark] selftest: thumbnail for a capture at {x},{y} shown: {shown:?}; frontmost before {before:?}, after {after:?}");
             });
@@ -725,15 +808,15 @@ mod selftest {
     }
 }
 
-/// Keep a suggested filename to a filename: no separators, no traversal, and a
-/// png extension whatever was asked for.
-fn safe_name(name: &str) -> String {
+/// Keep a suggested filename to a filename: no separators, no traversal, and
+/// the extension of what is being written whatever was asked for.
+fn safe_name(name: &str, extension: &str) -> String {
     let trimmed: String = name.chars()
         .filter(|c| !matches!(c, '/' | '\\' | ':' | '\0'))
         .take(120).collect();
     let stem = trimmed.trim().trim_start_matches('.');
-    let stem = stem.strip_suffix(".png").unwrap_or(stem);
-    if stem.is_empty() { "Mark capture.png".into() } else { format!("{stem}.png") }
+    let stem = [".png", ".mp4", ".gif"].iter().find_map(|known| stem.strip_suffix(known)).unwrap_or(stem);
+    if stem.is_empty() { format!("Mark capture.{extension}") } else { format!("{stem}.{extension}") }
 }
 
 /// Ask where to put it, then write it. Async so it runs off the main thread,
@@ -743,7 +826,7 @@ async fn save_image(app: AppHandle, png: String, name: String) -> Result<Option<
     let bytes = decode_png(&png)?;
     let chosen = app.dialog().file()
         .add_filter("PNG image", &["png"])
-        .set_file_name(safe_name(&name))
+        .set_file_name(safe_name(&name, "png"))
         .blocking_save_file();
     let Some(chosen) = chosen else { return Ok(None) };      // cancelled
     let path = chosen.into_path().map_err(|e| e.to_string())?;
@@ -758,7 +841,7 @@ fn share_image(app: AppHandle, png: String, name: String) -> Result<(), String> 
     let bytes = decode_png(&png)?;
     let directory = tempfile::Builder::new().prefix("Mark-share-").tempdir()
         .map_err(|e| format!("Nowhere to put the image to share it ({e})."))?;
-    let path = directory.path().join(safe_name(&name));
+    let path = directory.path().join(safe_name(&name, "png"));
     std::fs::write(&path, &bytes).map_err(|e| format!("The image couldn't be prepared ({e})."))?;
     let window = app.get_webview_window(EDITOR).ok_or("Mark's editor isn't open.")?;
     macos::share_file(window.ns_window().map_err(|e| e.to_string())?, &path)?;
@@ -817,9 +900,12 @@ fn install_glass(app: &AppHandle) {
 #[tauri::command]
 fn glass_available() -> bool { GLASS.with(|slot| slot.borrow().is_some()) }
 
-/// The panes exist only while a capture is open.
+/// The panes exist only while a capture is open, and the crop tool's only
+/// while what is open can be cropped.
 #[tauri::command]
-fn set_glass(visible: bool) { GLASS.with(|slot| { if let Some(glass) = slot.borrow().as_ref() { glass.set_visible(visible); } }); }
+fn set_glass(visible: bool, crop: Option<bool>) {
+    GLASS.with(|slot| { if let Some(glass) = slot.borrow().as_ref() { glass.set_visible(visible, crop.unwrap_or(true)); } });
+}
 
 fn open_settings_pane(pane: &str) {
     let _ = std::process::Command::new("/usr/bin/open").arg(pane).spawn();
@@ -926,6 +1012,7 @@ fn set_shortcut(app: AppHandle, shortcut: String, mode: Option<String>) -> Resul
         Way::Window => wanted.shortcuts.window = chosen,
         Way::Display => wanted.shortcuts.display = chosen,
         Way::Timed => wanted.shortcuts.timed = chosen,
+        Way::Record => wanted.shortcuts.record = chosen,
     }
     // One key, one way: two that shared a key would race for it.
     if let Some((first, second)) = clash(&wanted) {
@@ -974,6 +1061,22 @@ fn set_mcp(app: AppHandle, enabled: bool) -> Result<settings::Settings, String> 
     let ended = !enabled && app.state::<State>().lock().unwrap()
         .end_request(Reply::Failed("The user has turned off screenshots for AI tools in Mark's Settings.".into()));
     if ended { changed(&app); }
+    let _ = app.emit("settings-changed", &updated);
+    Ok(updated)
+}
+
+/// Whether recordings take in the microphone, and whether they show clicks.
+/// Either may be left as it is.
+#[tauri::command]
+fn set_record_options(app: AppHandle, mic: Option<bool>, clicks: Option<bool>) -> Result<settings::Settings, String> {
+    let state = app.state::<Prefs>();
+    let updated = {
+        let mut prefs = state.0.lock().unwrap();
+        if let Some(mic) = mic { prefs.record_mic = mic; }
+        if let Some(clicks) = clicks { prefs.record_clicks = clicks; }
+        prefs.clone()
+    };
+    settings::save(&app, &updated)?;
     let _ = app.emit("settings-changed", &updated);
     Ok(updated)
 }
@@ -1031,6 +1134,7 @@ fn menu_action(app: &AppHandle, id: &str) {
         "window" => { if let Err(e) = Way::Window.start(app) { report(app, e); } }
         "display" => { if let Err(e) = Way::Display.start(app) { report(app, e); } }
         "timed" => { if let Err(e) = Way::Timed.start(app) { report(app, e); } }
+        "record" => { if let Err(e) = Way::Record.start(app) { report(app, e); } }
         "show" => present(app),
         // The editor copies: it alone can flatten the drawing into the image.
         // Copying the capture from here would copy it without its marks.
@@ -1066,7 +1170,9 @@ pub fn run() {
             copy_capture, copy_edited, copy_text, recognize_text, scan_image, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
             send_capture, decline_request, mcp_setup, add_to_agent, open_guide,
             thumbnail::thumbnail_image, thumbnail::open_thumbnail, thumbnail::close_thumbnail, thumbnail::drag_thumbnail,
-            get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, login_enabled, set_login, open_settings, quit_app,
+            recording::recording_supported, recording::recording_status, recording::stop_recording, recording::discard_recording,
+            recording::video_frames, recording::copy_video, recording::save_video, recording::share_video,
+            get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, set_record_options, login_enabled, set_login, open_settings, quit_app,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
             updates::set_auto_update, updates::open_updates])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
@@ -1084,6 +1190,11 @@ pub fn run() {
             let window = MenuItem::with_id(app, "window", Way::Window.name(), true, Way::Window.shortcut(&prefs))?;
             let display = MenuItem::with_id(app, "display", Way::Display.name(), true, Way::Display.shortcut(&prefs))?;
             let timed = MenuItem::with_id(app, "timed", Way::Timed.name(), true, Way::Timed.shortcut(&prefs))?;
+            let record = MenuItem::with_id(app, "record", Way::Record.name(), true, Way::Record.shortcut(&prefs))?;
+            // Recording needs macOS 15; before it, the item is made but never shown.
+            let ways: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = if sck::supported() {
+                vec![&capture, &window, &display, &timed, &record]
+            } else { vec![&capture, &window, &display, &timed] };
             let show = MenuItem::with_id(app, "show", "Show Editor", true, None::<&str>)?;
             let preferences = MenuItem::with_id(app, "settings", "Settings…", true, Some("Super+Comma"))?;
             let quit = MenuItem::with_id(app, "quit", "Quit Mark", true, Some("Super+Q"))?;
@@ -1092,15 +1203,17 @@ pub fn run() {
             let login = CheckMenuItem::with_id(app, "login", "Open at Login", true,
                 macos::login_item_status() == macos::LOGIN_ENABLED, None::<&str>)?;
             app.manage(LoginToggle(login.clone()));
-            app.manage(CaptureItems([capture.clone(), window.clone(), display.clone(), timed.clone()]));
-            let tray_menu = Menu::with_items(app, &[&capture, &window, &display, &timed, &show, &separator, &login, &preferences, &check, &PredefinedMenuItem::separator(app)?, &quit])?;
+            app.manage(CaptureItems([capture.clone(), window.clone(), display.clone(), timed.clone(), record.clone()]));
+            let closing = PredefinedMenuItem::separator(app)?;
+            let rest: [&dyn tauri::menu::IsMenuItem<tauri::Wry>; 7] = [&show, &separator, &login, &preferences, &check, &closing, &quit];
+            let tray_menu = Menu::with_items(app, &[ways.as_slice(), &rest].concat())?;
             TrayIconBuilder::with_id("mark")
                 .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
                 .icon_as_template(true).tooltip(tooltip(&prefs.shortcut))
                 .menu(&tray_menu).build(app)?;
             let copy = MenuItem::with_id(app, "copy", "Copy and Close", true, Some("Alt+Super+C"))?;
             let close = MenuItem::with_id(app, "close", "Close", true, Some("Super+W"))?;
-            let main = Submenu::with_items(app, "Mark", true, &[&capture, &window, &display, &timed, &show, &separator, &login, &preferences, &check, &separator, &quit])?;
+            let main = Submenu::with_items(app, "Mark", true, &[ways.as_slice(), &[&show, &separator, &login, &preferences, &check, &separator, &quit]].concat())?;
             // Never shown, since an accessory app has no menu bar, but still
             // where AppKit sends a key the page leaves alone. That is how a text
             // field gets its editing keys: the page lets ⌘C, ⌘X, ⌘V, ⌘A and ⌘Z
@@ -1134,8 +1247,12 @@ pub fn run() {
             };
             app.manage(Socket(socket));
             std::thread::spawn(thumbnail::sweep);
+            let handle = app.handle().clone();
+            std::thread::spawn(move || recording::sweep(&handle));
             #[cfg(feature = "mcp-selftest")]
             selftest::thumbnail(app.handle().clone());
+            #[cfg(feature = "record-selftest")]
+            recording::selftest(app.handle().clone());
             updates::watch(app.handle().clone());
             // Say up front that capture will not work, rather than letting the
             // first Capture Region be the thing that discovers it.
@@ -1195,10 +1312,12 @@ mod tests {
         let mut prefs = settings::Settings::default();
         prefs.shortcuts.window = Some("Alt+Super+Digit4".into());
         prefs.shortcuts.timed = Some("Shift+Super+KeyT".into());
+        prefs.shortcuts.record = Some("Shift+Super+Digit5".into());
         let ways: Vec<Way> = bindings(&prefs).unwrap().into_iter().map(|(_, way)| way).collect();
-        assert_eq!(ways, [Way::Region, Way::Window, Way::Timed]);
+        assert_eq!(ways, [Way::Region, Way::Window, Way::Timed, Way::Record]);
         assert_eq!(Way::named(None), Ok(Way::Region));
         assert_eq!(Way::named(Some("display")), Ok(Way::Display));
+        assert_eq!(Way::named(Some("record")), Ok(Way::Record));
         assert!(Way::named(Some("video")).is_err());
     }
 
@@ -1213,6 +1332,8 @@ mod tests {
         assert_eq!(clash(&prefs), Some((Way::Region, Way::Display)));
         prefs.shortcuts.display = Some("Alt+Super+Digit4".into());
         assert_eq!(clash(&prefs), None);
+        prefs.shortcuts.record = Some("Super+Alt+Digit4".into());               // Record taking Display's
+        assert_eq!(clash(&prefs), Some((Way::Display, Way::Record)));
     }
 
     /// The overlay's whole picture of the screen arrives as this one script; a
@@ -1222,15 +1343,20 @@ mod tests {
         let display = capture::Rect { x: 1440.0, y: -120.0, width: 1728.0, height: 1117.0 };
         let windows = [capture::Window { id: 7, app: "Notes".into(), title: "\"Quotes\" </script> and \\".into(),
                                          x: 1500.0, y: 40.5, width: 800.0, height: 600.0 }];
-        assert_eq!(selector_globals(display, 2.0, 5, &windows, true, Some((1600.25, 300.0))).unwrap(),
+        assert_eq!(selector_globals(display, 2.0, 5, &windows, true, Some((1600.25, 300.0)), None).unwrap(),
             "window.__MARK_DISPLAY__={\"x\":1440.0,\"y\":-120.0,\"width\":1728.0,\"height\":1117.0,\"scale\":2.0};\
              window.__MARK_DELAY__=5;\
              window.__MARK_WINDOWS__=[{\"id\":7,\"app\":\"Notes\",\"title\":\"\\\"Quotes\\\" </script> and \\\\\",\"x\":1500.0,\"y\":40.5,\"width\":800.0,\"height\":600.0}];\
              window.__MARK_MODE__=\"window\";\
-             window.__MARK_POINTER__={\"x\":1600.25,\"y\":300.0};");
-        let region = selector_globals(display, 1.0, 0, &[], false, None).unwrap();
+             window.__MARK_POINTER__={\"x\":1600.25,\"y\":300.0};\
+             window.__MARK_KIND__=\"shot\";\
+             window.__MARK_MIC__=false;");
+        let region = selector_globals(display, 1.0, 0, &[], false, None, None).unwrap();
         assert!(region.contains("window.__MARK_WINDOWS__=[];") && region.contains("window.__MARK_MODE__=\"region\";")
-                && region.ends_with("window.__MARK_POINTER__=null;"));
+                && region.contains("window.__MARK_POINTER__=null;"));
+        // A recording's overlay is told it is one, and how the microphone was left.
+        let recording = selector_globals(display, 1.0, 0, &[], false, None, Some(true)).unwrap();
+        assert!(recording.ends_with("window.__MARK_KIND__=\"video\";window.__MARK_MIC__=true;"));
     }
 
     /// A command a window may not call fails at runtime with "not allowed by
@@ -1302,18 +1428,21 @@ mod tests {
 
     #[test]
     fn a_suggested_filename_stays_a_filename() {
-        assert_eq!(safe_name("Mark 2026-09-09 at 10.35.42.png"), "Mark 2026-09-09 at 10.35.42.png");
-        assert_eq!(safe_name("Mark capture"), "Mark capture.png");
+        assert_eq!(safe_name("Mark 2026-09-09 at 10.35.42.png", "png"), "Mark 2026-09-09 at 10.35.42.png");
+        assert_eq!(safe_name("Mark capture", "png"), "Mark capture.png");
+        // Saved as what it is, whatever it was suggested as.
+        assert_eq!(safe_name("Mark 2026-09-09 at 10.35.42.mp4", "gif"), "Mark 2026-09-09 at 10.35.42.gif");
+        assert_eq!(safe_name("Mark 2026-09-09 at 10.35.42.png", "mp4"), "Mark 2026-09-09 at 10.35.42.mp4");
     }
 
     #[test]
     fn a_suggested_filename_cannot_climb_out_of_the_folder() {
         // Separators and leading dots go, so nothing here can name a directory.
-        assert_eq!(safe_name("../../etc/passwd"), "etcpasswd.png");
-        assert_eq!(safe_name("/tmp/evil"), "tmpevil.png");
-        assert_eq!(safe_name(".ssh/id_rsa"), "sshid_rsa.png");
+        assert_eq!(safe_name("../../etc/passwd", "png"), "etcpasswd.png");
+        assert_eq!(safe_name("/tmp/evil", "png"), "tmpevil.png");
+        assert_eq!(safe_name(".ssh/id_rsa", "png"), "sshid_rsa.png");
         for name in ["../../etc/passwd", "/tmp/evil", "a\\b", "x:y"] {
-            let safe = safe_name(name);
+            let safe = safe_name(name, "png");
             assert!(!safe.contains('/') && !safe.contains('\\') && !safe.contains(':'));
             assert!(!safe.starts_with('.'));
         }
@@ -1321,10 +1450,10 @@ mod tests {
 
     #[test]
     fn an_empty_or_absurd_name_still_gives_a_usable_one() {
-        assert_eq!(safe_name(""), "Mark capture.png");
-        assert_eq!(safe_name("   "), "Mark capture.png");
-        assert_eq!(safe_name("...."), "Mark capture.png");
-        assert!(safe_name(&"n".repeat(500)).len() <= 124);
-        assert!(safe_name("anything").ends_with(".png"));
+        assert_eq!(safe_name("", "png"), "Mark capture.png");
+        assert_eq!(safe_name("   ", "png"), "Mark capture.png");
+        assert_eq!(safe_name("....", "png"), "Mark capture.png");
+        assert!(safe_name(&"n".repeat(500), "png").len() <= 124);
+        assert!(safe_name("anything", "png").ends_with(".png"));
     }
 }
