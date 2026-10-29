@@ -356,7 +356,9 @@ fn capture_rect(app: AppHandle, x: f64, y: f64, width: f64, height: f64, delay: 
 /// there, and its size here is what the image's density is worked out from.
 #[tauri::command]
 fn capture_window(app: AppHandle, id: u32, delay: u32, copy: Option<bool>, record: Option<bool>, mic: Option<bool>) -> Result<(), String> {
-    let window = capture::capturable(macos::windows_on_screen(), std::process::id() as i32)
+    let listed = macos::windows_on_screen();
+    let owner = listed.iter().find(|window| window.id == id).map(|window| window.pid);
+    let window = capture::capturable(listed, std::process::id() as i32)
         .into_iter().find(|window| window.id == id)
         .ok_or("That window has closed. Pick another, or press Escape.")?;
     let target = capture::Target::Window { id, bounds: window.bounds() };
@@ -364,7 +366,14 @@ fn capture_window(app: AppHandle, id: u32, delay: u32, copy: Option<bool>, recor
     let handle = app.clone();
     let copy = copy.unwrap_or(false);
     let record = record.unwrap_or(false);
-    if record { remember_mic(&app, mic)?; }
+    if record {
+        remember_mic(&app, mic)?;
+        // A window is recorded to be used while it is, so its app comes
+        // forward as the overlay goes, in place of the one that was in front,
+        // and is the one gone back to after. A screenshot takes a window
+        // where it is, covered or not, and leaves the front as it was.
+        if let Some(pid) = owner { app.state::<State>().lock().unwrap().previous_pid = Some(pid); }
+    }
     app.run_on_main_thread(move || take_selection(&handle, target, delay, copy && !record, record)).map_err(|e| e.to_string())
 }
 
