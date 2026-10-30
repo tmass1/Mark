@@ -26,14 +26,17 @@ as usual, and **Send** gives it to them, numbered steps and all. Nothing is
 taken or sent without that Send. See [AI tools](#ai-tools).
 
 **[Download Mark](https://github.com/tmass1/Mark/releases/latest)**, signed and
-notarized for Apple silicon and Intel, for macOS 13 or later.
+notarized for Apple silicon and Intel, for macOS 13 or later (recording video,
+macOS 15). Its website, [mark.tommymassaro.com](https://mark.tommymassaro.com),
+has the download too, and a live demo of the editor to try in a browser.
 
 Annotation is arrows, lines, freehand, text, boxes, ellipses, a highlighter,
 redaction, and a crop, any of which can carry a number. Finished work goes to
-the clipboard, to a file, or to macOS's share sheet. There are no accounts,
-cloud features, or screen recording. Mark is built with Tauri v2: the interface
-is TypeScript in the system WKWebView and the native shell is Rust, with no
-Xcode project, no Swift source, and 200+ automated tests.
+the clipboard, to a file, or to macOS's share sheet. Mark also records short
+videos of the screen, up to five minutes, to trim, mark up and keep as an MP4 or
+a GIF. There are no accounts or cloud features. Mark is built with Tauri v2:
+the interface is TypeScript in the system WKWebView and the native shell is
+Rust, with no Xcode project, no Swift source, and 200+ automated tests.
 
 ## Requirements
 
