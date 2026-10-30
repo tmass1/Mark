@@ -115,6 +115,18 @@ test('settings open from the gear, and the appearance switches every frame and t
   await expect(win).toBeHidden();
 });
 
+test('Record shows where the app shows it, and says the Mac app records', async ({ page }) => {
+  const editor = await open(page);
+  const record = editor.locator('[data-start="record"]');
+  await expect(record).toBeVisible();
+  await record.click();
+  await expect(page.locator('.hint')).toContainText('Recording video is in the Mac app');
+  await expect(page.locator('.overlay')).toHaveCount(0);
+  await expect(page.locator('.win.editor')).toBeVisible();
+  await page.locator('.tray').click();
+  await expect(page.locator('.tray-menu [data-act="record"]')).toHaveText(/^Record Video/);
+});
+
 test('⌘4 starts a capture, as in the app, and the shortcut is recordable', async ({ page }) => {
   const editor = await open(page);
   await expect(editor.locator('.start kbd')).toHaveText('⌘4');
@@ -249,7 +261,7 @@ test('Copy in the overlay puts the region on the clipboard and in Recent, withou
   await expect(editor.locator('.recent')).toContainText('Just now');
 });
 
-// The site's "Let Claude ask": the demo plays the AI tool, and the visitor
+// The site's "Let an agent ask": the demo plays the AI tool, and the visitor
 // answers it with the real editor, request bar, Send and all.
 test('Claude asks, the visitor captures and points, and the card shows what Claude received', async ({ page }) => {
   const editor = await open(page);

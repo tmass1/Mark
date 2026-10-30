@@ -27,11 +27,11 @@ const DEMO_SHORTCUT = DEFAULT_SHORTCUT;
 interface Capture { dataUrl: string; width: number; height: number; scale: number }
 interface Settings {
   appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates: boolean; frame?: unknown;
-  shortcuts?: { window?: string; display?: string; timed?: string };
+  shortcuts?: { window?: string; display?: string; timed?: string; record?: string };
   afterCapture?: 'editor' | 'thumbnail'; mcp?: boolean; recordMic?: boolean; recordClicks?: boolean;
 }
-type Way = 'region' | 'window' | 'display' | 'timed';
-const WAY_NAMES: Record<Way, string> = { region: 'Capture Region', window: 'Capture Window', display: 'Capture Whole Screen', timed: 'Timed Region' };
+type Way = 'region' | 'window' | 'display' | 'timed' | 'record';
+const WAY_NAMES: Record<Way, string> = { region: 'Capture Region', window: 'Capture Window', display: 'Capture Whole Screen', timed: 'Timed Region', record: 'Record Video' };
 const shortcutOf = (way: Way) => way === 'region' ? state.settings.shortcut : state.settings.shortcuts?.[way] ?? '';
 
 const state = {
@@ -75,6 +75,7 @@ document.body.innerHTML = `
         <button role="menuitem" data-act="window">Capture Window <kbd></kbd></button>
         <button role="menuitem" data-act="display">Capture Whole Screen <kbd></kbd></button>
         <button role="menuitem" data-act="timed">Timed Region <kbd></kbd></button>
+        <button role="menuitem" data-act="record">Record Video <kbd></kbd></button>
         <button role="menuitem" data-act="show">Show Editor</button>
         <hr />
         <button role="menuitem" data-act="settings">Settings… <kbd>⌘,</kbd></button>
@@ -162,6 +163,8 @@ function showHint(text: string | null) {
   // A change of text crossfades, so a tip arriving reads as arriving.
   pill.classList.remove('swap'); void pill.offsetWidth; pill.classList.add('swap');
 }
+/** What Record says here: a browser can't record your screen, so the Mac app does. */
+const RECORD_HINT = 'Recording video is in the Mac app: up to five minutes of a region, a window or the whole screen. Here, try a still.';
 
 // ---- tips ------------------------------------------------------------------
 /** With a capture open, the pill teaches one thing at a time, in about the order
@@ -298,6 +301,7 @@ async function captureDisplay(delay: number) {
 
 /** Each way in, as a shortcut or the menu starts it. */
 function startWay(way: Way): Promise<void> {
+  if (way === 'record') { showHint(RECORD_HINT); return Promise.resolve(); }
   if (way === 'display') return captureDisplay(0);
   return beginSelection(way === 'timed' ? 5 : 0, way === 'window');
 }
@@ -384,7 +388,9 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
   async invoke(command, args) {
     switch (command) {
       case 'current_capture': return { capture: state.capture, error: state.error, busy: state.busy, request: state.request };
-      case 'capture_region': await beginSelection(Number(args.delay ?? 0), Boolean(args.window)); return;
+      case 'capture_region':
+        if (args.record) { showHint(RECORD_HINT); return; }
+        await beginSelection(Number(args.delay ?? 0), Boolean(args.window)); return;
       case 'capture_display': await captureDisplay(Number(args.delay ?? 0)); return;
       case 'capture_rect': {
         overlay?.remove(); overlay = null;
@@ -477,8 +483,9 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         emitTo(editorFrame, 'capture-changed');
         showHint('Claude was told no, and not to ask again unless you say so.');
         return;
-      // Recording is the Mac app's: the demo says it can't, so nothing offers it.
-      case 'recording_supported': return false;
+      // Recording is the Mac app's. The demo offers it where the app does, so it
+      // looks like the app, and says so when it's asked to record.
+      case 'recording_supported': return true;
       case 'set_record_options':
         state.settings = { ...state.settings, recordMic: Boolean(args.mic ?? state.settings.recordMic),
                            recordClicks: Boolean(args.clicks ?? state.settings.recordClicks ?? true) };
@@ -517,9 +524,9 @@ function tickClock() {
   $<HTMLElement>('.clock').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 tickClock(); setInterval(tickClock, 15_000);
-/** The tray menu's four ways in, each showing its shortcut if it has one. */
+/** The tray menu's five ways in, each showing its shortcut if it has one. */
 function showTrayShortcuts() {
-  const acts: Record<Way, string> = { region: 'capture', window: 'window', display: 'display', timed: 'timed' };
+  const acts: Record<Way, string> = { region: 'capture', window: 'window', display: 'display', timed: 'timed', record: 'record' };
   for (const way of Object.keys(acts) as Way[]) {
     const shortcut = shortcutOf(way);
     trayMenu.querySelector(`[data-act="${acts[way]}"] kbd`)!.textContent = shortcut ? prettyShortcut(shortcut) : '';
@@ -539,6 +546,7 @@ trayMenu.addEventListener('click', event => {
   if (act === 'window') void startWay('window');
   if (act === 'display') void startWay('display');
   if (act === 'timed') void startWay('timed');
+  if (act === 'record') void startWay('record');
   if (act === 'show') { editorWanted = true; showEditor(true); showHint(null); emitTo(editorFrame, 'capture-changed'); }
   if (act === 'settings') openSettings();
   if (act === 'quit') void host.invoke('quit_app', {}, window, 'page');
