@@ -1,0 +1,25 @@
+<!doctype html>
+<html><head><meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 760px; height: 300px; overflow: hidden; padding: 24px; font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #111827; background: #f4f5f7; -webkit-font-smoothing: antialiased; }
+  .card { background: #fff; border-radius: 14px; box-shadow: 0 0 0 1px #e5e7eb, 0 1px 2px #0000000a; padding: 18px 20px; }
+  h2 { font-size: 15px; margin: 0 0 2px; }
+  .sub { color: #6b7280; margin: 0 0 14px; }
+  .key { display: grid; grid-template-columns: 120px 1fr auto; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid #f0f1f3; }
+  .name b { display: block; font-weight: 600; }
+  .name small { color: #6b7280; font-size: 12px; }
+  code { font: 12.5px/1 ui-monospace, "SF Mono", Menlo, monospace; background: #f6f7f9; border: 1px solid #eceef1; border-radius: 7px; padding: 9px 11px; display: block; color: #111827; }
+  .live { display: inline-block; padding: 1px 7px; border-radius: 5px; font-size: 11px; font-weight: 700; background: #dcfce7; color: #15803d; margin-left: 6px; vertical-align: 1px; }
+  .test { background: #fef3c7; color: #a16207; }
+  .btns { display: flex; gap: 6px; }
+  .btns span { padding: 7px 11px; border-radius: 7px; border: 1px solid #e5e7eb; font-weight: 600; color: #374151; }
+</style></head>
+<body>
+  <div class="card">
+    <h2>API keys</h2>
+    <p class="sub">Use these to read and write trips from your own tools.</p>
+    <div class="key"><div class="name"><b>Production<span class="live">LIVE</span></b><small>Last used 2 min ago</small></div><code>wp_live_4f9c2a71e08bd35c6a1f90e2b7d4</code><div class="btns"><span>Copy</span><span>Roll</span></div></div>
+    <div class="key"><div class="name"><b>Staging<span class="live test">TEST</span></b><small>Last used yesterday</small></div><code>wp_test_91ab07c3d2e64f58a0b19c7e3f62</code><div class="btns"><span>Copy</span><span>Roll</span></div></div>
+  </div>
+</body></html>

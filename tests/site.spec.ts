@@ -8,7 +8,7 @@ test.use({ viewport: { width: 1280, height: 900 } });
 
 test('the site takes its version, shortcut and download from the app', async ({ page }) => {
   await page.goto('/site.html');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Show Claude what you mean.');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveAccessibleName('Mock it up. Send it to your AI agent, co-worker, designer or friend.');
   await expect(page.locator('.hero [data-version]')).toHaveText(pkg.version);
   await expect(page.locator('.hero [data-shortcut]')).toHaveText('⌘4');
   const dmg = `Mark_${pkg.version}_universal.dmg`;
@@ -25,6 +25,23 @@ test('the site takes its version, shortcut and download from the app', async ({ 
     await img.scrollIntoViewIfNeeded();
     expect(await img.evaluate(el => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0)).toBe(true);
   }
+});
+
+test('the headline names who a mock-up is for, one after another, unless motion is turned down', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/site.html');
+  const heading = page.getByRole('heading', { level: 1 });
+  const who = heading.locator('.who');
+  await expect(heading).toHaveText(/^Mock it up\.\s*Send it to\s+your AI agent\.$/);
+  await page.clock.runFor(2800);
+  await expect(who).toHaveText('Co-worker');
+  await expect(who).toHaveAttribute('data-who', 'coworker');
+  await page.clock.runFor(2400 * 3);
+  await expect(who).toHaveText('AI agent');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  await page.clock.runFor(2400 * 3);
+  await expect(who).toHaveText('AI agent');
 });
 
 test('a callout says the demo is live, and goes once the demo is used', async ({ page }) => {
@@ -50,11 +67,11 @@ test('a callout says the demo is live, and goes once the demo is used', async ({
   await expect(callout).toHaveCSS('opacity', '0');
 });
 
-test('“Let Claude ask” has the demo play Claude asking, for the visitor to answer', async ({ page }) => {
+test('“Let an agent ask” has the demo play an agent asking, for the visitor to answer', async ({ page }) => {
   await page.goto('/site.html');
   const editor = page.frameLocator('.demo').frameLocator('.win.editor iframe');
   await expect(editor.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
-  await page.getByRole('button', { name: 'Let Claude ask' }).click();
+  await page.getByRole('button', { name: 'Let an agent ask' }).click();
   await expect(editor.locator('.request-bar')).toContainText('Claude asks to see “the chart’s peak”');
   await expect(page.locator('.demo')).toBeInViewport();
   await expect(page.locator('.try-me')).toHaveClass(/used/);
@@ -77,7 +94,7 @@ test('the guide to AI tools: reached from the home page, a section for every too
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text: string) => { (window as any).__copied = text; } } });
   });
   await page.goto('/site.html');
-  await expect(page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'AI setup' })).toHaveAttribute('href', './ai.html');
+  await expect(page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'Setup guide' })).toHaveAttribute('href', './ai.html');
   await page.getByRole('link', { name: 'the setup guide' }).click();
   await expect(page).toHaveURL(/\/ai\.html$/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Use Mark with your AI tools');
@@ -125,9 +142,9 @@ test('the hero is the real demo, framed without its caption', async ({ page }) =
 test('the bar’s links reach their sections', async ({ page }) => {
   await page.goto('/site.html');
   await page.locator('#features').scrollIntoViewIfNeeded();
-  await page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'Try it' }).click();
-  await expect(page).toHaveURL(/#try$/);
-  await expect(page.locator('.demo')).toBeInViewport();
+  await page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'Video' }).click();
+  await expect(page).toHaveURL(/#video$/);
+  await expect(page.getByRole('heading', { name: 'When a still won’t show it, record it.' })).toBeInViewport();
 });
 
 test('a phone gets the picture of the app, and never loads the demo', async ({ page }) => {
@@ -141,7 +158,7 @@ test('a phone gets the picture of the app, and never loads the demo', async ({ p
   await expect.poll(() => picture.evaluate(el => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0)).toBe(true);
   await expect(page.locator('.demo-frame')).toBeHidden();
   await expect(page.locator('.try-me')).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Let Claude ask' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Let an agent ask' })).toBeHidden();
   await expect(page.getByText('The demo wants a pointer and a keyboard.')).toBeVisible();
   expect(asked.filter(path => path.endsWith('demo.html'))).toEqual([]);
 });

@@ -1,0 +1,52 @@
+<!doctype html>
+<html><head><meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 1100px; height: 560px; overflow: hidden; display: grid; grid-template-columns: 430px 1fr; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #111827; background: #fff; -webkit-font-smoothing: antialiased; }
+  .side { position: relative; padding: 34px 36px; color: #fff; background: radial-gradient(420px 300px at 20% 10%, #fb923c, transparent 70%), radial-gradient(500px 380px at 90% 100%, #0f766e, transparent 70%), linear-gradient(160deg, #ea580c, #115e59); overflow: hidden; }
+  .mark { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+  .mark i { width: 28px; height: 28px; border-radius: 8px; background: #fff; display: grid; place-items: center; }
+  .side h2 { font-size: 30px; line-height: 1.12; letter-spacing: -.02em; margin: 120px 0 14px; font-weight: 700; }
+  .side p { margin: 0; opacity: .85; font-size: 15px; max-width: 320px; }
+  .stops { position: absolute; left: 36px; bottom: 34px; display: flex; gap: 8px; }
+  .stops span { padding: 6px 11px; border-radius: 999px; background: #ffffff26; font-size: 12.5px; font-weight: 600; backdrop-filter: blur(4px); }
+  .main { padding: 30px 90px 0 80px; }
+  .banner { display: flex; gap: 10px; align-items: center; padding: 11px 14px; border-radius: 10px; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; font-weight: 500; margin-bottom: 18px; }
+  .banner b { width: 18px; height: 18px; border-radius: 50%; background: #dc2626; color: #fff; display: grid; place-items: center; font-size: 12px; }
+  h1 { font-size: 24px; letter-spacing: -.02em; margin: 0 0 4px; }
+  .lead { color: #6b7280; margin: 0 0 18px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; color: #374151; }
+  .field { height: 42px; border: 1px solid #d1d5db; border-radius: 9px; padding: 0 13px; display: flex; align-items: center; margin-bottom: 13px; }
+  .field.bad { border-color: #dc2626; box-shadow: 0 0 0 3px #fee2e2; margin-bottom: 4px; letter-spacing: .14em; justify-content: space-between; }
+  .field.bad em { font-style: normal; letter-spacing: 0; color: #6b7280; font-size: 12.5px; font-weight: 500; }
+  .err { color: #dc2626; font-size: 12.5px; margin-bottom: -6px; position: relative; z-index: 1; }
+  .meter { display: flex; gap: 4px; margin: 0 0 0; }
+  .meter span { flex: 1; height: 4px; border-radius: 2px; background: #22c55e; }
+  .btn { height: 44px; border-radius: 9px; background: #111827; color: #fff; font-weight: 600; display: grid; place-items: center; margin-top: 4px; }
+  .fine { color: #6b7280; font-size: 12.5px; margin-top: 12px; text-align: center; }
+  .fine a { color: #0f766e; font-weight: 600; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+</style></head>
+<body>
+  <div class="side">
+    <div class="mark"><i><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1.5c-2.8 0-5 2.1-5 4.8C3 10 8 14.5 8 14.5s5-4.5 5-8.2c0-2.7-2.2-4.8-5-4.8z" fill="#ea580c"/><circle cx="8" cy="6.3" r="1.8" fill="#fff"/></svg></i>Waypoint</div>
+    <h2>Plan the trip together, not in a group chat.</h2>
+    <p>Stops, bookings and the budget in one place everyone can edit.</p>
+    <div class="stops"><span>Lisbon</span><span>Porto</span><span>Douro Valley</span></div>
+  </div>
+  <div class="main">
+    <div class="banner"><b>!</b>Something went wrong. Please try again.</div>
+    <h1>Create your account</h1>
+    <p class="lead">Free for trips of up to six people.</p>
+    <div class="two">
+      <div><label>First name</label><div class="field">Ana</div></div>
+      <div><label>Last name</label><div class="field">Ruiz</div></div>
+    </div>
+    <label>Email</label><div class="field">ana@studioruiz.com</div>
+    <label>Password</label>
+    <div class="field bad">••••••••••••••<em>Strong</em></div>
+    <div class="err">Password must be at least 8 characters.</div>
+    <div class="btn">Create account</div>
+    <div class="fine">Already have an account? <a>Sign in</a></div>
+  </div>
+</body></html>

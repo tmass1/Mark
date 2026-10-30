@@ -22,6 +22,9 @@
   --blue: #0a84ff;
   --hover: #359aff;
   --brand: #ff453a;
+  --orange: #ff9f0a;
+  --green: #30d158;
+  --purple: #bf5af2;
   --shadow: #00000080;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Inter, "Segoe UI", Roboto, sans-serif;
   --width: 1120px;
@@ -110,7 +113,33 @@ main { display: block; }
 section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
 
 .hero { padding-top: 96px; text-align: center; }
-.hero h1 { font-size: clamp(44px, 7.2vw, 84px); letter-spacing: -.04em; line-height: .98; }
+.hero h1 { font-size: clamp(44px, 7.2vw, 84px); letter-spacing: -.04em; line-height: 1.2; }
+/* Who it's for: a pane of the editor's glass set into the line, its icon on a
+   tile in that person's colour, the tile's radius the pane's less its inset.
+   Its width eases from one name to the next, so the line re-centres rather than
+   jumps; the name leaves upward and the next arrives from below. */
+.nb { white-space: nowrap; }
+.who {
+  --c: var(--orange);
+  display: inline-flex; align-items: center; gap: .5em; vertical-align: middle; position: relative; top: -.06em;
+  overflow: hidden; padding: .26em .78em .26em .26em; border-radius: .74em;
+  font-size: .4em; font-weight: 600; letter-spacing: -.015em; line-height: 1;
+  background: var(--sheen), var(--panel); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4);
+  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 22px 44px -22px var(--shadow);
+  transition: width .42s cubic-bezier(.3, .8, .25, 1);
+}
+.who[data-who="coworker"] { --c: var(--blue); }
+.who[data-who="designer"] { --c: var(--purple); }
+.who[data-who="friend"] { --c: var(--green); }
+.who i {
+  display: grid; place-items: center; flex: none; width: 1.8em; height: 1.8em; border-radius: .48em;
+  color: var(--c); background: color-mix(in srgb, var(--c) 20%, transparent);
+  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--c) 34%, transparent);
+}
+.who svg { width: 1.05em; height: 1.05em; }
+.who i, .who span { transition: opacity .18s, transform .18s; }
+.who.out i, .who.out span { opacity: 0; transform: translateY(-.35em); }
+.who.in i, .who.in span { opacity: 0; transform: translateY(.35em); transition: none; }
 .lede { max-width: 560px; margin: 24px auto 0; font-size: 19px; line-height: 1.5; color: var(--muted); text-wrap: pretty; }
 .lede kbd { color: var(--ink); }
 .actions { display: flex; justify-content: center; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
@@ -162,16 +191,23 @@ section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
   box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge), 0 60px 120px -40px #000000cc, 0 30px 60px -30px #0a84ff33;
 }
 
-/* ---- with Claude ----------------------------------------------------------------- */
-/* What Mark is for, first: Claude asks, you show it. The story on the left in
-   three numbered beats, red like Mark's own badges; on the right the editor
-   mid-ask and the words Claude got with the picture; and the setup under both. */
-.claude {
-  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 40px 56px; align-items: start;
-  padding-top: 140px;
-}
+/* Who it works with, quietly, under the download: names rather than a wall of logos. */
+.works-with { max-width: 600px; margin: 22px auto 0; color: var(--dim); font-size: 13.5px; line-height: 1.6; text-wrap: balance; }
+.works-with span { margin-right: 4px; color: var(--muted); font-weight: 600; }
+
+/* ---- sections in two columns ---------------------------------------------------------- */
+/* Words on one side, the app on the other: how it works and the agents with the
+   words first, video the other way round, so the page doesn't march. */
+.flow, .agents { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 40px 56px; padding-top: 140px; }
+.flow { align-items: start; }
+.agents { align-items: center; }
+.video { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: center; padding-top: 140px; }
 .eyebrow { margin-bottom: 14px; color: var(--hover); font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-.claude-lede { margin-top: 18px; color: var(--muted); font-size: 17px; line-height: 1.55; text-wrap: pretty; }
+.section-lede { margin-top: 18px; color: var(--muted); font-size: 17px; line-height: 1.55; text-wrap: pretty; }
+.mockup-shot, .ask-shot, .video-shot { box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge), 0 40px 80px -36px #000000cc, 0 24px 50px -30px #0a84ff40; }
+
+/* How it works: three beats, red like Mark's own numbered badges, beside a
+   mock-up made with them and the list its notes copy as. */
 .beats { list-style: none; padding: 0; margin: 34px 0 0; display: grid; gap: 22px; }
 .beats li { display: grid; grid-template-columns: 32px 1fr; column-gap: 16px; }
 .beat {
@@ -181,10 +217,7 @@ section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
 }
 .beats h3 { padding-top: 4px; }
 .beats p { margin-top: 6px; color: var(--muted); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
-.claude-actions { display: flex; align-items: center; gap: 14px; margin-top: 34px; }
-.claude-try { color: var(--dim); font-size: 14px; }
-.claude-side { display: grid; gap: 16px; }
-.ask-shot { box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge), 0 40px 80px -36px #000000cc, 0 24px 50px -30px #0a84ff40; }
+.flow-side { display: grid; gap: 16px; }
 .received {
   margin: 0; padding: 14px 16px 16px; border-radius: 18px;
   background: var(--sheen), var(--panel);
@@ -195,14 +228,28 @@ section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
   margin: 10px 0 0; padding: 12px 14px; border-radius: 10px; background: #080b10; box-shadow: inset 0 0 0 .5px var(--edge);
   font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: #cfd6e0; white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.received-note { margin-top: 10px; color: var(--dim); font-size: 13px; line-height: 1.5; }
-.claude-setup {
+
+/* Video: the eyebrow in a recording's red, with its dot. */
+.video .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--brand); }
+.video .eyebrow::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 3px #ff453a33; }
+.video-shot { border-radius: 14px; }
+.facts { list-style: none; margin: 30px 0 0; padding: 0; display: grid; gap: 20px; }
+.facts li { display: flex; align-items: flex-start; gap: 14px; }
+.facts h3 { padding-top: 1px; font-size: 16px; }
+.facts p { margin-top: 4px; color: var(--muted); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
+.video .fine { margin-top: 26px; }
+
+/* The agents: their ask, the setup under both. */
+.agents-note { margin-top: 16px; color: var(--dim); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
+.agents-actions { display: flex; align-items: center; gap: 14px; margin-top: 30px; }
+.agents-try { color: var(--dim); font-size: 14px; }
+.setup {
   grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 28px 40px;
   padding: 26px 30px 28px; border-radius: 22px;
   background: var(--sheen), var(--panel);
   box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 30px 60px -30px var(--shadow);
 }
-.claude-setup p { margin-top: 6px; color: var(--muted); font-size: 14.5px; line-height: 1.55; text-wrap: pretty; }
+.setup p { margin-top: 6px; color: var(--muted); font-size: 14.5px; line-height: 1.55; text-wrap: pretty; }
 .inline { color: var(--hover); }
 .inline:hover { text-decoration: underline; }
 .command {
@@ -219,19 +266,6 @@ section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
   color: var(--ink); background: var(--control); box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--control-line); cursor: pointer;
 }
 .copy-command:hover { background: var(--control-hover); }
-
-.steps { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: center; padding-top: 140px; }
-.steps ol { list-style: none; padding: 0; margin: 40px 0 0; display: grid; gap: 30px; }
-.steps li { display: grid; grid-template-columns: 56px 1fr; column-gap: 18px; row-gap: 6px; }
-.steps li .cap { grid-row: 1 / span 2; }
-.steps li h3 { align-self: end; }
-.steps li p { color: var(--muted); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
-.cap {
-  display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 44px; padding: 0 8px;
-  border-radius: 12px; font-size: 16px; font-weight: 600; color: var(--ink); letter-spacing: -.01em;
-  background: var(--sheen), var(--control); box-shadow: inset 0 1px 0 var(--rim), inset 0 -1px 0 var(--edge), 0 0 0 .5px var(--edge), 0 6px 14px -8px var(--shadow);
-}
-.steps-shot { border-radius: 14px; }
 
 .features { padding-top: 140px; }
 .features h2 { text-align: center; }
@@ -262,16 +296,6 @@ section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
 .more p kbd { font-size: .86em; }
 .glyph { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 999px; color: var(--ink); background: var(--control); box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge); }
 .glyph svg { width: 20px; height: 20px; }
-
-.glass {
-  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; align-items: center;
-  max-width: var(--width); margin: 140px auto 0; padding: 48px;
-  border-radius: 28px; background: var(--sheen), #1b212a; box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge), 0 40px 80px -40px var(--shadow);
-  overflow: hidden;
-}
-.glass-text p { margin-top: 18px; color: var(--muted); line-height: 1.55; text-wrap: pretty; }
-.settings-shot { width: min(100%, 400px); margin-top: 32px; }
-.light-shot { border-radius: 12px; margin-right: -120px; }
 
 .demo-frame { padding: 8px; border-radius: 22px; }
 .demo { display: block; width: 100%; aspect-ratio: 16 / 10; border: none; border-radius: 14px; background: #0e1118; }
@@ -341,9 +365,10 @@ footer .made a:hover { color: var(--ink); }
 
 /* ---- narrower ------------------------------------------------------------------ */
 @media (max-width: 900px) {
-  .steps, .glass, .claude, .claude-setup { grid-template-columns: 1fr; }
-  .steps { gap: 40px; }
-  .light-shot { margin-right: 0; }
+  .flow, .video, .agents, .setup { grid-template-columns: 1fr; }
+  .video { gap: 40px; }
+  /* One column: the words before the picture, as the other sections have them. */
+  .video-text { order: -1; }
   .more { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* Three across would crop the pictures, so a card a row, its picture beside its words. */
   .grid { grid-template-columns: 1fr; }
@@ -362,14 +387,15 @@ footer .made a:hover { color: var(--ink); }
   .links { display: none; }
   .hero { padding-top: 72px; }
   .hero-shot { display: block; margin-top: 44px; }
-  .steps, .features, .claude { padding-top: 96px; }
-  /* No demo on a phone, so nothing for Claude to ask in. */
-  .claude-actions { display: none; }
-  .claude-setup { padding: 22px 20px 24px; }
+  /* The hero shows the mock-up on a phone, so How it works keeps only its notes. */
+  .mockup-shot { display: none; }
+  .flow, .video, .agents, .features { padding-top: 96px; }
+  /* No demo on a phone, so nothing for an agent to ask in. */
+  .agents-actions { display: none; }
+  .setup { padding: 22px 20px 24px; }
   .doc section, .doc .doc-hero { padding-top: 64px; }
   .tool { padding: 18px 18px 20px; }
   .tool-index { grid-template-columns: 1fr; gap: 12px; }
-  .glass { margin-top: 96px; padding: 28px 20px; border-radius: 22px; }
   .grid, .more { grid-template-columns: 1fr; }
   .grid .card { display: block; }
   .grid .card h3 { margin-top: 18px; }

@@ -752,11 +752,14 @@ a Save button for a browser that refuses the clipboard; below 640 pixels wide
 the demo shows a picture of the editor instead, since a phone cannot drive it.
 `demo.html?embed` drops the caption and margin for hosting in a frame.
 
-The site's pictures are renders of the demo, not mockups. After a change to the
-editor's appearance, redraw them with the dev server running:
+The site's pictures are renders of the real editor, not mockups: some over the
+demo's desktop, the rest over made-up screens in `scripts/site/examples/` -- a
+checkout, a sprint board, a sign-up form -- so each section shows something
+different. After a change to the editor's appearance, redraw them with the dev
+server running:
 
 ```sh
-pnpm site:shots            # writes public/site/*.png and *.jpeg
+pnpm site:shots            # writes public/site/*.png
 ```
 
 To assemble a folder for a static host:

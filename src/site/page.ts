@@ -50,7 +50,7 @@ const used = () => window.setTimeout(() => {
 });
 if (demoFrame && tryMe) window.addEventListener('blur', used);
 
-// "Let Claude ask": up to the demo, where Claude -- played by the demo -- asks
+// "Let an agent ask": up to the demo, where an agent -- played by the demo -- asks
 // for a screenshot, as it asks the app through its MCP server.
 for (const button of all<HTMLButtonElement>('[data-ask]')) {
   button.addEventListener('click', () => {
@@ -113,9 +113,50 @@ const GLYPHS: Record<string, string> = {
   // The request bar's speech bubble, and a screen with a capture waiting in its corner.
   ask: `<path d="M4.4 4.2h11.2a1.6 1.6 0 0 1 1.6 1.6v6.6a1.6 1.6 0 0 1-1.6 1.6H9.4l-3.6 2.9v-2.9H4.4a1.6 1.6 0 0 1-1.6-1.6V5.8a1.6 1.6 0 0 1 1.6-1.6z" ${STROKE}/>`
     + `<path d="M6.8 9.1h6.4" ${STROKE}/>`,
+  // The trim strip with its two handles, and Save's tray with its arrow.
+  trim: `<rect x="2.8" y="6" width="14.4" height="8" rx="1.6" ${STROKE}/><path d="M6.2 4.4v11.2M13.8 4.4v11.2" ${STROKE}/>`,
+  save: `<path d="M10 3.4v8.8M6.6 8.8 10 12.2l3.4-3.4M3.6 12.8v2a1.6 1.6 0 0 0 1.6 1.6h9.6a1.6 1.6 0 0 0 1.6-1.6v-2" ${STROKE}/>`,
   thumbnail: `<rect x="2.8" y="3.6" width="14.4" height="12.4" rx="1.8" ${STROKE}/>`
     + `<rect x="10" y="9.8" width="5" height="4" rx=".9" fill="currentColor" opacity=".3"/><rect x="10" y="9.8" width="5" height="4" rx=".9" ${STROKE}/>`,
+  // Who a mock-up goes to: an agent's terminal, two people, a designer's pencil.
+  agent: `<rect x="2.8" y="3.6" width="14.4" height="12.8" rx="2.2" ${STROKE}/><path d="M6.4 8.2 8.8 10l-2.4 1.8M10.8 12.2h3" ${STROKE}/>`,
+  people: `<circle cx="7.6" cy="7.4" r="2.6" ${STROKE}/><path d="M2.9 16.2c.4-2.7 2.3-4.3 4.7-4.3s4.3 1.6 4.7 4.3" ${STROKE}/>`
+    + `<circle cx="13.9" cy="8" r="2.1" ${STROKE}/><path d="M13.6 12.1c2 0 3.5 1.4 3.9 3.6" ${STROKE}/>`,
+  pen: `<path d="M12.9 3.9 16.1 7.1 7.4 15.8 3.6 16.4l.6-3.8z" ${STROKE}/><path d="M11.1 5.7l3.2 3.2" ${STROKE}/>`,
 };
-for (const el of all<HTMLElement>('[data-glyph]')) {
-  el.innerHTML = `<svg viewBox="0 0 20 20" aria-hidden="true">${GLYPHS[el.dataset.glyph!] ?? ''}</svg>`;
+const glyph = (name: string) => `<svg viewBox="0 0 20 20" aria-hidden="true">${GLYPHS[name] ?? ''}</svg>`;
+for (const el of all<HTMLElement>('[data-glyph]')) el.innerHTML = glyph(el.dataset.glyph!);
+
+// ---- who it's for ---------------------------------------------------------------------
+/** The headline's chip names one person after another to send a mock-up to,
+ *  only while it can be seen. Anyone who asks for less motion keeps the agent. */
+const PEOPLE = [
+  { who: 'agent', name: 'AI agent', glyph: 'agent' }, { who: 'coworker', name: 'Co-worker', glyph: 'people' },
+  { who: 'designer', name: 'Designer', glyph: 'pen' }, { who: 'friend', name: 'Friend', glyph: 'ask' },
+];
+const chip = document.querySelector<HTMLElement>('.who');
+if (chip && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const icon = chip.querySelector('i')!, name = chip.querySelector('span')!;
+  let at = 0, seen = true;
+  new IntersectionObserver(([entry]) => { seen = entry.isIntersecting; }).observe(chip);
+  // The width is held only while it eases, so a font arriving late still fits.
+  chip.addEventListener('transitionend', event => { if (event.propertyName === 'width') chip.style.width = ''; });
+  window.setInterval(() => {
+    if (!seen || document.hidden) return;
+    const from = chip.getBoundingClientRect().width;
+    chip.classList.add('out');
+    window.setTimeout(() => {
+      at = (at + 1) % PEOPLE.length;
+      chip.dataset.who = PEOPLE[at].who;
+      icon.innerHTML = glyph(PEOPLE[at].glyph);
+      name.textContent = PEOPLE[at].name;
+      chip.classList.replace('out', 'in');
+      chip.style.width = '';
+      const to = chip.getBoundingClientRect().width;
+      chip.style.width = `${from}px`;
+      chip.getBoundingClientRect();
+      chip.style.width = `${to}px`;
+      requestAnimationFrame(() => chip.classList.remove('in'));
+    }, 190);
+  }, 2400);
 }

@@ -4,16 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>Mark — screenshots that show Claude what you mean</title>
-    <meta name="description" content="Mark is a fast, small screenshot tool for the Mac. Capture part of your screen, point at what matters, and Claude — or any AI — sees exactly what you mean." />
+    <title>Mark — mock it up, send it to your AI agent</title>
+    <meta name="description" content="Mark is a small Mac app for screenshots and short recordings. Capture your screen, draw what you want changed with arrows and numbered notes, and send it to Claude Code, Codex, Cursor or any AI agent." />
         <link rel="canonical" href="https://mark.tommymassaro.com/" />
     <meta property="og:title" content="Mark for Mac" />
-    <meta property="og:description" content="Capture part of your screen, point at what matters, and Claude — or any AI — sees exactly what you mean." />
+    <meta property="og:description" content="Capture your screen, draw what you want changed, and send it to your AI agent. Screenshots and short recordings for the Mac." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://mark.tommymassaro.com/" />
-    <meta property="og:image" content="https://mark.tommymassaro.com/site/ask.png" />
+    <meta property="og:image" content="https://mark.tommymassaro.com/site/mockup.png" />
     <meta property="og:image:width" content="1876" />
-    <meta property="og:image:height" content="1128" />
+    <meta property="og:image:height" content="1232" />
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
@@ -23,11 +23,11 @@
       <nav class="bar" aria-label="Site">
         <a class="brand" href="#top"><img class="mark" data-mark alt="" width="36" height="36" />Mark</a>
         <div class="links">
-          <a href="#claude">With Claude</a>
           <a href="#how">How it works</a>
+          <a href="#video">Video</a>
+          <a href="#agents">Agents</a>
           <a href="#features">Features</a>
-          <a href="./ai.html">AI setup</a>
-          <a href="#try">Try it</a>
+          <a href="./ai.html">Setup guide</a>
         </div>
         <a class="primary small" href="#download" data-download>Download for Mac</a>
       </nav>
@@ -35,9 +35,12 @@
 
     <main id="top">
       <section class="hero">
-        <h1>Show Claude what you mean.</h1>
-        <p class="lede">Mark is a fast, small screenshot tool for the Mac. Press <kbd data-shortcut>⌘4</kbd>, point at what
-          matters with arrows and numbered steps, and Claude — or any AI — sees exactly what you mean.</p>
+        <!-- The chip names one person after another (page.ts); the heading's
+             name lists them all, for anyone who hears it rather than sees it. -->
+        <h1 aria-label="Mock it up. Send it to your AI agent, co-worker, designer or friend.">Mock it up.<br />Send it to
+          your <span class="nb"><span class="who" data-who="agent"><i data-glyph="agent"></i><span>AI agent</span></span>.</span></h1>
+        <p class="lede">Mark is a small Mac app for screenshots and short recordings. Press <kbd data-shortcut>⌘4</kbd>,
+          draw what you want changed, and hand over a picture instead of a paragraph.</p>
         <div class="actions">
           <a class="primary big" href="#download" data-download>
             <svg class="apple" viewBox="0 0 17 20" aria-hidden="true"><path d="M14.2 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.8-3.1-.8C3.9 5.4 1.6 7.5 1.6 11c0 1.4.3 2.8.9 4.2.7 1.7 2.3 4.4 4 4.4.9 0 1.6-.6 2.9-.6 1.2 0 1.8.6 3 .6 1.8 0 3.2-2.4 3.9-4.1.5-1.1.7-1.6.7-1.7-.1 0-2.8-1-2.8-3.2zM11.9 3.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>
@@ -46,6 +49,8 @@
         </div>
         <p class="fine"><span class="only-mac">Version <span data-version>0.3.0</span> · macOS 13 or later · Apple silicon and Intel · Notarized by Apple</span>
           <span class="not-mac">Mark is a Mac app. The download runs on macOS 13 or later, Apple silicon or Intel.</span></p>
+        <p class="works-with"><span>Works with</span> Claude Code · Codex · Cursor · GitHub Copilot · ChatGPT · Grok Build ·
+          any chat you can paste into</p>
         <!-- Mark itself rather than a picture of it: the real editor, overlay and
              settings, running in the page against a picture of a desktop. A phone
              can't drive it, so a phone gets the picture instead and never loads
@@ -60,93 +65,93 @@
         <p class="demo-note">This is Mark itself — its real editor, selection overlay and settings — running in your browser
           against a picture of a desktop.</p>
         <figure class="shot hero-shot">
-          <img src="./site/hero.png" width="938" height="564" loading="lazy" alt="Mark’s editor over a captured dashboard: a red box around the repeat-rate card, an arrow at the chart’s peak with the note “Launch day”, and the revenue figure redacted into coarse blocks." />
+          <img src="./site/mockup.png" width="938" height="616" loading="lazy" alt="Mark’s editor over a captured dashboard, marked up with three numbered notes: add an “All time” range, show the day’s total on hover, and label the dashed line “Last year”." />
         </figure>
         <p class="no-demo">The demo wants a pointer and a keyboard. Open this page on a Mac to try it.</p>
       </section>
 
-      <section class="claude" id="claude" aria-labelledby="claude-title">
-        <div class="claude-text">
-          <p class="eyebrow">Made for working with AI</p>
-          <h2 id="claude-title">Claude asks. You show it.</h2>
-          <p class="claude-lede">When seeing your screen would help, Claude asks Mark for a screenshot — and so can ChatGPT,
-            Cursor, Copilot and the other AI tools on your Mac. You decide what they see.</p>
+      <section class="flow" id="how" aria-labelledby="how-title">
+        <div class="flow-text">
+          <p class="eyebrow">How it works</p>
+          <h2 id="how-title">Point at it. Don’t describe it.</h2>
+          <p class="section-lede">“The green button, no, the one under the total” takes a paragraph to type and still gets
+            misread. A mock-up takes three marks, and your agent sees exactly where each change goes.</p>
           <ol class="beats">
-            <li><span class="beat" aria-hidden="true">1</span><div><h3>Claude asks</h3>
-              <p>Mark comes forward with what Claude wants to see. Bring it on screen, and capture it the usual way.</p></div></li>
-            <li><span class="beat" aria-hidden="true">2</span><div><h3>You point</h3>
-              <p>Arrows, boxes and numbered steps, with a note beside each number — the way you’d point if you were sitting
-                together.</p></div></li>
-            <li><span class="beat" aria-hidden="true">3</span><div><h3>Claude sees what you mean</h3>
-              <p>Send gives Claude the picture, every mark and where it is, your notes, and the words in it, read on your Mac.
-                Nothing goes without that Send.</p></div></li>
+            <li><span class="beat" aria-hidden="true">1</span><div><h3>Capture</h3>
+              <p><kbd data-shortcut>⌘4</kbd> from anywhere: a region, a window, the whole screen, or a few seconds later to
+                catch a menu or a hover.</p></div></li>
+            <li><span class="beat" aria-hidden="true">2</span><div><h3>Mock it up</h3>
+              <p>Arrows, boxes, text, a pen, and numbered notes — one change each, in the order you want them made. Redact
+                anything private before it goes.</p></div></li>
+            <li><span class="beat" aria-hidden="true">3</span><div><h3>Send it</h3>
+              <p><kbd>⌥⌘C</kbd> copies the picture. Paste it into Claude Code, Codex, Cursor or any chat, and
+                <kbd>⇧⌘L</kbd> copies the notes as a list to paste beside it.</p></div></li>
           </ol>
-          <div class="claude-actions">
-            <button class="primary big" type="button" data-ask>Let Claude ask</button>
-            <span class="claude-try">in the demo above</span>
-          </div>
         </div>
-        <div class="claude-side">
-          <figure class="shot ask-shot">
-            <img src="./site/ask.png" width="938" height="564" loading="lazy" alt="Mark’s editor with Claude’s ask across the top — Claude asks to see “the chart’s peak” — over a captured revenue chart with two numbered arrows, and Send to Claude in the corner." />
+        <div class="flow-side">
+          <figure class="shot mockup-shot">
+            <img src="./site/checkout.png" width="938" height="616" loading="lazy" alt="Mark’s editor over a captured checkout page, marked up with three numbered notes: show the date, not the days; make Express free over $75; and make Pay now full width." />
           </figure>
           <figure class="received">
-            <figcaption>What Claude receives with the picture</figcaption>
-            <pre>The user's screenshot, captured with Mark at 1720 × 780 pixels (860 × 390 points on a 2× display).
-
-What they marked on it, in this image's pixels from its top left — numbered marks are steps they mean in order:
-1. a badge at (840, 596) with an arrow pointing at (1068, 424): “Launch day: why the spike?”
-2. a badge at (1192, 580) with an arrow pointing at (1232, 384): “And why it held”</pre>
-            <p class="received-note">On your Mac, the words in the screenshot go too, read by macOS — exact text, not a guess at
-              pixels. Anything you redact stays out.</p>
+            <figcaption>The notes, as <kbd>⇧⌘L</kbd> copies them</figcaption>
+            <pre>1. Show the date, not the days
+2. Make Express free over $75
+3. Make Pay now full width</pre>
           </figure>
         </div>
-        <div class="claude-setup">
+      </section>
+
+      <section class="video" id="video" aria-labelledby="video-title">
+        <figure class="shot video-shot">
+          <img src="./site/board.png" width="938" height="700" loading="lazy" alt="Mark’s editor holding a 14-second recording of a sprint board: a numbered note “Snaps back when dropped” points at a card mid-drag, boxed in red, and below it a strip of frames is trimmed with yellow handles, with Save Video in the footer." />
+        </figure>
+        <div class="video-text">
+          <p class="eyebrow">New · Video</p>
+          <h2 id="video-title">When a still won’t show it, record it.</h2>
+          <p class="section-lede">A flicker, a stuck transition, a flow that takes five clicks. Record a region, a window or the
+            whole screen — a window you pick comes to the front — with your microphone if you want to talk it through.</p>
+          <ul class="facts">
+            <li><span class="glyph" data-glyph="trim"></span><div><h3>Trim it</h3>
+              <p>Drag the ends of the strip, or press <kbd>I</kbd> and <kbd>O</kbd> at the playhead.</p></div></li>
+            <li><span class="glyph" data-glyph="steps"></span><div><h3>Mark it up</h3>
+              <p>Arrows, boxes and numbered notes, each appearing at the moment you drew it.</p></div></li>
+            <li><span class="glyph" data-glyph="save"></span><div><h3>Keep it as a video or a GIF</h3>
+              <p>Save an MP4, save a looping GIF, or copy the file to paste into Slack, a pull request or an issue.</p></div></li>
+          </ul>
+          <p class="fine">Up to five minutes. Recording needs macOS 15 or later.</p>
+        </div>
+      </section>
+
+      <section class="agents" id="agents" aria-labelledby="agents-title">
+        <div class="agents-text">
+          <p class="eyebrow">Works with your agent</p>
+          <h2 id="agents-title">Or let your agent ask.</h2>
+          <p class="section-lede">Mark speaks MCP. When Claude Code, Codex, Copilot or Cursor needs to see your screen, it asks
+            Mark, and Mark comes forward with what it wants to see. You capture it, point, and press Send.</p>
+          <p class="agents-note">Send gives your agent the picture, every mark and where it is, your notes, and the words on
+            screen, read on your Mac. Nothing goes without that Send.</p>
+          <div class="agents-actions">
+            <button class="primary" type="button" data-ask>Let an agent ask</button>
+            <span class="agents-try">in the demo above</span>
+          </div>
+        </div>
+        <figure class="shot ask-shot">
+          <img src="./site/signup.png" width="938" height="564" loading="lazy" alt="Mark’s editor with Codex’s ask across the top — it asks to see “the sign-up error” — over a captured sign-up form with two numbered notes: 14 characters, still “too short”, and yet it says Strong. Send to Codex is in the corner." />
+        </figure>
+        <div class="setup">
           <div>
             <h3>Set it up once</h3>
-            <p>For Claude Code, in Terminal. Mark’s Settings has the rest ready — Codex, Copilot, Grok Build, Claude
-              Desktop, ChatGPT, Cursor and VS Code — and <a class="inline" href="./ai.html">the setup guide</a> walks
-              through each, and how to ask.</p>
+            <p>For Claude Code, in Terminal. Mark’s Settings has the rest ready — Codex, Copilot, Grok Build, Claude Desktop,
+              ChatGPT, Cursor and VS Code — and <a class="inline" href="./ai.html">the setup guide</a> walks through each.</p>
             <div class="command"><code>claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp</code>
               <button class="copy-command" type="button">Copy</button></div>
           </div>
           <div>
             <h3>Any chat</h3>
-            <p>A chat in the cloud can’t ask your Mac, so paste: every capture lands on your clipboard as a PNG, and
-              <kbd>⇧⌘L</kbd> copies its numbered steps as text.</p>
+            <p>A chat in the cloud can’t reach your Mac, so paste: every capture lands on your clipboard as a PNG, and
+              <kbd>⇧⌘L</kbd> copies its numbered notes as text.</p>
           </div>
         </div>
-      </section>
-
-      <section class="steps" id="how" aria-labelledby="how-title">
-        <div class="steps-text">
-          <h2 id="how-title">Three keys, one screenshot.</h2>
-          <ol>
-            <li>
-              <kbd class="cap" data-shortcut>⌘4</kbd>
-              <h3>Capture</h3>
-              <p>From anywhere on your Mac. Guides run the full width and height of the display while you aim, so an edge lines up
-                with something on the far side of the screen; press <kbd>Space</kbd> to take a window instead. Adjust a corner
-                afterwards, type the exact size, or arm a few seconds for a menu or a hover.</p>
-            </li>
-            <li>
-              <kbd class="cap">drag</kbd>
-              <h3>Mark it up</h3>
-              <p>Arrows, lines, a measure, a pen, text, boxes, ellipses, a highlighter, a redaction and a crop, each a key away —
-                <kbd>A</kbd> for an arrow, <kbd>T</kbd> for text. Any colour, by hex or the eyedropper, and selecting something
-                adopts its style, so the toolbar always says what the next edit will do.</p>
-            </li>
-            <li>
-              <kbd class="cap">⌥⌘C</kbd>
-              <h3>Copy, or send to Claude</h3>
-              <p>A PNG lands on the clipboard and the editor gets out of the way — or, when Claude asked for it, goes straight
-                back to Claude. <kbd>⌘S</kbd> saves a file instead; <kbd>⇧⌘T</kbd> copies the words in it.</p>
-            </li>
-          </ol>
-        </div>
-        <figure class="shot steps-shot">
-          <img src="./site/select.jpeg" width="1060" height="660" loading="lazy" alt="Selecting a region of a dashboard: the rest of the screen dims, guides run through the pointer to the screen’s edges, and a readout says 860 × 390." />
-        </figure>
       </section>
 
       <section class="features" id="features" aria-labelledby="features-title">
@@ -158,12 +163,12 @@ What they marked on it, in this image's pixels from its top left — numbered ma
             <p>Tapered, solid or thin, and the tip lands exactly where you let go.</p>
           </article>
           <article class="card">
-            <div class="visual picture"><img src="./site/frame.png" width="300" height="168" loading="lazy" alt="A capture set on a blue-violet gradient, with room around it, rounded corners, a soft shadow and a window’s title bar with its three lights." /></div>
+            <div class="visual picture"><img src="./site/framed.png" width="300" height="161" loading="lazy" alt="A podcast player’s window set on a pink-to-blue gradient, with room around it, rounded corners, a soft shadow and a title bar; an arrow and the words “Thicker, with chapters” point at its progress bar." /></div>
             <h3>Framed for showing</h3>
             <p>A gradient or a solid behind it, with padding, rounded corners and a shadow.</p>
           </article>
           <article class="card">
-            <div class="visual picture"><img src="./site/redact.png" width="216" height="106" loading="lazy" alt="A revenue card whose figure has been replaced by coarse grey blocks; the change beneath it still reads 12.4% vs last month." /></div>
+            <div class="visual picture"><img src="./site/redacted.png" width="216" height="108" loading="lazy" alt="An API keys card whose live key has been replaced by coarse grey blocks; the test key beneath it still reads in full." /></div>
             <h3>Redact, don’t blur</h3>
             <p>Coarse blocks averaged from the capture, where a blur could be partly undone.</p>
           </article>
@@ -178,8 +183,8 @@ What they marked on it, in this image's pixels from its top left — numbered ma
             <p><kbd>⇧⌘R</kbd> pixelates emails, numbers, keys and faces.</p></div></li>
           <li><span class="glyph" data-glyph="crop"></span><div><h3>Crop keeps your work</h3>
             <p>To any shape, and what you drew comes along.</p></div></li>
-          <li><span class="glyph" data-glyph="steps"></span><div><h3>Number your steps</h3>
-            <p>1, 2, 3 on the picture, each with a note that copies as text.</p></div></li>
+          <li><span class="glyph" data-glyph="timed"></span><div><h3>Timed, for menus</h3>
+            <p>A few seconds’ wait, to catch a menu or a hover open.</p></div></li>
           <li><span class="glyph" data-glyph="thumbnail"></span><div><h3>Or a thumbnail</h3>
             <p>Copied at once, and waiting in the corner to drag anywhere.</p></div></li>
           <li><span class="glyph" data-glyph="menu"></span><div><h3>Lives in the menu bar</h3>
@@ -187,20 +192,6 @@ What they marked on it, in this image's pixels from its top left — numbered ma
           <li><span class="glyph" data-glyph="private"></span><div><h3>Nothing leaves your Mac</h3>
             <p>No account, no cloud, and nothing goes to an AI without Send.</p></div></li>
         </ul>
-      </section>
-
-      <section class="glass" aria-labelledby="glass-title">
-        <div class="glass-text">
-          <h2 id="glass-title">Real glass, in dark or light.</h2>
-          <p>On macOS 26 the editor stands on Liquid Glass — the system’s own material, not a blurred rectangle. Dark is the
-            default; light and Match System are a click away in Settings, along with the shortcut and Open at Login.</p>
-          <figure class="shot settings-shot">
-            <img src="./site/settings.png" width="460" height="272" loading="lazy" alt="Mark’s Settings window: Appearance with Dark, Light and Match System; a shortcut recorder showing ⌘4; Open Mark at login." />
-          </figure>
-        </div>
-        <figure class="shot light-shot">
-          <img src="./site/hero-light.png" width="938" height="564" loading="lazy" alt="The same annotated capture in Mark’s light appearance." />
-        </figure>
       </section>
 
       <section class="download" id="download" aria-labelledby="download-title">
@@ -212,7 +203,7 @@ What they marked on it, in this image's pixels from its top left — numbered ma
           Download for Mac
         </a>
         <p class="fine">Open the disk image and drag Mark to Applications. macOS asks for Screen Recording the first time you
-          capture; Mark uses it for still screenshots only. Requires macOS 13 or later.</p>
+          capture. Screenshots need macOS 13 or later; recording video, macOS 15.</p>
       </section>
     </main>
 

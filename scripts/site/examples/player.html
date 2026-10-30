@@ -1,0 +1,51 @@
+<!doctype html>
+<html><head><meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 980px; height: 450px; overflow: hidden; display: grid; grid-template-columns: 1fr 300px; font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f5f5f7; background: #141418; -webkit-font-smoothing: antialiased; }
+  .now { padding: 36px 40px; display: grid; grid-template-columns: 220px 1fr; gap: 32px; align-content: start; background: radial-gradient(520px 340px at 15% 10%, #3b2a6e88, transparent 70%), #141418; }
+  .art { width: 220px; height: 220px; border-radius: 16px; position: relative; overflow: hidden; background: linear-gradient(160deg, #f6c177, #eb6f92 45%, #3e2f73); box-shadow: 0 30px 60px -20px #000c; }
+  .art::before { content: ""; position: absolute; left: 40px; top: 46px; width: 92px; height: 92px; border-radius: 50%; background: #fde7c3; box-shadow: 0 0 60px 10px #fde7c366; }
+  .art::after { content: ""; position: absolute; left: -10%; right: -10%; bottom: -30px; height: 110px; border-radius: 50% 50% 0 0; background: #2a1f4f; }
+  .art b { position: absolute; left: 16px; bottom: 14px; z-index: 1; font: 800 15px/1.05 -apple-system, sans-serif; letter-spacing: -.01em; }
+  .show { color: #a1a1aa; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; font-size: 11px; margin-top: 14px; }
+  h1 { font-size: 26px; line-height: 1.15; letter-spacing: -.02em; margin: 8px 0 8px; }
+  .desc { color: #a1a1aa; font-size: 13.5px; max-width: 360px; margin: 0; }
+  .scrub { grid-column: 1 / -1; margin-top: 18px; }
+  .track { height: 4px; border-radius: 2px; background: #3f3f46; position: relative; }
+  .track i { position: absolute; left: 0; top: 0; bottom: 0; width: 36%; border-radius: 2px; background: #f5f5f7; }
+  .times { display: flex; justify-content: space-between; color: #a1a1aa; font-size: 11.5px; margin-top: 7px; font-variant-numeric: tabular-nums; }
+  .controls { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 34px; margin-top: 2px; }
+  .controls span { color: #d4d4d8; font-size: 12px; font-weight: 600; }
+  .play { width: 56px; height: 56px; border-radius: 50%; background: #f5f5f7; display: grid; place-items: center; }
+  .queue { background: #1b1b21; border-left: 1px solid #ffffff12; padding: 28px 22px; }
+  .queue h2 { font-size: 13px; margin: 0 0 14px; color: #a1a1aa; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+  .ep { display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid #ffffff0d; }
+  .ep i { width: 44px; height: 44px; border-radius: 8px; }
+  .ep b { display: block; font-weight: 600; font-size: 13px; }
+  .ep small { color: #a1a1aa; font-size: 12px; }
+</style></head>
+<body>
+  <div class="now">
+    <div class="art"><b>NIGHT<br />SHIFT</b></div>
+    <div>
+      <div class="show">Night Shift · Episode 112</div>
+      <h1>The quiet hours: who keeps the city running at 4 a.m.</h1>
+      <p class="desc">Bakers, bridge crews and a 911 dispatcher on the shift nobody sees.</p>
+    </div>
+    <div class="scrub"><div class="track"><i></i></div><div class="times"><span>18:42</span><span>−33:28</span></div></div>
+    <div class="controls"><span>1×</span>
+      <svg width="26" height="26" viewBox="0 0 26 26"><path d="M13 5a8 8 0 1 0 8 8" fill="none" stroke="#d4d4d8" stroke-width="2" stroke-linecap="round"/><path d="M13 1.5 17 5l-4 3.5" fill="none" stroke="#d4d4d8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="matrix(-1 0 0 1 26 0)"/><text x="13" y="16.5" text-anchor="middle" font-size="7.5" font-weight="700" fill="#d4d4d8" font-family="system-ui">15</text></svg>
+      <div class="play"><svg width="20" height="22" viewBox="0 0 20 22"><rect x="3" y="2" width="5" height="18" rx="1.5" fill="#141418"/><rect x="12" y="2" width="5" height="18" rx="1.5" fill="#141418"/></svg></div>
+      <svg width="26" height="26" viewBox="0 0 26 26"><path d="M13 5a8 8 0 1 1-8 8" fill="none" stroke="#d4d4d8" stroke-width="2" stroke-linecap="round"/><path d="M13 1.5 9 5l4 3.5" fill="none" stroke="#d4d4d8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="matrix(-1 0 0 1 26 0)"/><text x="13" y="16.5" text-anchor="middle" font-size="7.5" font-weight="700" fill="#d4d4d8" font-family="system-ui">30</text></svg>
+      <span>Sleep</span></div>
+  </div>
+  <div class="queue">
+    <h2>Up next</h2>
+    <div class="ep"><i style="background:linear-gradient(150deg,#7dd3fc,#1e3a8a)"></i><div><b>Tide tables</b><small>Low Water · 41 min</small></div></div>
+    <div class="ep"><i style="background:linear-gradient(150deg,#fcd34d,#b45309)"></i><div><b>The bread index</b><small>Margins · 28 min</small></div></div>
+    <div class="ep"><i style="background:linear-gradient(150deg,#86efac,#166534)"></i><div><b>Seed vaults, revisited</b><small>Field Notes · 36 min</small></div></div>
+    <div class="ep"><i style="background:linear-gradient(150deg,#f0abfc,#86198f)"></i><div><b>Encore: last call</b><small>Night Shift · 49 min</small></div></div>
+    <div class="ep"><i style="background:linear-gradient(150deg,#fda4af,#9f1239)"></i><div><b>A map of every bench</b><small>Low Water · 33 min</small></div></div>
+  </div>
+</body></html>

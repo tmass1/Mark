@@ -1,0 +1,97 @@
+<!doctype html>
+<html><head><meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 1100px; height: 640px; overflow: hidden; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #1d1d1f; background: #fff; -webkit-font-smoothing: antialiased; }
+  header { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 36px; border-bottom: 1px solid #ececec; }
+  .brand { font: 600 19px/1 "New York", "Iowan Old Style", Georgia, serif; letter-spacing: -.01em; }
+  .brand span { color: #6b7d5c; }
+  .crumbs { display: flex; gap: 10px; color: #8a8a8e; font-size: 13px; }
+  .crumbs b { color: #1d1d1f; font-weight: 600; }
+  .secure { font-size: 12.5px; color: #6e6e73; display: flex; gap: 6px; align-items: center; }
+  main { display: grid; grid-template-columns: 1fr 400px; height: 580px; }
+  .form { padding: 26px 40px 0 36px; }
+  .express { display: grid; }
+  .pay { height: 42px; border-radius: 8px; display: grid; place-items: center; font-weight: 600; font-size: 15px; }
+  .shop { background: #5a31f4; color: #fff; }
+  .apple { background: #000; color: #fff; }
+  .or { display: flex; align-items: center; gap: 12px; margin: 16px 0 12px; color: #8a8a8e; font-size: 12px; }
+  .or::before, .or::after { content: ""; flex: 1; height: 1px; background: #ececec; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0 0 9px; }
+  .field { height: 42px; border: 1px solid #d9d9de; border-radius: 8px; padding: 0 12px; display: flex; align-items: center; color: #1d1d1f; font-size: 14px; }
+  .field.ph { color: #8a8a8e; }
+  .row { display: grid; gap: 10px; margin-bottom: 10px; }
+  .two { grid-template-columns: 1fr 1fr; }
+  .three { grid-template-columns: 1.4fr 1fr 1fr; }
+  section { margin-bottom: 16px; }
+  .ship { border: 1px solid #d9d9de; border-radius: 8px; overflow: hidden; }
+  .opt { display: flex; align-items: center; gap: 12px; height: 46px; padding: 0 14px; }
+  .opt + .opt { border-top: 1px solid #ececec; }
+  .opt.on { background: #f3f6ef; box-shadow: inset 0 0 0 1px #6b7d5c; }
+  .radio { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #b8b8bd; }
+  .on .radio { border: 5px solid #6b7d5c; }
+  .opt .grow { flex: 1; }
+  .opt small { color: #6e6e73; font-size: 12.5px; margin-left: 6px; }
+  aside { background: #f7f7f5; border-left: 1px solid #ececec; padding: 28px 32px; }
+  .item { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+  .thumb { position: relative; width: 58px; height: 58px; border-radius: 10px; border: 1px solid #e3e3e0; flex: none; }
+  .qty { position: absolute; top: -7px; right: -7px; min-width: 20px; height: 20px; border-radius: 10px; background: #6e6e73; color: #fff; font-size: 11.5px; font-weight: 600; display: grid; place-items: center; }
+  .item .grow { flex: 1; }
+  .item small { display: block; color: #6e6e73; font-size: 12.5px; }
+  .item b { font-weight: 500; }
+  .lines { border-top: 1px solid #e3e3e0; margin-top: 6px; padding-top: 14px; }
+  .line { display: flex; justify-content: space-between; margin-bottom: 8px; color: #3a3a3c; }
+  .total { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid #e3e3e0; padding-top: 14px; margin-top: 6px; font-size: 16px; font-weight: 600; }
+  .total small { font-size: 12px; color: #6e6e73; font-weight: 400; margin-right: 6px; }
+  .total big { font-size: 21px; letter-spacing: -.01em; }
+  .promo { display: flex; gap: 8px; margin-top: 18px; }
+  .promo .field { flex: 1; background: #fff; }
+  .apply { height: 42px; padding: 0 16px; border-radius: 8px; background: #e8e8e5; color: #8a8a8e; font-weight: 600; display: grid; place-items: center; }
+  .paybtn { margin-top: 16px; width: 168px; height: 44px; border-radius: 8px; background: #6b7d5c; color: #fff; font-weight: 600; font-size: 15px; display: grid; place-items: center; }
+</style></head>
+<body>
+  <header>
+    <div class="brand">Field <span>&amp;</span> Ink</div>
+    <div class="crumbs">Cart <span>›</span> <b>Checkout</b> <span>›</span> Confirmation</div>
+    <div class="secure"><svg width="12" height="14" viewBox="0 0 12 14"><rect x="1" y="6" width="10" height="7.5" rx="1.6" fill="#6e6e73"/><path d="M3.4 6V4.2a2.6 2.6 0 0 1 5.2 0V6" fill="none" stroke="#6e6e73" stroke-width="1.5"/></svg>Secure checkout</div>
+  </header>
+  <main>
+    <div class="form">
+      <div class="express"><div class="pay apple">Apple Pay</div></div>
+      <div class="or">or pay with card</div>
+      <section>
+        <h2>Contact</h2>
+        <div class="row"><div class="field">maya.okafor@hey.com</div></div>
+      </section>
+      <section>
+        <h2>Delivery</h2>
+        <div class="row two"><div class="field">Maya</div><div class="field">Okafor</div></div>
+        <div class="row"><div class="field">418 Larkin Street, Apt 3</div></div>
+        <div class="row three"><div class="field">San Francisco</div><div class="field">California</div><div class="field">94102</div></div>
+      </section>
+      <section>
+        <h2>Shipping</h2>
+        <div class="ship">
+          <div class="opt on"><span class="radio"></span><span class="grow">Standard<small>4–6 business days</small></span><b>Free</b></div>
+          <div class="opt"><span class="radio"></span><span class="grow">Express<small>1–2 business days</small></span><b>$12.00</b></div>
+        </div>
+      </section>
+    </div>
+    <aside>
+      <div class="item"><div class="thumb" style="background:linear-gradient(150deg,#a9b89a,#7d8f6c)"><span class="qty">2</span></div>
+        <div class="grow"><b>Dot-grid notebook, A5</b><small>Sage · 192 pages</small></div><span>$36.00</span></div>
+      <div class="item"><div class="thumb" style="background:linear-gradient(150deg,#e8d3a2,#b8945a)"><span class="qty">1</span></div>
+        <div class="grow"><b>Brass fountain pen</b><small>Medium nib</small></div><span>$42.00</span></div>
+      <div class="item"><div class="thumb" style="background:linear-gradient(150deg,#2f3a4f,#1c2333)"><span class="qty">1</span></div>
+        <div class="grow"><b>Ink cartridges, 6 pack</b><small>Midnight blue</small></div><span>$8.00</span></div>
+      <div class="lines">
+        <div class="line"><span>Subtotal</span><span>$86.00</span></div>
+        <div class="line"><span>Shipping</span><span>Free</span></div>
+        <div class="line"><span>Estimated tax</span><span>$7.31</span></div>
+      </div>
+      <div class="total"><span>Total</span><span><small>USD</small><big>$93.31</big></span></div>
+      <div class="promo"><div class="field ph">Gift card or discount code</div><div class="apply">Apply</div></div>
+      <div class="paybtn">Pay now</div>
+    </aside>
+  </main>
+</body></html>
