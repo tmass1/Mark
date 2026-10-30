@@ -33,6 +33,9 @@
 /site/*
   Cache-Control: public, max-age=86400
 
+/signature/*
+  Cache-Control: public, max-age=86400
+
 /demo/scene.jpg
   Cache-Control: public, max-age=86400
 

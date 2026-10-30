@@ -310,9 +310,16 @@ footer {
   max-width: var(--width); margin: 120px auto 0; padding: 28px var(--gutter) 48px;
   display: flex; align-items: center; gap: 24px; border-top: 1px solid var(--hairline); color: var(--dim); font-size: 14px;
 }
-footer .made { margin-left: auto; }
-footer .made a { color: var(--muted); }
-footer .made a:hover { color: var(--ink); }
+/* The credit is the signature bar's, under this. */
+footer .version { margin-left: auto; }
+
+/* The signature bar declares its Inter inside its shadow root, where Chrome
+   ignores @font-face, and this page doesn't load Inter itself. Declared here,
+   on the document, the face reaches the bar. */
+@font-face {
+  font-family: SignatureInter; src: url("/signature/assets/inter.woff2") format("woff2");
+  font-weight: 100 900; font-display: swap;
+}
 
 /* ---- the guide ------------------------------------------------------------------ */
 /* One column, the width of reading, on the site's own materials: each tool a pane,
@@ -404,6 +411,4 @@ footer .made a:hover { color: var(--ink); }
   .demo-frame, .demo-note { display: none; }
   .no-demo { display: block; }
   .download { padding-top: 112px; }
-  footer { flex-wrap: wrap; gap: 12px; }
-  footer .made { margin-left: 0; width: 100%; }
 }

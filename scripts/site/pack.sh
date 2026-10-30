@@ -10,7 +10,7 @@ mkdir dist-site
 cp dist/site.html dist-site/index.html
 cp dist/ai.html dist-site/ai.html      # the guide to AI tools, at /ai
 cp dist/demo.html dist-site/
-cp -R dist/assets dist/demo dist/site dist-site/
+cp -R dist/assets dist/demo dist/site dist/signature dist-site/
 cp scripts/site/_headers dist-site/_headers      # read by Cloudflare's static asset host
 VERSION=$(node -p "require('./package.json').version")
 DMG="Mark_${VERSION}_universal.dmg"
