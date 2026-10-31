@@ -313,12 +313,6 @@ footer {
 /* The credit is the signature bar's, under this. */
 footer .version { margin-left: auto; }
 
-/* The bar ends the page rather than riding over it. Its footer is fixed to the
-   bottom, and something fixed is placed by the nearest ancestor with layout
-   containment -- here the bar itself, which keeps the footer's room at the end
-   of the page -- so the package stays as it ships. */
-tommy-signature { contain: layout; }
-
 /* The signature bar declares its Inter inside its shadow root, where Chrome
    ignores @font-face, and this page doesn't load Inter itself. Declared here,
    on the document, the face reaches the bar. */
