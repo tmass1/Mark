@@ -78,10 +78,12 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
 fn misplaced(binary: &std::path::Path) -> Option<&'static str> {
     let path = binary.to_str()?;
     if path.contains("/AppTranslocation/") {
-        return Some("Move Mark to your Applications folder first: macOS is running it from a temporary copy, which can't be updated.");
+        // Also true of a Mark that is in Applications but got there other than
+        // by a Finder drag: macOS goes on translocating it until Finder moves it.
+        return Some("macOS is running a temporary copy of Mark, which can't be updated.");
     }
     if path.starts_with("/Volumes/") {
-        return Some("Move Mark to your Applications folder first: it's running from a disk image or another disk, which can't be updated.");
+        return Some("Mark is running from a disk image or another disk, which can't be updated.");
     }
     None
 }
