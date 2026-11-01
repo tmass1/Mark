@@ -61,7 +61,31 @@ struct Progress { done: u64, total: Option<u64> }
 pub async fn install_update(app: AppHandle) -> Result<(), String> {
     let update = app.state::<Pending>().0.lock().unwrap().clone()
         .ok_or("There's no update waiting to install. Check again.")?;
+    // Asked before the download rather than after it: a Mark that can't be
+    // replaced where it is would fetch ten megabytes only to fail on the move.
+    if let Some(problem) = std::env::current_exe().ok().as_deref().and_then(misplaced) {
+        return Err(problem.into());
+    }
     install(&app, update).await
+}
+
+/// Why this Mark can't be replaced where it is, if it can't. The updater
+/// installs by moving the running app aside, into the system's temporary
+/// folder, and the new one into its place. That move fails from a temporary
+/// copy macOS made because Mark was opened straight from Downloads (read-only),
+/// from the disk image itself (read-only), and from any other disk (a move
+/// can't cross disks) -- each with a system error that says none of this.
+fn misplaced(binary: &std::path::Path) -> Option<&'static str> {
+    let path = binary.to_str()?;
+    if path.contains("/AppTranslocation/") {
+        // Also true of a Mark that is in Applications but got there other than
+        // by a Finder drag: macOS goes on translocating it until Finder moves it.
+        return Some("macOS is running a temporary copy of Mark, which can't be updated.");
+    }
+    if path.starts_with("/Volumes/") {
+        return Some("Mark is running from a disk image or another disk, which can't be updated.");
+    }
+    None
 }
 
 async fn install(app: &AppHandle, update: Update) -> Result<(), String> {
@@ -171,5 +195,17 @@ mod tests {
         assert!(passed_over(&prefs, "0.5.0"));
         // A newer one than the skipped is offered again.
         assert!(!passed_over(&prefs, "0.5.1"));
+    }
+
+    #[test]
+    fn only_a_mark_on_this_mac_s_own_disk_updates_in_place() {
+        use std::path::Path;
+        assert!(misplaced(Path::new("/Applications/Mark.app/Contents/MacOS/mark")).is_none());
+        assert!(misplaced(Path::new("/Users/sam/Applications/Mark.app/Contents/MacOS/mark")).is_none());
+        // Opened from Downloads without being moved: macOS runs a read-only copy.
+        assert!(misplaced(Path::new("/private/var/folders/x/T/AppTranslocation/ABC/d/Mark.app/Contents/MacOS/mark")).is_some());
+        // Opened from the disk image, or kept on another disk.
+        assert!(misplaced(Path::new("/Volumes/Mark/Mark.app/Contents/MacOS/mark")).is_some());
+        assert!(misplaced(Path::new("/Volumes/External/Apps/Mark.app/Contents/MacOS/mark")).is_some());
     }
 }
