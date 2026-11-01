@@ -2,6 +2,7 @@ import './style.css';
 import { command, isTauri } from './platform';
 import { notesHtml } from './notes';
 import { fitWindowTo } from './fit';
+import { friendly } from './update-errors';
 import markIcon from './mark-icon.png';
 
 /** Software Update, in the shape Mac apps have long given it: what is new, and
@@ -92,13 +93,6 @@ async function appear() {
   } catch {
     // Mark shows the window itself a moment later.
   }
-}
-
-/** Plainly, what a failure means; the updater's own words go underneath. */
-function friendly(detail: string): string {
-  if (/request|connect|dns|timed? ?out|network|offline/i.test(detail)) return "Mark couldn't reach its update server. Check your connection, then try again.";
-  if (/signature/i.test(detail)) return "The download wasn't signed by Mark's key, so it was not installed.";
-  return 'Something went wrong. Trying again usually fixes it.';
 }
 
 function megabytes(bytes: number): string { return `${(bytes / 1_000_000).toFixed(1)} MB`; }
