@@ -11,7 +11,7 @@ fn main() {
       "recording_supported", "recording_status", "stop_recording", "discard_recording",
       "video_frames", "video_pointer", "copy_video", "copy_gif", "save_video", "share_video", "set_record_options",
       "glass_available", "set_glass",
-      "get_settings", "set_appearance", "set_shortcut", "set_frame", "set_after_capture", "set_mcp", "login_enabled", "set_login", "open_settings",
+      "get_settings", "set_appearance", "set_shortcut", "set_frame", "set_after_capture", "set_mcp", "set_show_in_dock", "login_enabled", "set_login", "open_settings",
       "check_for_update", "pending_update", "install_update", "skip_update", "set_auto_update", "set_install_updates", "open_updates"
     ])
   )).expect("failed to build Mark's capability manifest");

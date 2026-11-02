@@ -96,7 +96,9 @@ notarization; an Apple Development certificate is only good for this Mac.
 ## Use
 
 1. Launch Mark. The editor opens on its empty state so the launch is visible.
-   Mark itself lives in the menu bar and never appears in the Dock. Turn on
+   Mark is in the menu bar, and in the Dock and ⌘-Tab like any app, so a
+   closed editor is a click on its icon away; **Show Mark in the Dock** in
+   Settings, turned off, leaves it in the menu bar alone. Turn on
    **Open at Login** in that menu to have Mark running after a restart; macOS
    may ask you to approve it under Login Items in System Settings. A login
    start is deliberately silent, while every other launch still opens the

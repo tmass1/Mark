@@ -21,6 +21,8 @@ interface Settings {
   recordMic?: boolean;
   recordingPointer?: PointerLook;
   recordingClicks?: ClickLook;
+  /** Whether Mark is in the Dock, or in the menu bar alone. */
+  showInDock?: boolean;
 }
 /** One AI tool Mark can be added to, and how -- made by Rust for the copy of
  *  Mark that is running, so what is copied starts this very copy. */
@@ -105,6 +107,14 @@ root.innerHTML = `
     </div>
   </section>
   <section class="pref">
+    <h2 class="pref-label">Dock</h2>
+    <div class="pref-control">
+      <label class="check"><input class="dock" type="checkbox" checked aria-describedby="dock-hint" /> Show Mark in the Dock</label>
+      <p class="pref-hint" id="dock-hint">Its icon opens the editor, and ⌘-Tab finds it. Off, Mark is in the menu bar alone.</p>
+      <p class="pref-note dock-note" role="status" hidden></p>
+    </div>
+  </section>
+  <section class="pref">
     <h2 class="pref-label">Login</h2>
     <div class="pref-control">
       <label class="check"><input class="login" type="checkbox" /> Open Mark at login</label>
@@ -127,6 +137,8 @@ const recorders = [...root.querySelectorAll<HTMLButtonElement>('.recorder')];
 const shortcutNote = root.querySelector<HTMLElement>('.shortcut-note')!;
 const login = root.querySelector<HTMLInputElement>('.login')!;
 const loginNote = root.querySelector<HTMLElement>('.login-note')!;
+const dock = root.querySelector<HTMLInputElement>('.dock')!;
+const dockNote = root.querySelector<HTMLElement>('.dock-note')!;
 const autoUpdate = root.querySelector<HTMLInputElement>('.auto-update')!;
 const autoInstall = root.querySelector<HTMLInputElement>('.auto-install')!;
 const thumbnailAfter = root.querySelector<HTMLInputElement>('.thumbnail-after')!;
@@ -161,6 +173,7 @@ function show(settings: Settings) {
   autoInstall.checked = settings.installUpdates === true;
   thumbnailAfter.checked = settings.afterCapture === 'thumbnail';
   mcp.checked = settings.mcp !== false;
+  dock.checked = settings.showInDock !== false;
   recordMic.checked = settings.recordMic === true;
   const look = lookOf({ pointer: settings.recordingPointer, clicks: settings.recordingClicks });
   recordPointer.value = look.pointer;
@@ -241,6 +254,12 @@ window.addEventListener('keydown', event => {
   const problem = shortcutProblem(event);
   if (problem) { if (!/then press a key/.test(problem)) note(shortcutNote, problem); return; }
   void adopt(shortcutFromEvent(event)!);
+});
+
+dock.addEventListener('change', () => {
+  note(dockNote, null);
+  void command<Settings>('set_show_in_dock', { show: dock.checked }).then(show)
+    .catch(error => { note(dockNote, String(error)); dock.checked = current.showInDock !== false; });
 });
 
 login.addEventListener('change', async () => {

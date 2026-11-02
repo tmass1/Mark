@@ -258,3 +258,15 @@ test('a Mark running from a temporary copy says to move it first, and offers not
   await expect(page.getByRole('combobox', { name: 'Add Mark to' })).toBeDisabled();
   await expect(page.locator('.add-agent')).toBeDisabled();
 });
+
+test('Mark is in the Dock unless Settings says otherwise', async ({ page }) => {
+  const saved = { appearance: 'dark', shortcut: 'Super+Digit4' };
+  await installBridge(page, { returns: { get_settings: saved, login_enabled: false, set_show_in_dock: { ...saved, showInDock: false } } });
+  await page.goto('/settings.html');
+  const dock = page.getByRole('checkbox', { name: 'Show Mark in the Dock' });
+  // A settings file from before the choice: in the Dock.
+  await expect(dock).toBeChecked({ timeout: 15_000 });
+  await dock.uncheck();
+  expect((await waitFor(page, 'set_show_in_dock')).args).toEqual({ show: false });
+  await expect(dock).not.toBeChecked();
+});

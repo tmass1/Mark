@@ -1112,6 +1112,24 @@ fn set_record_options(app: AppHandle, mic: Option<bool>, pointer: Option<setting
     Ok(updated)
 }
 
+/// Whether Mark is in the Dock and in ⌘-Tab, or in the menu bar alone.
+#[tauri::command]
+fn set_show_in_dock(app: AppHandle, show: bool) -> Result<settings::Settings, String> {
+    let state = app.state::<Prefs>();
+    let updated = { let mut prefs = state.0.lock().unwrap(); prefs.show_in_dock = show; prefs.clone() };
+    settings::save(&app, &updated)?;
+    dock(&app, show);
+    let _ = app.emit("settings-changed", &updated);
+    Ok(updated)
+}
+
+/// In the Dock, an app like any other, its icon opening the editor; or not,
+/// a menu bar app, as Info.plist starts it.
+fn dock(app: &AppHandle, show: bool) {
+    let policy = if show { tauri::ActivationPolicy::Regular } else { tauri::ActivationPolicy::Accessory };
+    if let Err(error) = app.set_activation_policy(policy) { eprintln!("[Mark] the Dock: {error}"); }
+}
+
 #[tauri::command]
 fn login_enabled() -> bool { macos::login_item_status() == macos::LOGIN_ENABLED }
 
@@ -1203,7 +1221,7 @@ pub fn run() {
             thumbnail::thumbnail_image, thumbnail::open_thumbnail, thumbnail::close_thumbnail, thumbnail::drag_thumbnail,
             recording::recording_supported, recording::recording_status, recording::stop_recording, recording::discard_recording,
             recording::video_frames, recording::video_pointer, recording::copy_video, recording::copy_gif, recording::save_video, recording::share_video,
-            get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, set_record_options, login_enabled, set_login, open_settings, quit_app,
+            get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, set_record_options, set_show_in_dock, login_enabled, set_login, open_settings, quit_app,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
             updates::set_auto_update, updates::set_install_updates, updates::open_updates])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
@@ -1215,8 +1233,10 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let prefs = settings::load(app.handle());
+            // In the Dock unless chosen otherwise, so a closed window can be
+            // found again; clicking the icon is a Reopen, which shows the editor.
+            dock(app.handle(), prefs.show_in_dock);
             let capture = MenuItem::with_id(app, "capture", Way::Region.name(), true, Way::Region.shortcut(&prefs))?;
             let window = MenuItem::with_id(app, "window", Way::Window.name(), true, Way::Window.shortcut(&prefs))?;
             let display = MenuItem::with_id(app, "display", Way::Display.name(), true, Way::Display.shortcut(&prefs))?;

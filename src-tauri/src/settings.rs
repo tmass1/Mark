@@ -55,6 +55,9 @@ pub struct Settings {
     /// And how it shows clicks. A file without it goes by `record_clicks`.
     #[serde(deserialize_with = "or_default")]
     pub recording_clicks: ClickLook,
+    /// Whether Mark is in the Dock and in ⌘-Tab, as an app is, so it can be
+    /// found again once its window is closed -- or lives in the menu bar alone.
+    pub show_in_dock: bool,
 }
 
 /// How a recording shows the pointer. The arrow is the Mac's own, which macOS
@@ -106,7 +109,7 @@ impl Default for Settings {
         Settings { appearance: "dark".into(), shortcut: DEFAULT_SHORTCUT.into(), shortcuts: Shortcuts::default(),
                    check_updates: true, install_updates: false, skipped_version: None, frame: Frame::default(),
                    after_capture: "editor".into(), mcp: true, record_mic: false, record_clicks: true,
-                   recording_pointer: PointerLook::Arrow, recording_clicks: ClickLook::Rings }
+                   recording_pointer: PointerLook::Arrow, recording_clicks: ClickLook::Rings, show_in_dock: true }
     }
 }
 
@@ -240,7 +243,7 @@ mod tests {
             check_updates: false, install_updates: false, skipped_version: Some("0.5.0".into()),
             frame: Frame { on: true, background: "midnight".into(), padding: 0.25, radius: 0.75, shadow: 0.0, chrome: true, phone: true },
             after_capture: "thumbnail".into(), mcp: false, record_mic: true, record_clicks: false,
-            recording_pointer: PointerLook::Touch, recording_clicks: ClickLook::Ripple,
+            recording_pointer: PointerLook::Touch, recording_clicks: ClickLook::Ripple, show_in_dock: false,
         };
         let json = serde_json::to_vec(&settings).unwrap();
         assert_eq!(parse(&json).unwrap(), settings);
@@ -320,6 +323,12 @@ mod tests {
         let json = String::from_utf8(serde_json::to_vec(&Settings::default()).unwrap()).unwrap();
         assert!(json.contains("\"recordMic\":false") && json.contains("\"recordClicks\":true"));
         assert!(json.contains("\"recordingPointer\":\"arrow\"") && json.contains("\"recordingClicks\":\"rings\""));
+    }
+
+    #[test]
+    fn a_file_from_before_the_dock_puts_mark_in_it() {
+        assert!(parse(br#"{"appearance":"light","shortcut":"Super+Digit4"}"#).unwrap().show_in_dock);
+        assert!(!parse(br#"{"showInDock":false}"#).unwrap().show_in_dock);
     }
 
     #[test]
