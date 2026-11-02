@@ -51,9 +51,20 @@ pub struct Trim { pub start: f64, pub end: f64 }
 pub struct Drawn { pub overlays: Vec<(f64, Vec<u8>)>, pub redactions: Vec<Hidden> }
 
 /// A part to pixelate, in the recording's pixels from its top left, from `at`
-/// seconds in, in blocks `block` pixels across.
+/// seconds in -- until `until`, if it goes before the end -- in blocks
+/// `block` pixels across.
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
-pub struct Hidden { pub x: f64, pub y: f64, pub width: f64, pub height: f64, pub at: f64, pub block: f64 }
+pub struct Hidden {
+    pub x: f64, pub y: f64, pub width: f64, pub height: f64, pub at: f64,
+    #[serde(default)] pub until: Option<f64>,
+    pub block: f64,
+}
+
+impl Hidden {
+    /// Whether it is pixelated in the frame `time` seconds in: due a frame
+    /// early, as a mark is, and gone a frame early too.
+    fn due(&self, time: f64) -> bool { self.at <= time + DUE && self.until.is_none_or(|until| time + DUE < until) }
+}
 
 /// A copy of a recording as asked for: part of it or all of it, and with what
 /// was drawn on it -- told apart by a fingerprint -- or not.
@@ -227,7 +238,7 @@ fn composition(asset: &AVAsset, drawn: &Drawn) -> Result<Retained<AVVideoComposi
         let time = unsafe { request.compositionTime().seconds() };
         let mut frame = unsafe { request.sourceImage() };
         let height = unsafe { frame.extent() }.size.height;
-        for part in hidden.iter().filter(|part| part.at <= time + DUE) {
+        for part in hidden.iter().filter(|part| part.due(time)) {
             let area = flipped(part, height);
             let block = NSNumber::new_f64(part.block.max(2.0));
             let settings = NSDictionary::<NSString, AnyObject>::from_slices(&[&*scale], &[&*block as &AnyObject]);
@@ -453,11 +464,26 @@ mod tests {
         let out = folder.path().join("hidden.mp4");
         // Core Image's blocks are laid from 150, 150 up from the bottom left, so
         // 150 to 190 across and 50 to 90 down from the top is one whole block.
-        let part = Hidden { x: 100.0, y: 40.0, width: 120.0, height: 120.0, at: 0.0, block: 40.0 };
+        let part = Hidden { x: 100.0, y: 40.0, width: 120.0, height: 120.0, at: 0.0, until: None, block: 40.0 };
         export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part] }), &out).unwrap();
         for at in [0.3, 1.6] {
             let (one, other) = (pixel(&out, at, 154, 54), pixel(&out, at, 186, 86));
             assert!(one.iter().zip(other).all(|(a, b)| (a - b).abs() < 14), "one block, one colour at {at}s: {one:?} {other:?}");
         }
+    }
+
+    #[test]
+    fn a_redaction_with_an_end_is_pixelated_until_it_and_not_after() {
+        let part = Hidden { x: 100.0, y: 40.0, width: 120.0, height: 120.0, at: 0.5, until: Some(1.2), block: 40.0 };
+        assert!(!part.due(0.3) && part.due(0.6) && part.due(1.1) && !part.due(1.5));
+        let folder = tempfile::tempdir().unwrap();
+        let out = folder.path().join("hidden.mp4");
+        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part] }), &out).unwrap();
+        let blocky = |at: f64| {
+            let (one, other) = (pixel(&out, at, 154, 54), pixel(&out, at, 186, 86));
+            one.iter().zip(other).all(|(a, b)| (a - b).abs() < 14)
+        };
+        assert!(blocky(0.8), "pixelated in its time");
+        assert!(!blocky(1.6), "and not after it: {:?} {:?}", pixel(&out, 1.6, 154, 54), pixel(&out, 1.6, 186, 86));
     }
 }

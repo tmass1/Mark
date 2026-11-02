@@ -17,7 +17,7 @@ import { BACKGROUNDS, BAR_COLOURS, DEFAULT_FRAME, LIGHTS_SVG, backgroundOf, cssB
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, LOOKS, hexColour, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
          FONT, arrowPaint, badgeAt, blockSize, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isShape, numbered,
-         outsetOps, pathData, polygonPath, stepArrow, stepList, strokePath, styleOf, takesLooks, textSize,
+         outsetOps, pathData, polygonPath, showsAt, stepArrow, stepList, strokePath, styleOf, takesLooks, textSize,
          type Annotation, type ArrowStyle, type Look, type NoteMode, type Point, type Shape, type ShapeFill, type Tool } from './annotations';
 
 /** Each style's button previews itself, drawn from the geometry it will draw
@@ -381,6 +381,7 @@ app.innerHTML = `
       <div class="kept"></div>
       <div class="playhead"></div>
       <span class="mark-at" hidden title="When the selected mark appears: drag to change it"></span>
+      <span class="mark-until" hidden title="When the selected mark goes: drag to change it"></span>
       <span class="edge" data-edge="start" role="slider" tabindex="0" aria-label="Start of the part to keep" title="Drag to trim the start (I)"></span>
       <span class="edge" data-edge="end" role="slider" tabindex="0" aria-label="End of the part to keep" title="Drag to trim the end (O)"></span>
     </div>
@@ -545,6 +546,7 @@ const kept = strip.querySelector<HTMLElement>('.kept')!;
 const playhead = strip.querySelector<HTMLElement>('.playhead')!;
 const trimTime = trimBar.querySelector<HTMLElement>('.trim-time')!;
 const markAt = strip.querySelector<HTMLElement>('.mark-at')!;
+const markUntil = strip.querySelector<HTMLElement>('.mark-until')!;
 /** The crop tool's own group at the foot of the rail. */
 const cropGroup = rail.querySelectorAll<HTMLElement>('.tool-group')[1];
 const start = app.querySelector<HTMLButtonElement>('.start')!;
@@ -1333,10 +1335,11 @@ function showMovie(next: CapturePreview | null, keep?: Trim) {
   const video = next?.video ?? null;
   movie.pause();
   // Marks on a recording are shown from the moment they are drawn at, so the
-  // layer stamps each with the playhead's time and shows only those due.
+  // layer stamps each with the playhead's time -- a pasted one too, which so
+  // starts afresh and stays -- and shows only those due and not yet gone.
   layer.live = !!video;
-  layer.stamp = video ? () => ({ at: Math.round(movie.currentTime * 1000) / 1000 }) : null;
-  layer.showing = video ? item => (item.at ?? 0) <= movie.currentTime + DUE : null;
+  layer.stamp = video ? () => ({ at: Math.round(movie.currentTime * 1000) / 1000, until: undefined }) : null;
+  layer.showing = video ? item => showsAt(item, movie.currentTime, DUE) : null;
   shownMarks = '';
   if (!video) {
     movie.hidden = true;
@@ -1369,16 +1372,25 @@ function showDueMarks() {
 
 /** The handles, the shading outside them, the playhead and the time, from
  *  the trim and where the movie is -- and the marks due by then, and when the
- *  one selected appears. */
+ *  one selected appears and goes. */
 function drawTrim() {
   const video = capture?.video;
   if (!video || !trim) return;
   showDueMarks();
   const one = layer.selection.length === 1 ? layer.selection[0] : null;
-  markAt.hidden = !one;
-  if (one && draggingAt === null) {
-    markAt.style.left = `${Math.min(100, Math.max(0, ((one.at ?? 0) / (video.duration || 1)) * 100))}%`;
+  markAt.hidden = markUntil.hidden = !one;
+  const share = (seconds: number) => `${Math.min(100, Math.max(0, (seconds / (video.duration || 1)) * 100))}%`;
+  if (one && dragging !== 'mark') {
+    markAt.style.left = share(one.at ?? 0);
     markAt.dataset.tip = `Appears at ${clock(one.at ?? 0)}: drag to change it`;
+  }
+  if (one && dragging !== 'until') {
+    // One that stays sits just inside the end handle, which it would
+    // otherwise be under, ready to be dragged in.
+    markUntil.style.left = share(one.until ?? video.duration);
+    markUntil.classList.toggle('stays', one.until === undefined);
+    markUntil.dataset.tip = one.until === undefined ? 'Stays to the end: drag to make it go sooner'
+      : `Gone at ${clock(one.until)}: drag to change it`;
   }
   const length = video.duration || 1;
   const at = (seconds: number) => `${Math.min(100, Math.max(0, (seconds / length) * 100))}%`;
@@ -1440,14 +1452,25 @@ function stripTime(event: PointerEvent): number {
   return Math.min(1, Math.max(0, (event.clientX - box.left) / Math.max(box.width, 1))) * (capture?.video?.duration ?? 0);
 }
 /** A handle is dragged; anywhere else on the strip moves the playhead there. */
-let dragging: 'start' | 'end' | 'seek' | 'mark' | null = null;
-/** Where the selected mark's time is being dragged to, until it is let go. */
+let dragging: 'start' | 'end' | 'seek' | 'mark' | 'until' | null = null;
+/** Where the selected mark's start or end is being dragged to, until it is let go. */
 let draggingAt: number | null = null;
+/** A mark lasts at least this long: its end can't be dragged onto its start. */
+const BRIEFEST = 0.1;
+/** Where the flag being dragged may go: a start before the mark's end, an end
+ *  after its start. */
+function markTime(event: PointerEvent, flag: 'mark' | 'until'): number {
+  const one = layer.selection.length === 1 ? layer.selection[0] : null;
+  const seconds = stripTime(event);
+  if (!one) return seconds;
+  return flag === 'mark' ? Math.min(seconds, (one.until ?? Infinity) - BRIEFEST) : Math.max(seconds, (one.at ?? 0) + BRIEFEST);
+}
 on(strip, 'pointerdown', event => {
   if (!capture?.video || event.button !== 0) return;
   event.preventDefault();
-  if ((event.target as Element).closest('.mark-at')) {
-    dragging = 'mark'; draggingAt = stripTime(event);
+  const flag = (event.target as Element).closest('.mark-at') ? 'mark' : (event.target as Element).closest('.mark-until') ? 'until' : null;
+  if (flag) {
+    dragging = flag; draggingAt = markTime(event, flag);
     strip.setPointerCapture(event.pointerId);
     return;
   }
@@ -1458,18 +1481,25 @@ on(strip, 'pointerdown', event => {
 });
 on(strip, 'pointermove', event => {
   if (!dragging) return;
-  if (dragging === 'mark') {
-    // Shows the frame it will now appear on, and moves when let go: one undo.
-    draggingAt = stripTime(event);
+  if (dragging === 'mark' || dragging === 'until') {
+    // Shows the frame it will now appear or go on, and moves when let go: one undo.
+    draggingAt = markTime(event, dragging);
     movie.currentTime = draggingAt;
-    markAt.style.left = `${(draggingAt / (capture!.video!.duration || 1)) * 100}%`;
+    const flag = dragging === 'mark' ? markAt : markUntil;
+    flag.style.left = `${(draggingAt / (capture!.video!.duration || 1)) * 100}%`;
+    flag.classList.remove('stays');
     drawTrim();
   } else if (dragging === 'seek') { movie.currentTime = stripTime(event); drawTrim(); }
   else setEdge(dragging, stripTime(event));
 });
 const letGo = (event: PointerEvent) => {
   const one = layer.selection.length === 1 ? layer.selection[0] : null;
-  if (dragging === 'mark' && draggingAt !== null && one) layer.retime(one.id, Math.round(draggingAt * 1000) / 1000);
+  const when = draggingAt === null ? null : Math.round(draggingAt * 1000) / 1000;
+  if (dragging === 'mark' && when !== null && one) layer.retime(one.id, { at: when });
+  // An end let go at the very end is no end: the mark stays.
+  if (dragging === 'until' && when !== null && one) {
+    layer.retime(one.id, { until: when >= (capture?.video?.duration ?? 0) - BRIEFEST ? null : when });
+  }
   dragging = null; draggingAt = null;
   drawTrim();
   if (strip.hasPointerCapture(event.pointerId)) strip.releasePointerCapture(event.pointerId);
@@ -1545,6 +1575,8 @@ function videoKey(event: KeyboardEvent, key: string): boolean {
   if (key === ' ' && !commanded) return event.target instanceof HTMLButtonElement ? true : done(togglePlay);
   if (!commanded && !event.altKey && !event.shiftKey && key === 'i') return done(() => setEdge('start', movie.currentTime));
   if (!commanded && !event.altKey && !event.shiftKey && key === 'o') return done(() => setEdge('end', movie.currentTime));
+  // [ and ]: the selected mark starts, or goes, at the playhead.
+  if (!commanded && !event.altKey && (key === '[' || key === ']')) return done(() => markAtPlayhead(key === '[' ? 'at' : 'until'));
   if (!commanded && key === 'c') return without();
   if (commanded && event.altKey && (event.code === 'KeyC' || key === 'c' || key === 'ç')) return done(primary);
   if (commanded && key === 'c') return done(() => { void copyVideo(false); });
@@ -1555,14 +1587,26 @@ function videoKey(event: KeyboardEvent, key: string): boolean {
   return false;
 }
 
+/** The selected mark, on a recording, starting or going where the playhead is
+ *  -- no closer to its other end than a mark may last. */
+function markAtPlayhead(end: 'at' | 'until') {
+  const one = layer.selection.length === 1 ? layer.selection[0] : null;
+  if (!one) return;
+  const now = Math.round(movie.currentTime * 1000) / 1000;
+  if (end === 'at' && now < (one.until ?? Infinity) - BRIEFEST + 1e-9) layer.retime(one.id, { at: now });
+  else if (end === 'until' && now > (one.at ?? 0) + BRIEFEST - 1e-9) layer.retime(one.id, { until: now });
+  else flash(end === 'at' ? 'A mark has to start before it goes.' : 'A mark has to go after it starts.');
+}
+
 /** What is drawn on a recording, as Rust draws it into every frame: one
- *  picture of the marks for each moment a mark appears at -- all of those due
- *  by then, numbered as among all of them -- and each redaction, which Rust
- *  pixelates afresh in every frame, since a recording's pixels change under it.
- *  None when nothing is drawn, so the movie goes as it was. */
+ *  picture of the marks for each moment the marks on show change -- one
+ *  appearing, or one going -- of all those on show then, numbered as among
+ *  all of them; and each redaction, which Rust pixelates afresh in every frame
+ *  of its time, since a recording's pixels change under it. None when nothing
+ *  is drawn, so the movie goes as it was. */
 interface VideoMarks {
   overlays: { at: number; png: string }[];
-  redactions: { x: number; y: number; width: number; height: number; at: number; block: number }[];
+  redactions: { x: number; y: number; width: number; height: number; at: number; until?: number; block: number }[];
 }
 function videoMarks(): VideoMarks | null {
   if (!capture?.video) return null;
@@ -1570,18 +1614,20 @@ function videoMarks(): VideoMarks | null {
   const hidden = layer.annotations.filter((item): item is Shape => item.kind === 'redact');
   if (!drawn.length && !hidden.length) return null;
   const { width, height } = capture;
-  const moments = [...new Set(drawn.map(item => item.at ?? 0))].sort((a, b) => a - b);
+  const changes = drawn.flatMap(item => item.until === undefined ? [item.at ?? 0] : [item.at ?? 0, item.until]);
+  const moments = [...new Set(changes)].sort((a, b) => a - b);
   const overlays = moments.map(at => {
     const canvas = document.createElement('canvas');
     canvas.width = width; canvas.height = height;
     drawAnnotations(canvas.getContext('2d')!, drawn, {
-      notes: layer.notes, density: layer.density, width, height, showing: item => (item.at ?? 0) <= at,
+      notes: layer.notes, density: layer.density, width, height, showing: item => showsAt(item, at),
     });
     return { at, png: canvas.toDataURL('image/png').split(',')[1] };
   });
   const redactions = hidden.map(shape => ({
     x: Math.min(shape.x, shape.x + shape.width), y: Math.min(shape.y, shape.y + shape.height),
-    width: Math.abs(shape.width), height: Math.abs(shape.height), at: shape.at ?? 0, block: blockSize(shape.weight),
+    width: Math.abs(shape.width), height: Math.abs(shape.height), at: shape.at ?? 0,
+    ...(shape.until === undefined ? {} : { until: shape.until }), block: blockSize(shape.weight),
   }));
   return { overlays, redactions };
 }

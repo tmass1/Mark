@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
+import { showsAt,
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
   ARROW_STYLES, COLORS, arrowPaint, arrowStrokeWidth, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
   noteAt, offsetBy, onto, penPath, scaledNote, stretchedStroke, polygonPath, snapAngle, stepArrow, stepList, stepNumbers, stepRadius, styleOf,
@@ -792,5 +792,16 @@ describe('any colour', () => {
     expect(hexColour('0cb')).toBe('#00ccbb');
     expect(hexColour('  #FFF ')).toBe('#ffffff');
     for (const nonsense of ['', '#', '#12345g', '#1234', 'red', '#0011223']) expect(hexColour(nonsense), nonsense).toBeNull();
+  });
+});
+
+describe('a mark on a recording, in its time', () => {
+  it('is on from its moment, and until its end if it has one', () => {
+    expect(showsAt({}, 0)).toBe(true);
+    expect([2.9, 3, 5.9, 6, 9].map(t => showsAt({ at: 3, until: 6 }, t))).toEqual([false, true, true, false, false]);
+    expect(showsAt({ at: 3 }, 120)).toBe(true);
+    // A frame early, both ways.
+    expect(showsAt({ at: 3, until: 6 }, 2.99, 1 / 60)).toBe(true);
+    expect(showsAt({ at: 3, until: 6 }, 5.99, 1 / 60)).toBe(false);
   });
 });

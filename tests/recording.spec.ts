@@ -172,6 +172,61 @@ test('the selected mark’s moment can be dragged along the strip, and undone', 
   await expect(page.locator('.mark-at')).toHaveAttribute('data-tip', 'Appears at 0:03: drag to change it');
 });
 
+test('a mark can go before the end: its end flag drags, and the copy has it gone from then', async ({ page }) => {
+  await editing(page);
+  await seek(page, 0.25);                                   // 0:03
+  await arrow(page, [0.3, 0.3], [0.7, 0.4]);
+  const until = page.locator('.mark-until');
+  await expect(until).toBeVisible();
+  await expect(until).toHaveAttribute('data-tip', 'Stays to the end: drag to make it go sooner');
+  const flag = (await until.boundingBox())!;
+  const strip = (await page.locator('.strip').boundingBox())!;
+  await page.mouse.move(flag.x + flag.width / 2, flag.y + flag.height - 4);
+  await page.mouse.down();
+  await page.mouse.move(strip.x + strip.width * 0.5, strip.y + strip.height - 4, { steps: 5 });
+  await page.mouse.up();
+  await expect(until).toHaveAttribute('data-tip', 'Gone at 0:06: drag to change it');
+
+  await page.keyboard.press('Escape');                      // let it go, then look in its time and after
+  await seek(page, 0.4);
+  await expect(page.locator('.overlay [data-item]')).toHaveCount(1);
+  await seek(page, 0.6);
+  await expect(page.locator('.overlay [data-item]')).toHaveCount(0);
+
+  // Copied: a picture of the marks from 0:03, and one from 0:06 without it.
+  await clear(page);
+  await page.keyboard.press('Meta+c');
+  const marks = ((await waitFor(page, 'copy_video')).args as { marks: { overlays: { at: number; png: string }[] } }).marks;
+  expect(marks.overlays.map(overlay => Math.round(overlay.at))).toEqual([3, 6]);
+
+  // One undo, and it stays again.
+  await page.keyboard.press('Meta+z');
+  await seek(page, 0.6);
+  await expect(page.locator('.overlay [data-item]')).toHaveCount(1);
+});
+
+test('[ and ] start and end the selected mark at the playhead, a redaction too', async ({ page }) => {
+  await editing(page);
+  await page.keyboard.press('x');                           // Redact
+  await seek(page, 0.25);                                   // 0:03
+  await arrow(page, [0.1, 0.1], [0.4, 0.4]);
+  await seek(page, 0.75);                                   // 0:09
+  await page.keyboard.press(']');
+  await expect(page.locator('.mark-until')).toHaveAttribute('data-tip', 'Gone at 0:09: drag to change it');
+  // Its start can't come after its end.
+  await seek(page, 0.9);
+  await page.keyboard.press('[');
+  await expect(page.locator('.mark-at')).toHaveAttribute('data-tip', 'Appears at 0:03: drag to change it');
+  await seek(page, 0.5);                                    // 0:06
+  await page.keyboard.press('[');
+  await expect(page.locator('.mark-at')).toHaveAttribute('data-tip', 'Appears at 0:06: drag to change it');
+  await clear(page);
+  await page.locator('.save').click();
+  const marks = ((await waitFor(page, 'save_video')).args as { marks: { redactions: { at: number; until?: number }[] } }).marks;
+  expect(marks.redactions[0].at).toBeCloseTo(6, 0);
+  expect(marks.redactions[0].until).toBeCloseTo(9, 0);
+});
+
 test('a redaction on a recording is pixelated by Rust in every frame, and a mark at each moment is its own picture', async ({ page }) => {
   await editing(page);
   await page.keyboard.press('x');                           // Redact

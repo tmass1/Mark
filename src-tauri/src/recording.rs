@@ -327,7 +327,11 @@ fn drawn(marks: Option<Marks>, pixels: (u32, u32)) -> Result<Option<(movie::Draw
     for part in &marks.redactions {
         let numbers = [part.x, part.y, part.width, part.height, part.at, part.block];
         if !numbers.iter().all(|n| n.is_finite()) { return Err("A redaction isn't a place on the recording.".into()); }
+        if part.until.is_some_and(|until| !until.is_finite() || until <= part.at) {
+            return Err("A redaction has to go after it starts.".into());
+        }
         for n in numbers { n.to_bits().hash(&mut print); }
+        part.until.map(f64::to_bits).hash(&mut print);
     }
     Ok(Some((movie::Drawn { overlays, redactions: marks.redactions }, print.finish())))
 }

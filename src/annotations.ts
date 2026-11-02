@@ -10,8 +10,15 @@
  *  Separate interfaces rather than one with a union discriminant, because
  *  TypeScript narrows a union of types and not a union inside one. */
 /** On a recording, a mark is shown from a moment on: the seconds into it when
- *  it was drawn. Absent, as on a screenshot, it is there throughout. */
-export interface Timed { at?: number }
+ *  it was drawn -- and, if it was given one, until a later moment, when it
+ *  goes. Absent, as on a screenshot, it is there throughout. */
+export interface Timed { at?: number; until?: number }
+
+/** Whether a mark is on the frame `seconds` into a recording, as early as
+ *  `early` allows: from its moment on, and before its end if it has one. */
+export function showsAt(item: Timed, seconds: number, early = 0): boolean {
+  return (item.at ?? 0) <= seconds + early && (item.until === undefined || seconds + early < item.until);
+}
 interface Ends extends Timed { id: number; x1: number; y1: number; x2: number; y2: number; color: string; weight: number }
 /** Three shapes for the same gesture. Taper is Mark's own; straight is the
  *  plain solid arrow; line is the thin diagram arrow that does not cover what
@@ -1263,12 +1270,21 @@ export class AnnotationLayer {
     return true;
   }
 
-  /** On a recording, when a mark is shown from, as one step to undo. */
-  retime(id: number, at: number): boolean {
+  /** On a recording, when a mark is shown from, or until -- null for to the
+   *  end -- as one step to undo. */
+  retime(id: number, when: { at?: number; until?: number | null }): boolean {
     const item = this.find(id);
-    if (!item || !Number.isFinite(at) || item.at === at) return false;
+    if (!item) return false;
+    const at = when.at ?? item.at;
+    const until = when.until === undefined ? item.until : when.until ?? undefined;
+    if ((at !== undefined && !Number.isFinite(at)) || (until !== undefined && !Number.isFinite(until))) return false;
+    if (at === item.at && until === item.until) return false;
     this.commitHistory();
-    this.items = this.items.map(other => other.id === id ? { ...other, at } : other);
+    this.items = this.items.map(other => {
+      if (other.id !== id) return other;
+      const { until: _gone, ...rest } = other;
+      return until === undefined ? { ...rest, at } : { ...rest, at, until };
+    });
     this.render(); this.onChange();
     return true;
   }

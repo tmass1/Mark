@@ -460,7 +460,10 @@ notarization; an Apple Development certificate is only good for this Mac.
     was drawn at, so pause where it belongs and draw — drawing on a recording
     that is playing pauses it there — and it stays to the end; drawn at 0:00,
     it is there throughout. Select one and a blue flag on the strip says when
-    it appears; drag the flag to change it. A redaction is pixelated afresh in
+    it appears; drag the flag to change it. A second flag, its tab at the
+    foot, says when it goes: drag it in from the end and the mark is gone from
+    then, so step 1's arrow needn't still be there at step 4. **[** and **]**
+    start and end the selected mark at the playhead. A redaction is pixelated afresh in
     every frame, since what is under it moves; the editor shows a block where
     it will be. Copy, Save, GIF and Share draw the marks into the movie.
     Cropping, the frame, Copy Text and Hide Sensitive are a screenshot's.

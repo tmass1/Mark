@@ -640,6 +640,13 @@ footer > * { flex: none; }
 .mark-at::before { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: var(--blue); }
 .mark-at::after { content: ""; position: absolute; left: 1px; top: 0; width: 12px; height: 10px; border-radius: 0 0 6px 6px; background: var(--blue);
   box-shadow: 0 1px 3px #00000066; }
+/* When it goes: the same blue, its tab at the foot. Staying to the end, it
+   sits just inside the end handle rather than under it. */
+.mark-until { position: absolute; top: 0; bottom: 0; width: 14px; margin-left: -7px; cursor: ew-resize; }
+.mark-until.stays { margin-left: -21px; }
+.mark-until::before { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: var(--blue); }
+.mark-until::after { content: ""; position: absolute; left: 1px; bottom: 0; width: 12px; height: 10px; border-radius: 6px 6px 0 0; background: var(--blue);
+  box-shadow: 0 -1px 3px #00000066; }
 .trim-time { flex: none; min-width: 70px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .trim.trimmed .trim-time { color: var(--ink); }
 /* A recording saves as a video, in words, with its ▾ for a GIF ending the
