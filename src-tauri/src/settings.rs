@@ -139,8 +139,8 @@ pub struct Shortcuts {
     pub record: Option<String>,
 }
 
-/// A background, room around the capture, rounded corners, a shadow and a
-/// title bar, as the editor's Frame panel sets them. The editor owns what the
+/// A background, room around the capture, rounded corners, a shadow, and a
+/// title bar or a phone round it, as the editor's Frame panel sets them. The editor owns what the
 /// numbers mean -- each is 0 to 1 here -- and which backgrounds exist; this
 /// only keeps what it is given within those bounds.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -152,11 +152,13 @@ pub struct Frame {
     pub radius: f64,
     pub shadow: f64,
     pub chrome: bool,
+    /// A phone's body round it, in place of a title bar.
+    pub phone: bool,
 }
 
 impl Default for Frame {
     fn default() -> Self {
-        Frame { on: false, background: "sky".into(), padding: 0.5, radius: 0.4, shadow: 0.5, chrome: false }
+        Frame { on: false, background: "sky".into(), padding: 0.5, radius: 0.4, shadow: 0.5, chrome: false, phone: false }
     }
 }
 
@@ -236,7 +238,7 @@ mod tests {
             shortcuts: Shortcuts { window: Some("Alt+Super+Digit5".into()), display: None, timed: Some("Shift+Super+KeyT".into()),
                                    record: Some("Shift+Super+Digit5".into()) },
             check_updates: false, install_updates: false, skipped_version: Some("0.5.0".into()),
-            frame: Frame { on: true, background: "midnight".into(), padding: 0.25, radius: 0.75, shadow: 0.0, chrome: true },
+            frame: Frame { on: true, background: "midnight".into(), padding: 0.25, radius: 0.75, shadow: 0.0, chrome: true, phone: true },
             after_capture: "thumbnail".into(), mcp: false, record_mic: true, record_clicks: false,
             recording_pointer: PointerLook::Touch, recording_clicks: ClickLook::Ripple,
         };

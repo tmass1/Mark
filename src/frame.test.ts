@@ -27,7 +27,19 @@ describe('frame geometry', () => {
 
   it('has no padding, corners or shadow when all three are turned down', () => {
     const g = frameGeometry(800, 500, 1, { ...DEFAULT_FRAME, padding: 0, radius: 0, shadow: 0 });
-    expect(g).toEqual({ width: 800, height: 500, pad: 0, bar: 0, radius: 0, shadow: { blur: 0, y: 0, alpha: 0 } });
+    expect(g).toEqual({ width: 800, height: 500, pad: 0, bar: 0, bezel: 0, radius: 0, shadow: { blur: 0, y: 0, alpha: 0 } });
+  });
+
+  it('puts a phone round it: a bezel on every side, its own screen corners, and no title bar', () => {
+    const phone = frameGeometry(780, 1688, 2, { ...DEFAULT_FRAME, phone: true, chrome: true, radius: 0 });
+    expect(phone.bar).toBe(0);
+    expect(phone.bezel).toBe(Math.round(0.045 * 780));
+    expect(phone.radius).toBe(Math.round(0.12 * 780));
+    expect(phone.width).toBe(780 + 2 * (phone.pad + phone.bezel));
+    expect(phone.height).toBe(1688 + 2 * (phone.pad + phone.bezel));
+    // Corners are the phone's, whatever the slider says.
+    expect(frameGeometry(780, 1688, 2, { ...DEFAULT_FRAME, phone: true, radius: 1 }).radius).toBe(phone.radius);
+    for (const value of [phone.width, phone.height, phone.bezel, phone.radius]) expect(Number.isInteger(value)).toBe(true);
   });
 
   it('never rounds a corner past half the window', () => {
@@ -72,5 +84,7 @@ describe('a stored frame', () => {
     // Out of range, not a number, or a background that does not exist.
     expect(sanitizeFrame({ padding: 7, radius: -1, shadow: Number.NaN, background: 'plaid', chrome: 'yes' }))
       .toEqual({ ...DEFAULT_FRAME, padding: 1, radius: 0 });
+    expect(sanitizeFrame({ phone: true }).phone).toBe(true);
+    expect(sanitizeFrame({ phone: 'yes' }).phone).toBe(false);
   });
 });

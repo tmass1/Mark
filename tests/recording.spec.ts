@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { installBridge, emit, sent, clear, waitFor } from './bridge';
 import { CAPTURE } from './fixture';
+import { DEFAULT_FRAME, frameGeometry } from '../src/frame';
 
 /** Screen recordings, against the real invoke path: the overlay picking what
  *  to record, the bar beside one, and the editor playing, trimming and handing
@@ -37,9 +38,9 @@ test('a recording opens in a player with its trim, and the tools to mark it up',
   await expect(page.locator('.toolbar')).toBeVisible();
   await expect(page.locator('.rail')).toBeVisible();
   await expect(page.locator('.overlay')).toBeVisible();
-  // What a recording goes without: cropping, framing, reading its text, zoom.
+  // What a recording goes without: cropping, reading its text, zoom. It can be framed.
   await expect(page.locator('.tool[data-slot="9"]')).toBeHidden();
-  await expect(page.locator('.frame-button')).toBeHidden();
+  await expect(page.locator('.frame-button')).toBeVisible();
   await expect(page.locator('.copy-text')).toBeHidden();
   await expect(page.locator('.zoom')).toBeHidden();
   // Save says it saves the video; a GIF is the other way, in the menu beside it.
@@ -671,6 +672,33 @@ test('a recording made with Touch shows a fingertip, pressed while the button wa
   await page.getByRole('button', { name: 'Pointer and clicks' }).click();
   await expect(menu.getByRole('menuitemradio', { name: /Hidden/ })).toHaveAttribute('aria-checked', 'true');
   await expect(menu.getByRole('menuitemradio', { name: /None/ })).toHaveAttribute('aria-checked', 'true');
+});
+
+test('a recording can be framed too, in a phone, and every copy is sent the frame to set it in', async ({ page }) => {
+  await editing(page);
+  await page.getByRole('button', { name: 'Frame', exact: true }).click();
+  const panel = page.locator('.frame-panel');
+  // A movie can't be see-through.
+  await expect(panel.getByRole('radio', { name: 'No background', exact: true })).toBeDisabled();
+  await panel.getByRole('radio', { name: 'Lagoon', exact: true }).click();
+  await panel.locator('.around').getByRole('radio', { name: 'Phone', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.canvas')).toHaveClass(/framed/);
+  const geometry = frameGeometry(VIDEO.width, VIDEO.height, 1, { ...DEFAULT_FRAME, on: true, background: 'lagoon', phone: true });
+  await expect(page.locator('.dimensions')).toHaveText(`${geometry.width} × ${geometry.height} px, framed · 0:12`);
+  await clear(page);
+  await page.keyboard.press('Meta+c');
+  const { frame } = (await waitFor(page, 'copy_video')).args.marks as { frame: Record<string, number | string> };
+  expect(frame).toMatchObject({ width: geometry.width, height: geometry.height,
+                                x: geometry.pad + geometry.bezel, y: geometry.pad + geometry.bezel });
+  // Both pictures are the canvas's size: what lies under, and where the movie shows.
+  const sizes = await page.evaluate(async plates => Promise.all(plates.map(async png => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${png}`;
+    await image.decode();
+    return [image.width, image.height];
+  })), [frame.under as string, frame.mask as string]);
+  expect(sizes).toEqual([[geometry.width, geometry.height], [geometry.width, geometry.height]]);
 });
 
 test('no pointer menu for a recording whose pointer wasn\'t followed', async ({ page }) => {

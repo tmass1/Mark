@@ -14,8 +14,8 @@ import markIcon from './mark-icon.png';
 import { copyThenDismiss } from './model';
 import { readingOrder, within, type Area, type TextLine } from './text';
 import { describeHidden, findSensitive } from './sensitive';
-import { BACKGROUNDS, BAR_COLOURS, DEFAULT_FRAME, LIGHTS_SVG, backgroundOf, cssBackground, darkTop, frameGeometry, paintFrame,
-         sanitizeFrame, type FrameStyle } from './frame';
+import { BACKGROUNDS, BAR_COLOURS, DEFAULT_FRAME, LIGHTS_SVG, PHONE_COLOURS, backgroundOf, cssBackground, darkTop, frameGeometry, framePlates,
+         paintFrame, sanitizeFrame, type FrameStyle } from './frame';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, LOOKS, hexColour, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
          FONT, arrowPaint, badgeAt, blockSize, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isShape, numbered,
@@ -505,7 +505,12 @@ app.innerHTML = `
     </div>
     ${([['padding', 'Padding'], ['radius', 'Corners'], ['shadow', 'Shadow']] as const).map(([key, name]) =>
       `<label class="frame-slider"><span>${name}</span><input type="range" min="0" max="1" step="0.01" data-frame="${key}" /></label>`).join('')}
-    <label class="frame-check"><input type="checkbox" data-frame="chrome" /><span>Title bar</span></label>
+    <div class="frame-around"><span id="around-label">Around it</span>
+      <div class="around" role="radiogroup" aria-labelledby="around-label">
+        ${(['none', 'window', 'phone'] as const).map(id => `<button type="button" role="radio" aria-checked="false" data-around="${id}"
+          title="${{ none: 'Nothing round it', window: 'A window’s title bar', phone: 'A phone round it' }[id]}">${{ none: 'None', window: 'Window', phone: 'Phone' }[id]}</button>`).join('')}
+      </div>
+    </div>
   </aside>
   <input class="file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
 `;
@@ -1224,10 +1229,9 @@ function render() {
   }
   drawRecents();
   // Framed, the size is the size of what will be copied.
-  const framedSize = capture && frame.on ? frameGeometry(capture.width, capture.height, capture.scale ?? 1, frame) : null;
-  app.querySelector('.dimensions')!.textContent = !capture ? ''
-    : video ? `${capture.width} × ${capture.height} px · ${clock(video.duration)}`
-    : framedSize ? `${framedSize.width} × ${framedSize.height} px, framed` : `${capture.width} × ${capture.height} px`;
+  const framedSize = capture && frame.on ? frameGeometry(capture.width, capture.height, capture.scale ?? 1, framing()) : null;
+  const size = framedSize ? `${framedSize.width} × ${framedSize.height} px, framed` : capture ? `${capture.width} × ${capture.height} px` : '';
+  app.querySelector('.dimensions')!.textContent = !capture ? '' : video ? `${size} · ${clock(video.duration)}` : size;
   if (!capture) closeFramePanel();
   // With nothing captured every control in the footer is hidden, which left an
   // empty band of chrome across the bottom of the empty state.
@@ -1237,7 +1241,7 @@ function render() {
   shareButton.hidden = saveButton.hidden = !capture || !isTauri;
   app.querySelector<HTMLElement>('.exports')!.hidden = !capture || !isTauri;
   shareButton.disabled = saveButton.disabled = copyTextButton.disabled = saveMore.disabled = busy || copyPending;
-  // A recording is not framed or read. It saves as a movie, said in words
+  // A recording is not read. It saves as a movie, said in words
   // so it is plainly the way it saves, and as a GIF from the menu beside it.
   copyTextButton.hidden = !!video;
   saveMore.hidden = !video || !isTauri;
@@ -1246,7 +1250,7 @@ function render() {
   saveButton.dataset.tip = video ? 'Save the video, as an MP4 (⌘S)' : 'Save to a file (⌘S)';
   saveButton.setAttribute('aria-label', video ? 'Save Video' : 'Save to a file');
   if (!video) closeSaveMenu();
-  frameButton.hidden = !!video;
+  syncFramePanel();
   copyOnly.dataset.tip = video ? 'Copy the recording and keep working' : 'Copy the image and keep working';
   zoomSelect.parentElement!.hidden = !capture || !!video;
   applyZoom();
@@ -1846,12 +1850,14 @@ function markAtPlayhead(end: 'at' | 'until') {
 interface VideoMarks {
   overlays: { at: number; png: string }[];
   redactions: { x: number; y: number; width: number; height: number; at: number; until?: number; block: number }[];
+  frame?: { width: number; height: number; x: number; y: number; under: string; mask: string };
 }
 function videoMarks(): VideoMarks | null {
   if (!capture?.video) return null;
   const drawn = layer.annotations.filter(item => item.kind !== 'redact');
   const hidden = layer.annotations.filter((item): item is Shape => item.kind === 'redact');
-  if (!drawn.length && !hidden.length) return null;
+  const framed = videoFrame();
+  if (!drawn.length && !hidden.length && !framed) return null;
   const { width, height } = capture;
   const changes = drawn.flatMap(item => item.until === undefined ? [item.at ?? 0] : [item.at ?? 0, item.until]);
   const moments = [...new Set(changes)].sort((a, b) => a - b);
@@ -1868,7 +1874,20 @@ function videoMarks(): VideoMarks | null {
     width: Math.abs(shape.width), height: Math.abs(shape.height), at: shape.at ?? 0,
     ...(shape.until === undefined ? {} : { until: shape.until }), block: blockSize(shape.weight),
   }));
-  return { overlays, redactions };
+  return { overlays, redactions, ...(framed ? { frame: framed } : {}) };
+}
+
+/** A framed recording's frame, for Rust to set the movie in: painted as a
+ *  framed screenshot is, with the window left for the movie, and the shape
+ *  the movie shows through. */
+function videoFrame(): VideoMarks['frame'] | null {
+  if (!capture?.video || !frame.on) return null;
+  const { width, height } = capture;
+  const style = framing();
+  const geometry = frameGeometry(width, height, capture.scale ?? 1, style);
+  const plates = framePlates(geometry, style, { width, height, dark: barDark });
+  const png = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/png').split(',')[1];
+  return { width: geometry.width, height: geometry.height, x: plates.x, y: plates.y, under: png(plates.under), mask: png(plates.mask) };
 }
 
 /** A box, ellipse or highlight on its own in the selection: Copy Text then
@@ -2434,16 +2453,17 @@ function applyZoom() {
  *  Says whether it laid the stage out; off, the backdrop and the card are no
  *  boxes at all and the stage is left to lay out as it always has. */
 function layoutFrame(): boolean {
-  const on = frame.on && !!capture && !capture.video;
+  const on = frame.on && !!capture;
   canvasArea.classList.toggle('framed', on);
   if (!on) {
     for (const element of [backdrop, card, chrome]) element.removeAttribute('style');
-    stage.style.removeProperty('top'); stage.style.removeProperty('border-radius');
+    stage.style.removeProperty('top'); stage.style.removeProperty('left'); stage.style.removeProperty('border-radius');
     chrome.hidden = true;
     return false;
   }
   const { width, height } = capture!;
-  const geometry = frameGeometry(width, height, capture!.scale ?? 1, frame);
+  const style = framing();
+  const geometry = frameGeometry(width, height, capture!.scale ?? 1, style);
   const room = canvasRoom();
   const k = zoom === 'fit'
     ? Math.min(1, room.width / geometry.width, room.height / geometry.height)
@@ -2451,11 +2471,19 @@ function layoutFrame(): boolean {
   const px = (value: number) => `${value * k}px`;
   const corner = px(geometry.radius);
   backdrop.style.width = px(geometry.width); backdrop.style.height = px(geometry.height);
-  backdrop.style.background = cssBackground(backgroundOf(frame.background));
+  backdrop.style.background = cssBackground(backgroundOf(style.background));
+  // The card is the window -- or the phone, its body round the screen, with
+  // the hairline and rim the export draws.
+  const { bezel } = geometry;
+  const line = Math.max(1, Math.round(bezel / 12));
+  const shadows = [
+    geometry.shadow.alpha ? `0 ${px(geometry.shadow.y)} ${px(geometry.shadow.blur)} rgba(0, 0, 0, ${geometry.shadow.alpha.toFixed(3)})` : '',
+    bezel ? `inset 0 0 0 ${px(line)} ${PHONE_COLOURS.edge}, inset 0 0 0 ${px(line * 2.5)} ${PHONE_COLOURS.rim}` : '',
+  ].filter(Boolean);
   Object.assign(card.style, {
-    left: px(geometry.pad), top: px(geometry.pad), width: px(width), height: px(height + geometry.bar), borderRadius: corner,
-    boxShadow: geometry.shadow.alpha
-      ? `0 ${px(geometry.shadow.y)} ${px(geometry.shadow.blur)} rgba(0, 0, 0, ${geometry.shadow.alpha.toFixed(3)})` : 'none',
+    left: px(geometry.pad), top: px(geometry.pad), width: px(width + 2 * bezel), height: px(height + geometry.bar + 2 * bezel),
+    borderRadius: px(geometry.radius + bezel), background: bezel ? PHONE_COLOURS.body : '',
+    boxShadow: shadows.length ? shadows.join(', ') : 'none',
   });
   chrome.hidden = !geometry.bar;
   if (geometry.bar) {
@@ -2468,10 +2496,16 @@ function layoutFrame(): boolean {
     });
   }
   Object.assign(stage.style, {
-    top: px(geometry.bar), width: px(width), height: px(height),
+    left: px(bezel), top: px(bezel + geometry.bar), width: px(width), height: px(height),
     borderRadius: geometry.bar ? `0 0 ${corner} ${corner}` : corner,
   });
   return true;
+}
+
+/** The frame as this capture takes it. A movie can't be see-through, so a
+ *  recording on no background is set on white. */
+function framing(): FrameStyle {
+  return capture?.video && frame.background === 'clear' ? { ...frame, background: 'white' } : frame;
 }
 
 // At Fit a framed capture is sized from the canvas, so it follows the window.
@@ -2484,13 +2518,23 @@ on(image, 'load', () => { barDark = darkTop(image, image.naturalWidth, image.nat
 function syncFramePanel() {
   frameSwitch.setAttribute('aria-checked', String(frame.on));
   frameButton.classList.toggle('on', frame.on);
+  const style = framing();
   for (const swatch of framePanel.querySelectorAll<HTMLButtonElement>('.background')) {
-    swatch.setAttribute('aria-checked', String(swatch.dataset.background === frame.background));
+    swatch.setAttribute('aria-checked', String(swatch.dataset.background === style.background));
+    // A movie can't be see-through.
+    const clear = swatch.dataset.background === 'clear' && !!capture?.video;
+    swatch.disabled = clear;
+    swatch.dataset.tip = clear ? 'A video can’t be see-through' : backgroundOf(swatch.dataset.background!).name;
   }
   for (const input of framePanel.querySelectorAll<HTMLInputElement>('input[data-frame]')) {
-    const value = frame[input.dataset.frame as keyof FrameStyle];
-    if (input.type === 'checkbox') input.checked = value === true;
-    else input.value = String(value);
+    input.value = String(frame[input.dataset.frame as 'padding' | 'radius' | 'shadow']);
+    // A phone's corners are its own.
+    input.disabled = input.dataset.frame === 'radius' && frame.phone;
+    input.closest('.frame-slider')!.classList.toggle('dimmed', input.disabled);
+  }
+  const around = frame.phone ? 'phone' : frame.chrome ? 'window' : 'none';
+  for (const button of framePanel.querySelectorAll<HTMLButtonElement>('[data-around]')) {
+    button.setAttribute('aria-checked', String(button.dataset.around === around));
   }
 }
 
@@ -2530,16 +2574,15 @@ on(frameButton, 'click', () => {
 on(frameSwitch, 'click', () => setFrame({ on: !frame.on }));
 on(framePanel, 'click', event => {
   const swatch = (event.target as Element).closest<HTMLButtonElement>('.background');
-  if (swatch?.dataset.background) setFrame({ background: swatch.dataset.background, on: true });
+  if (swatch?.dataset.background && !swatch.disabled) setFrame({ background: swatch.dataset.background, on: true });
+  const around = (event.target as Element).closest<HTMLButtonElement>('[data-around]')?.dataset.around;
+  if (around) setFrame({ chrome: around === 'window', phone: around === 'phone', on: true });
 });
 for (const input of framePanel.querySelectorAll<HTMLInputElement>('input[data-frame]')) {
-  const key = input.dataset.frame as 'padding' | 'radius' | 'shadow' | 'chrome';
-  if (input.type === 'checkbox') on(input, 'change', () => setFrame({ chrome: input.checked, on: true }));
-  else {
-    // Shown as it moves; kept once it is let go.
-    on(input, 'input', () => setFrame({ [key]: Number(input.value), on: true }, false));
-    on(input, 'change', () => setFrame({ [key]: Number(input.value), on: true }));
-  }
+  const key = input.dataset.frame as 'padding' | 'radius' | 'shadow';
+  // Shown as it moves; kept once it is let go.
+  on(input, 'input', () => setFrame({ [key]: Number(input.value), on: true }, false));
+  on(input, 'change', () => setFrame({ [key]: Number(input.value), on: true }));
 }
 document.addEventListener('pointerdown', event => {
   const target = event.target as Node;

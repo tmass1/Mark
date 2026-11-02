@@ -1,6 +1,7 @@
 /** Frame: the capture set on a background, with room around it, rounded
- *  corners, a shadow and, if wanted, a window's title bar -- the way a
- *  screenshot is dressed to be shown to someone rather than pasted into a bug.
+ *  corners, a shadow and, if wanted, a window's title bar or a phone's body
+ *  round it -- the way a screenshot or a recording is dressed to be shown to
+ *  someone rather than pasted into a bug.
  *
  *  Everything here is shared by the two places a frame appears: the canvas,
  *  which previews it, and the export, which draws it into the image. One set of
@@ -18,9 +19,11 @@ export interface FrameStyle {
   shadow: number;
   /** A title bar with the three lights across the top of the image. */
   chrome: boolean;
+  /** A phone's black body round it instead, its screen's corners the phone's. */
+  phone: boolean;
 }
 
-export const DEFAULT_FRAME: FrameStyle = { on: false, background: 'sky', padding: 0.5, radius: 0.4, shadow: 0.5, chrome: false };
+export const DEFAULT_FRAME: FrameStyle = { on: false, background: 'sky', padding: 0.5, radius: 0.4, shadow: 0.5, chrome: false, phone: false };
 
 export interface Background {
   id: string;
@@ -67,6 +70,7 @@ export function sanitizeFrame(value: unknown): FrameStyle {
     radius: share(given.radius, DEFAULT_FRAME.radius),
     shadow: share(given.shadow, DEFAULT_FRAME.shadow),
     chrome: flag(given.chrome, DEFAULT_FRAME.chrome),
+    phone: flag(given.phone, DEFAULT_FRAME.phone),
   };
 }
 
@@ -84,6 +88,14 @@ export const BAR_COLOURS = {
   dark: { fill: '#2d2d2f', line: '#00000066' },
 };
 
+/** A phone: its bezel and its screen's corners as shares of the screen's
+ *  shorter side, about a current phone's; a body near black, with a lighter
+ *  rim to catch the light, and a hairline round it to keep it off a dark
+ *  background. */
+const BEZEL = 0.045;
+const SCREEN_CORNER = 0.12;
+export const PHONE_COLOURS = { body: '#0e0e10', rim: '#3a3a3e', edge: '#00000099' };
+
 /** Where everything goes, in image pixels. */
 export interface FrameGeometry {
   /** The whole framed image. */
@@ -92,7 +104,9 @@ export interface FrameGeometry {
   pad: number;
   /** The title bar's height; 0 without one. */
   bar: number;
-  /** The window's corner radius. */
+  /** A phone's bezel, round the image on every side; 0 without one. */
+  bezel: number;
+  /** The window's corner radius -- for a phone, its screen's. */
   radius: number;
   shadow: { blur: number; y: number; alpha: number };
 }
@@ -104,12 +118,16 @@ export interface FrameGeometry {
 export function frameGeometry(width: number, height: number, density: number, style: FrameStyle): FrameGeometry {
   const unit = Math.sqrt(width * height);
   const pad = Math.round(style.padding * 0.16 * unit);
-  const bar = style.chrome ? Math.round(BAR * Math.max(1, density)) : 0;
-  const radius = Math.min(Math.round(style.radius * 0.035 * unit), Math.floor(Math.min(width, height + bar) / 2));
+  // A phone has no title bar, and its own corners rather than the slider's.
+  const short = Math.min(width, height);
+  const bezel = style.phone ? Math.max(2, Math.round(BEZEL * short)) : 0;
+  const bar = style.chrome && !style.phone ? Math.round(BAR * Math.max(1, density)) : 0;
+  const radius = style.phone ? Math.round(SCREEN_CORNER * short)
+    : Math.min(Math.round(style.radius * 0.035 * unit), Math.floor(Math.min(width, height + bar) / 2));
   const shadow = style.shadow > 0
     ? { blur: Math.round(style.shadow * 0.07 * unit), y: Math.round(style.shadow * 0.025 * unit), alpha: 0.22 + 0.28 * style.shadow }
     : { blur: 0, y: 0, alpha: 0 };
-  return { width: width + 2 * pad, height: height + bar + 2 * pad, pad, bar, radius, shadow };
+  return { width: width + 2 * (pad + bezel), height: height + bar + 2 * (pad + bezel), pad, bar, bezel, radius, shadow };
 }
 
 /** The line a CSS linear-gradient runs along in a box: through the centre at
@@ -179,14 +197,25 @@ export function paintBackground(context: CanvasRenderingContext2D, background: B
   context.fillRect(0, 0, width, height);
 }
 
-/** The framed image: background, the window's shadow, then the window itself
- *  -- title bar and image -- clipped to its rounded corners. `draw` puts the
- *  image and its marks down with the origin at the image's top left. */
+/** Where the window -- or the phone's screen -- is, title bar and all, in the
+ *  framed image's pixels, and the outside of whatever casts the shadow. */
+function windowOf(geometry: FrameGeometry, image: { width: number; height: number }) {
+  const { pad, bar, bezel, radius } = geometry;
+  return {
+    x: pad + bezel, y: pad + bezel, width: image.width, height: image.height + bar, radius,
+    body: { x: pad, y: pad, width: image.width + 2 * bezel, height: image.height + bar + 2 * bezel, radius: radius + bezel },
+  };
+}
+
+/** The framed image: background, the shadow, a phone's body if it has one,
+ *  then the window itself -- title bar and image -- clipped to its rounded
+ *  corners. `draw` puts the image and its marks down with the origin at the
+ *  image's top left. */
 export function paintFrame(context: CanvasRenderingContext2D, geometry: FrameGeometry, style: FrameStyle,
                            image: { width: number; height: number; dark: boolean }, draw: () => void) {
-  const { pad, bar, radius, shadow } = geometry;
+  const { bar, bezel, shadow } = geometry;
   paintBackground(context, backgroundOf(style.background), geometry.width, geometry.height);
-  const x = pad, y = pad, width = image.width, height = image.height + bar;
+  const { x, y, width, height, radius, body } = windowOf(geometry, image);
   if (shadow.alpha > 0 && (shadow.blur > 0 || shadow.y > 0)) {
     // Cast by a shape drawn wholly off the canvas, its shadow offset back on:
     // so the shadow lands and the shape never does, and a window's transparent
@@ -198,9 +227,22 @@ export function paintFrame(context: CanvasRenderingContext2D, geometry: FrameGeo
     context.shadowOffsetX = away;
     context.shadowOffsetY = shadow.y;
     context.fillStyle = '#000';
-    roundedRect(context, x - away, y, width, height, radius);
+    roundedRect(context, body.x - away, body.y, body.width, body.height, body.radius);
     context.fill();
     context.restore();
+  }
+  if (bezel) {
+    // The body, a hairline round it, and a rim just inside its edge.
+    const line = Math.max(1, Math.round(bezel / 12));
+    roundedRect(context, body.x, body.y, body.width, body.height, body.radius);
+    context.fillStyle = PHONE_COLOURS.body;
+    context.fill();
+    context.lineWidth = line;
+    context.strokeStyle = PHONE_COLOURS.edge;
+    context.stroke();
+    roundedRect(context, body.x + line * 1.5, body.y + line * 1.5, body.width - line * 3, body.height - line * 3, body.radius - line * 1.5);
+    context.strokeStyle = PHONE_COLOURS.rim;
+    context.stroke();
   }
   context.save();
   roundedRect(context, x, y, width, height, radius);
@@ -225,4 +267,21 @@ export function paintFrame(context: CanvasRenderingContext2D, geometry: FrameGeo
   context.translate(x, y + bar);
   draw();
   context.restore();
+}
+
+/** What a framed recording is put together from, the movie being the one
+ *  thing that moves: `under`, the frame painted with nothing in the window,
+ *  and `mask`, solid where the movie shows -- the window below its title bar,
+ *  within its rounded corners -- with where the movie's top left goes. */
+export function framePlates(geometry: FrameGeometry, style: FrameStyle, image: { width: number; height: number; dark: boolean }) {
+  const canvas = () => Object.assign(document.createElement('canvas'), { width: geometry.width, height: geometry.height });
+  const under = canvas(), mask = canvas();
+  paintFrame(under.getContext('2d')!, geometry, style, image, () => {});
+  const window = windowOf(geometry, image);
+  const context = mask.getContext('2d')!;
+  roundedRect(context, window.x, window.y, window.width, window.height, window.radius);
+  context.clip();
+  context.fillStyle = '#fff';
+  context.fillRect(window.x, window.y + geometry.bar, image.width, image.height);
+  return { under, mask, x: window.x, y: window.y + geometry.bar };
 }

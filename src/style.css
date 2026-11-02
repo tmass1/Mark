@@ -273,8 +273,14 @@ footer > * { flex: none; }
 .background:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 .frame-slider { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
 .frame-slider input { width: 100%; margin: 0; accent-color: var(--blue); }
-.frame-check { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; }
-.frame-check input { margin: 0; accent-color: var(--blue); }
+.frame-slider.dimmed { opacity: .45; }
+.background:disabled { opacity: .35; }
+/* What goes round it: nothing, a window's title bar, or a phone. */
+.frame-around { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.around { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--sunken); box-shadow: inset 0 0 0 .5px var(--control-line); }
+.around button { flex: 1; padding: 4px 6px; border: none; border-radius: 6px; background: transparent; color: var(--ink); font-size: 12px; }
+.around button[aria-checked="true"] { background: var(--lens); box-shadow: 0 0 0 .5px var(--control-line), 0 1px 2px #0000001a; }
+.around button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .frame-switch, .frame-switch::after { transition: none; } }
 
 /* Share and Save are one pair of related actions, so they read as one control

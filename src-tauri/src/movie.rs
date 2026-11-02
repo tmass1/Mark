@@ -10,7 +10,8 @@ use objc2::runtime::Bool;
 use objc2::runtime::AnyObject;
 use objc2_av_foundation::{AVAsset, AVAudioTimePitchAlgorithmSpectral, AVMutableComposition, AVAssetExportPresetHighestQuality, AVAssetExportSession, AVAssetExportSessionStatus,
                           AVAssetImageGenerator, AVAssetTrack, AVAsynchronousCIImageFilteringRequest, AVAuthorizationStatus,
-                          AVCaptureDevice, AVFileTypeMPEG4, AVMediaTypeAudio, AVMediaTypeVideo, AVURLAsset, AVVideoComposition};
+                          AVCaptureDevice, AVFileTypeMPEG4, AVMediaTypeAudio, AVMediaTypeVideo, AVMutableVideoComposition, AVURLAsset,
+                          AVVideoComposition};
 use objc2_core_foundation::{CFDictionary, CFMutableData, CFNumber, CFRetained, CFString, CFType, CFURL, CGAffineTransform, CGPoint, CGRect, CGSize};
 use objc2_core_image::{CIColor, CIFilter, CIImage, CIVector};
 use objc2_core_graphics::CGImage;
@@ -53,7 +54,29 @@ pub struct Trim { pub start: f64, pub end: f64 }
 /// the parts to pixelate, each from its own moment. Pixelated afresh in every
 /// frame, since a recording's pixels change under a redaction.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Drawn { pub overlays: Vec<(f64, Vec<u8>)>, pub redactions: Vec<Hidden>, pub pointer: Option<Pointer> }
+pub struct Drawn { pub overlays: Vec<(f64, Vec<u8>)>, pub redactions: Vec<Hidden>, pub pointer: Option<Pointer>, pub frame: Option<Plates> }
+
+/// The frame round a recording: a canvas `size` pixels across, with the
+/// recording set on it, its top left at `at`, over `under` -- the background,
+/// the shadow, and a title bar or a phone -- and showing through `mask`, the
+/// screen's rounded shape. Both are PNGs the canvas's size, which the editor
+/// paints as it paints a framed screenshot.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Plates { pub size: (u32, u32), pub at: (f64, f64), pub under: Vec<u8>, pub mask: Vec<u8> }
+
+/// The largest frame H.264 takes on every Mac, as sck.rs records at most: a
+/// framed copy larger than this is scaled down to fit.
+const LARGEST: (f64, f64) = (3840.0, 2160.0);
+
+/// The size a copy of a recording `pixels` across comes out: its own, or the
+/// frame's canvas, fitted inside LARGEST, in even pixels as H.264 wants.
+pub fn output_size(drawn: Option<&Drawn>, pixels: (u32, u32)) -> (u32, u32) {
+    let Some(plates) = drawn.and_then(|drawn| drawn.frame.as_ref()) else { return pixels };
+    let (width, height) = (f64::from(plates.size.0), f64::from(plates.size.1));
+    let fit = (LARGEST.0 / width).min(LARGEST.1 / height).min(1.0);
+    let even = |side: f64| ((side * fit / 2.0).floor() * 2.0).max(2.0) as u32;
+    (even(width), even(height))
+}
 
 /// What Mark draws of the pointer: something following it along `track` --
 /// seconds in, and x and y in the recording's pixels from its top left, in
@@ -441,8 +464,15 @@ fn composition(asset: &AVAsset, drawn: &Drawn, timeline: Option<Timeline>) -> Re
         Some(Shape::Touch(radius)) => Some((touch_image(radius, false)?, Some(touch_image(radius, true)?))),
         None => None,
     };
+    // The frame's two pictures, read once, and the size the copy comes out at.
+    let read = |png: &[u8]| unsafe { CIImage::imageWithData(&NSData::with_bytes(png)) }.ok_or("The frame couldn't be read.".to_string());
+    let plates = drawn.frame.as_ref()
+        .map(|plates| Ok::<_, String>((read(&plates.under)?, read(&plates.mask)?, plates.at, plates.size))).transpose()?;
+    let out = plates.as_ref().map(|_| output_size(Some(drawn), (0, 0)));
     let pixellate = NSString::from_str("CIPixellate");
     let scale = NSString::from_str("inputScale");
+    let blend = NSString::from_str("CIBlendWithAlphaMask");
+    let (backing, masking) = (NSString::from_str("inputBackgroundImage"), NSString::from_str("inputMaskImage"));
     let applier = RcBlock::new(move |request: NonNull<AVAsynchronousCIImageFilteringRequest>| {
         // SAFETY: AVFoundation hands over a live request for each frame.
         let request = unsafe { request.as_ref() };
@@ -478,16 +508,37 @@ fn composition(asset: &AVAsset, drawn: &Drawn, timeline: Option<Timeline>) -> Re
             }
         }
         if let Some(index) = overlay_at(&moments, time) { frame = unsafe { overlays[index].1.imageByCompositingOverImage(&frame) }; }
+        // Framed: the movie, marks and all, set on the canvas, showing through
+        // the screen over what lies under it -- then fitted to what H.264 takes.
+        if let (Some((under, mask, (x, y), (width, height_out))), Some(out)) = (&plates, out) {
+            let (width, canvas) = (f64::from(*width), f64::from(*height_out));
+            let placed = unsafe { frame.imageByApplyingTransform(CGAffineTransform { a: 1.0, b: 0.0, c: 0.0, d: 1.0, tx: *x, ty: canvas - y - height }) };
+            let settings = NSDictionary::<NSString, AnyObject>::from_slices(&[&*backing, &*masking], &[&**under as &AnyObject, &**mask]);
+            frame = unsafe {
+                placed.imageByApplyingFilter_withInputParameters(&blend, &settings)
+                    .imageByCroppingToRect(CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(width, canvas)))
+            };
+            let (kx, ky) = (f64::from(out.0) / width, f64::from(out.1) / canvas);
+            if (kx - 1.0).abs() > 1e-9 || (ky - 1.0).abs() > 1e-9 {
+                frame = unsafe { frame.imageByApplyingTransform(CGAffineTransform { a: kx, b: 0.0, c: 0.0, d: ky, tx: 0.0, ty: 0.0 }) };
+            }
+        }
         unsafe { request.finishWithImage_context(&frame, None) };
     });
     let (sent, received) = mpsc::channel();
-    let made = RcBlock::new(move |composition: *mut AVVideoComposition, error: *mut NSError| {
+    let made = RcBlock::new(move |composition: *mut AVMutableVideoComposition, error: *mut NSError| {
         // SAFETY: a valid composition or nil, retained to outlive the block.
         let _ = sent.send(unsafe { Retained::retain(composition) }.map(Carried).ok_or_else(|| described(error)));
     });
-    unsafe { AVVideoComposition::videoCompositionWithAsset_applyingCIFiltersWithHandler_completionHandler(asset, &applier, &made) };
+    unsafe { AVMutableVideoComposition::videoCompositionWithAsset_applyingCIFiltersWithHandler_completionHandler(asset, &applier, &made) };
     match received.recv_timeout(PATIENCE) {
-        Ok(Ok(composition)) => Ok(composition.0),
+        Ok(Ok(composition)) => {
+            // A frame makes the picture larger than the movie it holds.
+            if let Some((width, height)) = out {
+                unsafe { composition.0.setRenderSize(CGSize::new(f64::from(width), f64::from(height))) };
+            }
+            Ok(Retained::into_super(composition.0))
+        }
         Ok(Err(reason)) => Err(format!("What was drawn couldn't be put into the recording ({reason}).")),
         Err(_) => Err("Putting what was drawn into the recording took too long.".into()),
     }
@@ -695,6 +746,59 @@ mod tests {
     }
 
     /// A 320 × 200 picture, clear but for a square of one colour.
+    /// A picture `width` × `height`, each pixel as `paint` says.
+    fn picture(width: usize, height: usize, paint: impl Fn(usize, usize) -> [u8; 4]) -> Vec<u8> {
+        let mut rgba = Vec::with_capacity(width * height * 4);
+        for y in 0..height { for x in 0..width { rgba.extend(paint(x, y)); } }
+        let mut png = Vec::new();
+        let mut encoder = png::Encoder::new(&mut png, width as u32, height as u32);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.write_header().unwrap().write_image_data(&rgba).unwrap();
+        png
+    }
+
+    /// The clip framed on a 400 × 280 canvas, 40 in from the left and 40
+    /// down: green under it, and a screen with square corners.
+    fn plates(size: (usize, usize), at: (usize, usize)) -> Plates {
+        let inside = |x: usize, y: usize| x >= at.0 && x < at.0 + 320 && y >= at.1 && y < at.1 + 200;
+        Plates {
+            size: (size.0 as u32, size.1 as u32), at: (at.0 as f64, at.1 as f64),
+            under: picture(size.0, size.1, |_, _| [20, 200, 60, 255]),
+            mask: picture(size.0, size.1, |x, y| if inside(x, y) { [255, 255, 255, 255] } else { [0, 0, 0, 0] }),
+        }
+    }
+
+    #[test]
+    fn a_framed_copy_is_the_canvas_with_the_recording_set_on_it() {
+        let folder = tempfile::tempdir().unwrap();
+        let (plain, framed) = (folder.path().join("plain.mp4"), folder.path().join("framed.mp4"));
+        export(&clip(), None, Some(&Drawn::default()), &plain).unwrap();
+        let drawn = Drawn { frame: Some(plates((400, 280), (40, 40))), ..Drawn::default() };
+        assert_eq!(output_size(Some(&drawn), (320, 200)), (400, 280));
+        export(&clip(), None, Some(&drawn), &framed).unwrap();
+        let read = info(&framed).unwrap();
+        assert_eq!((read.width, read.height), (400, 280));
+        // What lies under it round the edge, the recording in the middle.
+        let green = pixel(&framed, 1.0, 10, 10);
+        assert!(green[1] > 150 && green[0] < 80 && green[2] < 110, "{green:?}");
+        // (Inside the clip's colour bars, not on an edge, where H.264 blurs colour.)
+        for (x, y) in [(60, 30), (250, 160)] {
+            let (there, was) = (pixel(&framed, 1.0, x + 40, y + 40), pixel(&plain, 1.0, x, y));
+            assert!(apart(there, was) < 14, "{there:?} where the recording has {was:?}");
+        }
+        assert!(apart(pixel(&framed, 1.0, 50, 50), pixel(&plain, 1.0, 10, 10)) < 14, "its corner where it was put");
+    }
+
+    #[test]
+    fn a_frame_larger_than_h264_takes_is_fitted_in_even_pixels() {
+        let big = Drawn { frame: Some(Plates { size: (5001, 3000), at: (0.0, 0.0), under: vec![], mask: vec![] }), ..Drawn::default() };
+        let (width, height) = output_size(Some(&big), (320, 200));
+        assert!(width <= 3840 && height <= 2160 && width % 2 == 0 && height % 2 == 0, "{width} × {height}");
+        assert!(((width as f64 / height as f64) - 5001.0 / 3000.0).abs() < 0.01);
+        assert_eq!(output_size(None, (320, 200)), (320, 200));
+    }
+
     fn square(colour: [u8; 3], from: usize, to: usize) -> Vec<u8> {
         let mut rgba = vec![0u8; 320 * 200 * 4];
         for y in from..to { for x in from..to { rgba[(y * 320 + x) * 4..][..4].copy_from_slice(&[colour[0], colour[1], colour[2], 255]); } }
@@ -713,7 +817,7 @@ mod tests {
         assert_eq!(overlay_at(&[1.0, 2.5], 2.5 - DUE / 2.0), Some(1), "due a frame early, not late");
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("marked.mp4");
-        let drawn = Drawn { overlays: vec![(1.0, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None };
+        let drawn = Drawn { overlays: vec![(1.0, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None, frame: None };
         // Kept from 0.5 to 1.5: the mark is drawn at 1.0 into the recording,
         // which is 0.5 into the copy.
         export(&clip(), Some(&Timeline { parts: vec![Trim { start: 0.5, end: 1.5 }], speed: 1.0 }), Some(&drawn), &out).unwrap();
@@ -732,7 +836,7 @@ mod tests {
         // Core Image's blocks are laid from 150, 150 up from the bottom left, so
         // 150 to 190 across and 50 to 90 down from the top is one whole block.
         let part = Hidden { x: 100.0, y: 40.0, width: 120.0, height: 120.0, at: 0.0, until: None, block: 40.0 };
-        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], pointer: None }), &out).unwrap();
+        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], pointer: None, frame: None }), &out).unwrap();
         for at in [0.3, 1.6] {
             let (one, other) = (pixel(&out, at, 154, 54), pixel(&out, at, 186, 86));
             assert!(one.iter().zip(other).all(|(a, b)| (a - b).abs() < 14), "one block, one colour at {at}s: {one:?} {other:?}");
@@ -760,7 +864,7 @@ mod tests {
         let out = folder.path().join("cut.mp4");
         let timeline = Timeline::new(0.0, 2.0, &[(0.5, 1.0)], 1.0, 2.0).unwrap().unwrap();
         // Drawn 1.2 s into the recording: 0.7 s into the copy.
-        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None };
+        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None, frame: None };
         export(&clip(), Some(&timeline), Some(&drawn), &out).unwrap();
         let made = info(&out).unwrap();
         assert!((made.duration - 1.5).abs() < 0.1, "{}", made.duration);
@@ -784,7 +888,7 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("fast.mp4");
         // Drawn 1.2 s into the recording: 0.6 s into a copy twice as fast.
-        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None };
+        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None, frame: None };
         export(&clip(), Some(&timeline), Some(&drawn), &out).unwrap();
         let made = info(&out).unwrap();
         assert!((made.duration - 1.0).abs() < 0.1, "{}", made.duration);
@@ -904,7 +1008,7 @@ mod tests {
         assert!(!part.due(0.3) && part.due(0.6) && part.due(1.1) && !part.due(1.5));
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("hidden.mp4");
-        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], pointer: None }), &out).unwrap();
+        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], pointer: None, frame: None }), &out).unwrap();
         let blocky = |at: f64| {
             let (one, other) = (pixel(&out, at, 154, 54), pixel(&out, at, 186, 86));
             one.iter().zip(other).all(|(a, b)| (a - b).abs() < 14)

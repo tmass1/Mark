@@ -335,14 +335,24 @@ fn find(app: &AppHandle, id: u64) -> Result<Found, String> {
 }
 
 /// What the editor drew on a recording, as it sends it: a PNG of the marks,
-/// base64, for each moment one appears at, and the parts to pixelate.
+/// base64, for each moment one appears at, the parts to pixelate, and the
+/// frame it is set in, if it is framed.
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Marks {
     #[serde(default)] overlays: Vec<Overlay>,
     #[serde(default)] redactions: Vec<movie::Hidden>,
+    #[serde(default)] frame: Option<Framing>,
 }
 #[derive(Clone, Debug, Deserialize)]
 struct Overlay { at: f64, png: String }
+/// The frame as the editor paints it: a canvas `width` × `height` pixels, the
+/// recording's top left at `x`, `y` on it, what lies under it, and the
+/// screen's shape -- both PNGs, base64, the canvas's size.
+#[derive(Clone, Debug, Deserialize)]
+struct Framing { width: u32, height: u32, x: f64, y: f64, under: String, mask: String }
+
+/// No frame is wider or taller than this: a canvas past it is a mistake.
+const LARGEST_CANVAS: u32 = 8192;
 
 /// Far more moments than anyone marks a short recording at.
 const MOST_MOMENTS: usize = 200;
@@ -353,7 +363,7 @@ const MOST_MOMENTS: usize = 200;
 fn drawn(marks: Option<Marks>, pixels: (u32, u32)) -> Result<Option<(movie::Drawn, u64)>, String> {
     use std::hash::{Hash, Hasher};
     let Some(marks) = marks else { return Ok(None) };
-    if marks.overlays.is_empty() && marks.redactions.is_empty() { return Ok(None); }
+    if marks.overlays.is_empty() && marks.redactions.is_empty() && marks.frame.is_none() { return Ok(None); }
     if marks.overlays.len() > MOST_MOMENTS || marks.redactions.len() > MOST_MOMENTS {
         return Err("There's too much drawn on the recording to put into it.".into());
     }
@@ -376,7 +386,24 @@ fn drawn(marks: Option<Marks>, pixels: (u32, u32)) -> Result<Option<(movie::Draw
         for n in numbers { n.to_bits().hash(&mut print); }
         part.until.map(f64::to_bits).hash(&mut print);
     }
-    Ok(Some((movie::Drawn { overlays, redactions: marks.redactions, pointer: None }, print.finish())))
+    let frame = marks.frame.map(|framing| framed(framing, pixels)).transpose()?;
+    if let Some(plates) = &frame { (plates.size, plates.at.0.to_bits(), plates.at.1.to_bits(), &plates.under, &plates.mask).hash(&mut print); }
+    Ok(Some((movie::Drawn { overlays, redactions: marks.redactions, pointer: None, frame }, print.finish())))
+}
+
+/// The frame made ready to draw: both pictures whole PNGs the canvas's size,
+/// and the recording wholly on the canvas.
+fn framed(framing: Framing, pixels: (u32, u32)) -> Result<movie::Plates, String> {
+    let size = (framing.width, framing.height);
+    if size.0 > LARGEST_CANVAS || size.1 > LARGEST_CANVAS { return Err("The frame is too large to make.".into()); }
+    let fits = framing.x.is_finite() && framing.y.is_finite() && framing.x >= 0.0 && framing.y >= 0.0
+        && framing.x + f64::from(pixels.0) <= f64::from(size.0) && framing.y + f64::from(pixels.1) <= f64::from(size.1);
+    if !fits { return Err("The recording isn't inside its frame.".into()); }
+    let (under, mask) = (crate::decode_png(&framing.under)?, crate::decode_png(&framing.mask)?);
+    for png in [&under, &mask] {
+        if capture::validate_png(png)? != size { return Err("The frame isn't the size it says.".into()); }
+    }
+    Ok(movie::Plates { size, at: (framing.x, framing.y), under, mask })
 }
 
 /// The movie to hand on for recording `id`: all of it as it was made, or the
@@ -510,7 +537,9 @@ fn make_gif(found: &Found, start: f64, end: f64, cuts: &[(f64, f64)], speed: f64
             out: &std::path::Path) -> Result<u64, String> {
     let timeline = movie::Timeline::new(start, end, cuts, speed, found.duration)?.unwrap_or_else(|| movie::Timeline::whole(found.duration));
     let drawn = with_pointer(drawn(marks, found.pixels)?, look, found);
-    movie::gif(&found.file, &movie::gif_plan(&timeline, found.pixels, found.scale, small), drawn.as_ref().map(|(drawn, _)| drawn), out)
+    let drawn = drawn.as_ref().map(|(drawn, _)| drawn);
+    // Framed, the GIF is the canvas's shape, not the recording's.
+    movie::gif(&found.file, &movie::gif_plan(&timeline, movie::output_size(drawn, found.pixels), found.scale, small), drawn, out)
 }
 
 /// Copy as GIF: what is kept, with what was drawn on it, as a GIF that loops,
@@ -618,6 +647,35 @@ pub fn selftest(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A clear PNG `width` × `height`, base64, as the editor sends a plate.
+    fn plate(width: u32, height: u32) -> String {
+        let mut png = Vec::new();
+        let mut encoder = png::Encoder::new(&mut png, width, height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.write_header().unwrap().write_image_data(&vec![0; (width * height * 4) as usize]).unwrap();
+        STANDARD.encode(png)
+    }
+
+    #[test]
+    fn a_frame_is_taken_only_whole_and_round_the_recording() {
+        let framing = |width, height, x, y| Framing { width, height, x, y, under: plate(width, height), mask: plate(width, height) };
+        let plates = framed(framing(60, 50, 10.0, 5.0), (40, 30)).unwrap();
+        assert_eq!((plates.size, plates.at), ((60, 50), (10.0, 5.0)));
+        // The recording has to be wholly on the canvas.
+        assert!(framed(framing(60, 50, 30.0, 5.0), (40, 30)).is_err());
+        assert!(framed(framing(60, 50, -1.0, 5.0), (40, 30)).is_err());
+        assert!(framed(framing(60, 50, f64::NAN, 5.0), (40, 30)).is_err());
+        // The pictures have to be the size it says.
+        let mut wrong = framing(60, 50, 10.0, 5.0);
+        wrong.mask = plate(61, 50);
+        assert!(framed(wrong, (40, 30)).is_err());
+        // And a canvas can't be enormous.
+        assert!(framed(Framing { width: 9000, height: 50, x: 0.0, y: 0.0, under: String::new(), mask: String::new() }, (40, 30)).is_err());
+        // A frame alone is something drawn.
+        let marks = Marks { frame: Some(framing(60, 50, 10.0, 5.0)), ..Marks::default() };
+        assert!(drawn(Some(marks), (40, 30)).unwrap().is_some_and(|(drawn, _)| drawn.frame.is_some()));
+    }
 
     #[test]
     fn the_pointer_is_followed_from_the_top_left_of_what_is_recorded() {
