@@ -12,21 +12,22 @@ const OFFER = {
 test('an update Mark found by itself is offered with its notes, without checking again', async ({ page }) => {
   await installBridge(page, { returns: { pending_update: OFFER } });
   await page.goto('/update.html');
-  await expect(page.getByRole('heading', { name: 'A new version of Mark is available' })).toBeVisible();
-  await expect(page.getByText('Mark 0.5.0 is ready to install. You have 0.4.5.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'A new version of Mark is available!' })).toBeVisible();
+  await expect(page.locator('.update-sub')).toHaveText('Mark 0.5.0 is now available—you have 0.4.5. Would you like to install it now?');
   const notes = page.getByLabel("What's new");
-  await expect(notes.locator('h3')).toHaveText("What's new");
+  // The title says what's new; the notes go straight to it.
+  await expect(notes.locator('h3')).toHaveCount(0);
   await expect(notes.locator('li strong')).toHaveText('Copy and paste a mark.');
   await expect(notes.locator('b')).toHaveCount(0);                 // notes are only ever text
   await expect(notes).toContainText('<b>not markup</b>');
-  await expect(page.getByRole('button', { name: 'Install and Relaunch' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Install Update' })).toBeFocused();
   expect((await sent(page)).map(call => call.cmd)).not.toContain('check_for_update');
 });
 
 test('installing shows the download, then the install, as Rust reports them', async ({ page }) => {
   await installBridge(page, { returns: { pending_update: OFFER } });
   await page.goto('/update.html');
-  await page.getByRole('button', { name: 'Install and Relaunch' }).click();
+  await page.getByRole('button', { name: 'Install Update' }).click();
   await waitFor(page, 'install_update');
   await expect(page.getByRole('heading', { name: 'Downloading Mark 0.5.0…' })).toBeVisible();
 
@@ -89,7 +90,7 @@ test('a check that cannot reach the server says so plainly, and can try again', 
 test('an install refused for its signature says why', async ({ page }) => {
   await installBridge(page, { returns: { pending_update: OFFER }, fails: { install_update: 'signature verification failed' } });
   await page.goto('/update.html');
-  await page.getByRole('button', { name: 'Install and Relaunch' }).click();
+  await page.getByRole('button', { name: 'Install Update' }).click();
   await expect(page.getByRole('heading', { name: "Mark couldn't install the update" })).toBeVisible();
   await expect(page.getByText("The download wasn't signed by Mark's key, so it was not installed.")).toBeVisible();
   await clear(page);
@@ -163,7 +164,29 @@ test('the window shows itself once, not again for every answer', async ({ page }
   await page.goto('/update.html?check');
   await expect(page.getByRole('heading', { name: 'A new version of Mark is available' })).toBeVisible();
   await waitFor(page, 'plugin:window|show');
-  await page.getByRole('button', { name: 'Install and Relaunch' }).click();
+  await page.getByRole('button', { name: 'Install Update' }).click();
   await waitFor(page, 'install_update');
   expect((await sent(page)).filter(call => call.cmd === 'plugin:window|show')).toHaveLength(1);
+});
+
+test('the offer can have updates install themselves from now on, as Settings says', async ({ page }) => {
+  await installBridge(page, { returns: { pending_update: OFFER, get_settings: { appearance: 'dark', shortcut: 'Super+Digit4', installUpdates: false },
+                                         set_install_updates: { appearance: 'dark', shortcut: 'Super+Digit4', checkUpdates: true, installUpdates: true } } });
+  await page.goto('/update.html');
+  const box = page.getByLabel('Automatically download and install updates in the future');
+  await expect(box).not.toBeChecked();
+  await clear(page);
+  await box.check();
+  expect((await waitFor(page, 'set_install_updates')).args).toEqual({ enabled: true });
+  await expect(box).toBeChecked();
+  // The offer itself still waits for an answer.
+  expect((await sent(page)).map(call => call.cmd)).not.toContain('install_update');
+});
+
+test('an offer already set to install by itself shows its box ticked, and notes without a heading stand as they are', async ({ page }) => {
+  await installBridge(page, { returns: { pending_update: { version: '0.9.0', current: '0.8.2', notes: '- **One thing.** And another.' },
+                                         get_settings: { appearance: 'dark', shortcut: 'Super+Digit4', installUpdates: true } } });
+  await page.goto('/update.html');
+  await expect(page.getByLabel('Automatically download and install updates in the future')).toBeChecked();
+  await expect(page.getByLabel("What's new").locator('li')).toHaveText('One thing. And another.');
 });

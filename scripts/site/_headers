@@ -44,6 +44,9 @@
 /updates/latest.json
   Cache-Control: no-cache
   Content-Type: application/json
+/updates/latest-with-notes.json
+  Cache-Control: no-cache
+  Content-Type: application/json
 /updates/*.tar.gz
   Content-Type: application/gzip
   Cache-Control: public, max-age=3600

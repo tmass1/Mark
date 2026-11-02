@@ -26,6 +26,9 @@ pub struct Settings {
     pub shortcuts: Shortcuts,
     /// Whether Mark looks for a new version by itself: at launch, then daily.
     pub check_updates: bool,
+    /// Whether what it finds is downloaded and installed without asking, once
+    /// Mark is out of the way, rather than offered. Off until turned on.
+    pub install_updates: bool,
     /// A version the user chose to skip. Looking by itself, Mark passes over
     /// it; a check asked for by hand still offers it.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -54,7 +57,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings { appearance: "dark".into(), shortcut: DEFAULT_SHORTCUT.into(), shortcuts: Shortcuts::default(),
-                   check_updates: true, skipped_version: None, frame: Frame::default(),
+                   check_updates: true, install_updates: false, skipped_version: None, frame: Frame::default(),
                    after_capture: "editor".into(), mcp: true, record_mic: false, record_clicks: true,
                    record_pointer: true, record_highlight: false }
     }
@@ -174,7 +177,7 @@ mod tests {
             appearance: "light".into(), shortcut: "Control+Alt+Super+Digit4".into(),
             shortcuts: Shortcuts { window: Some("Alt+Super+Digit5".into()), display: None, timed: Some("Shift+Super+KeyT".into()),
                                    record: Some("Shift+Super+Digit5".into()) },
-            check_updates: false, skipped_version: Some("0.5.0".into()),
+            check_updates: false, install_updates: false, skipped_version: Some("0.5.0".into()),
             frame: Frame { on: true, background: "midnight".into(), padding: 0.25, radius: 0.75, shadow: 0.0, chrome: true },
             after_capture: "thumbnail".into(), mcp: false, record_mic: true, record_clicks: false,
             record_pointer: false, record_highlight: true,
@@ -202,6 +205,7 @@ mod tests {
         // such a Mark should start looking, with nothing skipped.
         let settings = parse(br#"{"appearance":"light","shortcut":"Super+Digit4"}"#).unwrap();
         assert!(settings.check_updates);
+        assert!(!settings.install_updates, "installing without asking is chosen, never assumed");
         assert_eq!(settings.skipped_version, None);
         // And nothing is written for a skip that never happened.
         assert!(!String::from_utf8(serde_json::to_vec(&Settings::default()).unwrap()).unwrap().contains("skipped"));

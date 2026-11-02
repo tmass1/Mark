@@ -81,6 +81,9 @@ export interface SavedSettings {
   /** Whether a recording shows the pointer, and starts with a halo following it. */
   recordPointer?: boolean;
   recordHighlight?: boolean;
+  /** Whether Mark looks for updates by itself, and installs them without asking. */
+  checkUpdates?: boolean;
+  installUpdates?: boolean;
 }
 
 /** Settings change in their own window; the editor shows the shortcuts, so it listens. */

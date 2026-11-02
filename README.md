@@ -487,12 +487,20 @@ notarization; an Apple Development certificate is only good for this Mac.
     ones to keep.
 12. **Updates** come to Mark by themselves. It looks for a new version shortly
     after it opens and once a day after that, and when there is one, Software
-    Update says what changed and offers **Install and Relaunch**, **Remind Me
+    Update says what changed and offers **Install Update**, **Remind Me
     Later** or **Skip This Version**. Installing downloads the new version,
     checks it was signed with Mark's own key, puts it in place and reopens.
-    **Check for Updates…** is in the menu bar menu, and Settings can turn the
-    looking off. A check that fails by itself — offline, say — keeps quiet;
-    one you asked for says what went wrong.
+    Tick **Automatically download and install updates in the future** there,
+    or in Settings, and later ones install themselves: once nothing is being
+    captured or recorded and none of Mark's windows is open, after which Mark
+    reopens in the background. **Check for Updates…** is in the menu bar menu,
+    and Settings can turn the looking off. A check that fails by itself —
+    offline, say — keeps quiet; one you asked for says what went wrong.
+
+    Mark from 0.9 on reads `updates/latest-with-notes.json`, which carries the
+    release notes; earlier versions read `updates/latest.json`, which
+    `scripts/site/pack.sh` writes with the notes left out, since 0.4.5's
+    window can't grow to fit them.
 
 Escape, ⌘W, or the red traffic-light button closes without copying. Starting a
 new capture hides the old editor; cancel restores it and success replaces it.

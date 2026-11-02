@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "update",
-  "description": "Software Update may look for a newer Mark, install it or skip it, follow the download, size, centre and show itself once it fits, and close itself.",
+  "description": "Software Update may look for a newer Mark, install it or skip it, read and set whether updates install by themselves, follow the download, size, centre and show itself once it fits, and close itself.",
   "windows": ["update"], "platforms": ["macOS"],
   "permissions": [
     "allow-check-for-update", "allow-pending-update", "allow-install-update", "allow-skip-update",
+    "allow-get-settings", "allow-set-install-updates",
     "core:event:allow-listen", "core:event:allow-unlisten",
     "core:window:allow-close", "core:window:allow-inner-size", "core:window:allow-scale-factor", "core:window:allow-set-size",
     "core:window:allow-center", "core:window:allow-show", "core:window:allow-set-focus", "core:app:allow-version"
