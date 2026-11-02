@@ -102,6 +102,7 @@ root.innerHTML = `
     <button class="zoom-toggle icon" type="button" aria-pressed="false" aria-label="Zoom in on clicks" title="Zoom in on clicks">
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="8.6" cy="8.6" r="5.2"/><path d="M12.4 12.4 16.4 16.4M8.6 6.4v4.4M6.4 8.6h4.4"/></svg>
+      <span class="zoom-word">Zoom</span>
     </button>
     <button class="go" type="button"><span class="dot" aria-hidden="true"></span>Record</button></div>` : ''}
   <div class="panel" hidden>

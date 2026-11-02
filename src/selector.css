@@ -151,6 +151,9 @@ html[data-kind="video"] .go:hover { background: var(--record-hover) !important; 
 .choices .cancel svg, .choices .mic svg, .choices .delay svg, .choices .zoom-toggle svg { display: block; width: 22px; height: 22px; }
 .choices .cancel:hover, .choices .mic:hover, .choices .delay:hover, .choices .zoom-toggle:hover { color: var(--ink); background: var(--control); }
 .choices .mic[aria-pressed="true"], .choices .delay.armed, .choices .zoom-toggle[aria-pressed="true"] { color: #fff; background: var(--blue); }
+/* Zoom says what it is in a word, as the choices do: a magnifier alone could
+   be taken for zooming the overlay. */
+.choices .zoom-toggle { gap: 7px; padding-right: 15px; font-weight: 500; white-space: nowrap; }
 .choices .cancel:focus-visible, .choices .mic:focus-visible, .choices .delay:focus-visible, .choices .zoom-toggle:focus-visible {
   outline: 2.5px solid var(--blue); outline-offset: 1px; }
 .choices .go {
