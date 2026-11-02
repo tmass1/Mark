@@ -44,13 +44,19 @@ pub struct Settings {
     pub record_mic: bool,
     /// Whether a screen recording shows where the pointer clicked.
     pub record_clicks: bool,
+    /// Whether a screen recording shows the pointer at all.
+    pub record_pointer: bool,
+    /// Whether a new recording starts with a halo following the pointer, which
+    /// the editor can turn off or on for each.
+    pub record_highlight: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings { appearance: "dark".into(), shortcut: DEFAULT_SHORTCUT.into(), shortcuts: Shortcuts::default(),
                    check_updates: true, skipped_version: None, frame: Frame::default(),
-                   after_capture: "editor".into(), mcp: true, record_mic: false, record_clicks: true }
+                   after_capture: "editor".into(), mcp: true, record_mic: false, record_clicks: true,
+                   record_pointer: true, record_highlight: false }
     }
 }
 
@@ -171,6 +177,7 @@ mod tests {
             check_updates: false, skipped_version: Some("0.5.0".into()),
             frame: Frame { on: true, background: "midnight".into(), padding: 0.25, radius: 0.75, shadow: 0.0, chrome: true },
             after_capture: "thumbnail".into(), mcp: false, record_mic: true, record_clicks: false,
+            record_pointer: false, record_highlight: true,
         };
         let json = serde_json::to_vec(&settings).unwrap();
         assert_eq!(parse(&json).unwrap(), settings);
@@ -244,6 +251,7 @@ mod tests {
     fn a_file_from_before_recordings_records_without_the_microphone_and_shows_clicks() {
         let settings = parse(br#"{"appearance":"light","shortcut":"Super+Digit4"}"#).unwrap();
         assert!(!settings.record_mic && settings.record_clicks);
+        assert!(settings.record_pointer && !settings.record_highlight);
         assert_eq!(settings.shortcuts.record, None);
         let json = String::from_utf8(serde_json::to_vec(&Settings::default()).unwrap()).unwrap();
         assert!(json.contains("\"recordMic\":false") && json.contains("\"recordClicks\":true"));

@@ -42,7 +42,7 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
 objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "SCShareableContent", "SCStream", "SCRecordingOutput", "SCError", "block2", "libc", "objc2-core-foundation", "objc2-core-graphics", "objc2-core-media", "objc2-av-foundation"] }
 objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "AVAsset", "AVAssetTrack", "AVAssetImageGenerator", "AVAssetExportSession", "AVAudioProcessingSettings", "AVCaptureDevice", "AVComposition", "AVMediaFormat", "AVVideoSettings", "AVVideoComposition", "AVVideoCompositing", "block2", "objc2-core-foundation", "objc2-core-graphics", "objc2-core-media", "objc2-core-image"] }
 # Marks and redactions drawn into a recording's frames as it is exported.
-objc2-core-image = { version = "0.3", default-features = false, features = ["std", "CIImage", "CIContext", "objc2-core-foundation", "objc2-core-graphics"] }
+objc2-core-image = { version = "0.3", default-features = false, features = ["std", "CIImage", "CIContext", "CIFilter", "CIVector", "CIColor", "objc2-core-foundation", "objc2-core-graphics"] }
 objc2-image-io = { version = "0.3", default-features = false, features = ["std", "CGImageDestination", "CGImageProperties", "objc2-core-graphics"] }
 objc2-core-media = { version = "0.3", default-features = false, features = ["std", "CMTime", "CMTimeRange"] }
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGImage", "CGDirectDisplay"] }

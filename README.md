@@ -444,7 +444,12 @@ notarization; an Apple Development certificate is only good for this Mac.
     **Stop Recording**; Record Video's shortcut stops it as well, and so does
     macOS's own recording indicator, which keeps what was recorded. A
     recording stops by itself at five minutes. Clicks show as rings unless
-    **Show clicks in recordings** is off in Settings.
+    **Show clicks in recordings** is off in Settings, and the pointer is in
+    it unless **Show the pointer in recordings** is. Mark follows the pointer
+    as it records, so that a soft yellow halo can follow it too — over the
+    movie in the editor and in every copy — switched on and off for each
+    recording beside Play; **Highlight the pointer** in Settings says whether
+    a new one starts with it.
 
     The editor then plays it, over a strip of its frames: drag the yellow
     handles to keep only part of it, or press **I** and **O** to trim to the

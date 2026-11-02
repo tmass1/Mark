@@ -1077,12 +1077,15 @@ fn set_mcp(app: AppHandle, enabled: bool) -> Result<settings::Settings, String> 
 /// Whether recordings take in the microphone, and whether they show clicks.
 /// Either may be left as it is.
 #[tauri::command]
-fn set_record_options(app: AppHandle, mic: Option<bool>, clicks: Option<bool>) -> Result<settings::Settings, String> {
+fn set_record_options(app: AppHandle, mic: Option<bool>, clicks: Option<bool>, pointer: Option<bool>, highlight: Option<bool>)
+    -> Result<settings::Settings, String> {
     let state = app.state::<Prefs>();
     let updated = {
         let mut prefs = state.0.lock().unwrap();
         if let Some(mic) = mic { prefs.record_mic = mic; }
         if let Some(clicks) = clicks { prefs.record_clicks = clicks; }
+        if let Some(pointer) = pointer { prefs.record_pointer = pointer; }
+        if let Some(highlight) = highlight { prefs.record_highlight = highlight; }
         prefs.clone()
     };
     settings::save(&app, &updated)?;
@@ -1180,7 +1183,7 @@ pub fn run() {
             send_capture, decline_request, mcp_setup, add_to_agent, open_guide,
             thumbnail::thumbnail_image, thumbnail::open_thumbnail, thumbnail::close_thumbnail, thumbnail::drag_thumbnail,
             recording::recording_supported, recording::recording_status, recording::stop_recording, recording::discard_recording,
-            recording::video_frames, recording::copy_video, recording::copy_gif, recording::save_video, recording::share_video,
+            recording::video_frames, recording::video_pointer, recording::copy_video, recording::copy_gif, recording::save_video, recording::share_video,
             get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, set_record_options, login_enabled, set_login, open_settings, quit_app,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
             updates::set_auto_update, updates::open_updates])

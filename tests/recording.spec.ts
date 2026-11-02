@@ -547,6 +547,57 @@ test('Settings offers Record Video and the recording options on a Mac that can r
   await expect(page.locator('.record-mic')).toBeChecked();
 });
 
+test('Settings can leave the pointer out of recordings, or start each with a halo following it', async ({ page }) => {
+  const saved = { appearance: 'dark', shortcut: 'Super+Digit4' };
+  await installBridge(page, { returns: { get_settings: saved, login_enabled: false, recording_supported: true,
+                                          set_record_options: { ...saved, recordHighlight: true } } });
+  await page.goto('/settings.html');
+  const shown = page.getByRole('checkbox', { name: 'Show the pointer in recordings' });
+  const highlighted = page.getByRole('checkbox', { name: 'Highlight the pointer' });
+  await expect(shown).toBeChecked({ timeout: 15_000 });
+  await expect(highlighted).not.toBeChecked();
+  await highlighted.check();
+  expect((await waitFor(page, 'set_record_options')).args).toEqual({ highlight: true });
+  await expect(highlighted).toBeChecked();
+  await clear(page);
+  await shown.uncheck();
+  expect((await waitFor(page, 'set_record_options')).args).toEqual({ pointer: false });
+});
+
+test('a halo follows the pointer over the movie, turned on and off per recording, and goes into every copy', async ({ page }) => {
+  // Followed through the whole recording, at the middle of the picture.
+  const track = Array.from({ length: 121 }, (_, i) => [i / 10, 120, 80]);
+  await installBridge(page, { capture: VIDEO, returns: { recording_supported: true, video_frames: [CAPTURE.dataUrl],
+                                                          video_pointer: { track, highlight: false } } });
+  await page.goto('/');
+  await expect(page.locator('.trim')).toBeVisible({ timeout: 15_000 });
+  const toggle = page.getByRole('button', { name: 'Highlight the pointer' });
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.pointer-halo')).toBeHidden();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await seek(page, 0.5);
+  const halo = page.locator('.pointer-halo');
+  await expect(halo).toBeVisible();
+  const [box, stage] = [(await halo.boundingBox())!, (await page.locator('.stage').boundingBox())!];
+  expect(box.x + box.width / 2).toBeCloseTo(stage.x + stage.width / 2, 0);
+  expect(box.y + box.height / 2).toBeCloseTo(stage.y + stage.height / 2, 0);
+  await clear(page);
+  await page.keyboard.press('Meta+c');
+  expect((await waitFor(page, 'copy_video')).args).toMatchObject({ highlight: true });
+});
+
+test('no halo switch for a recording whose pointer wasn\'t followed', async ({ page }) => {
+  await installBridge(page, { capture: VIDEO, returns: { recording_supported: true, video_frames: [CAPTURE.dataUrl],
+                                                          video_pointer: { track: [], highlight: true } } });
+  await page.goto('/');
+  await expect(page.locator('.trim')).toBeVisible({ timeout: 15_000 });
+  await waitFor(page, 'video_pointer');
+  await expect(page.getByRole('button', { name: 'Highlight the pointer' })).toBeHidden();
+  await expect(page.locator('.pointer-halo')).toBeHidden();
+});
+
 test('…and neither where it cannot', async ({ page }) => {
   await installBridge(page, { returns: { get_settings: { appearance: 'dark', shortcut: 'Super+Digit4' }, login_enabled: false,
                                           recording_supported: false } });

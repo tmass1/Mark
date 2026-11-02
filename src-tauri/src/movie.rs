@@ -11,8 +11,8 @@ use objc2::runtime::AnyObject;
 use objc2_av_foundation::{AVAsset, AVAudioTimePitchAlgorithmSpectral, AVMutableComposition, AVAssetExportPresetHighestQuality, AVAssetExportSession, AVAssetExportSessionStatus,
                           AVAssetImageGenerator, AVAssetTrack, AVAsynchronousCIImageFilteringRequest, AVAuthorizationStatus,
                           AVCaptureDevice, AVFileTypeMPEG4, AVMediaTypeAudio, AVMediaTypeVideo, AVURLAsset, AVVideoComposition};
-use objc2_core_foundation::{CFDictionary, CFMutableData, CFNumber, CFRetained, CFString, CFType, CFURL, CGPoint, CGRect, CGSize};
-use objc2_core_image::CIImage;
+use objc2_core_foundation::{CFDictionary, CFMutableData, CFNumber, CFRetained, CFString, CFType, CFURL, CGAffineTransform, CGPoint, CGRect, CGSize};
+use objc2_core_image::{CIColor, CIFilter, CIImage, CIVector};
 use objc2_core_graphics::CGImage;
 use objc2_core_media::{CMTime, CMTimeRange};
 use objc2_foundation::{NSArray, NSData, NSDictionary, NSError, NSNumber, NSString, NSURL};
@@ -53,7 +53,46 @@ pub struct Trim { pub start: f64, pub end: f64 }
 /// the parts to pixelate, each from its own moment. Pixelated afresh in every
 /// frame, since a recording's pixels change under a redaction.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Drawn { pub overlays: Vec<(f64, Vec<u8>)>, pub redactions: Vec<Hidden> }
+pub struct Drawn { pub overlays: Vec<(f64, Vec<u8>)>, pub redactions: Vec<Hidden>, pub halo: Option<Halo> }
+
+/// A soft yellow halo following the pointer, `radius` pixels from its centre
+/// to where it fades out, along `track`: seconds in, and x and y in the
+/// recording's pixels from its top left, in order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Halo { pub track: Vec<(f64, f64, f64)>, pub radius: f64 }
+
+/// Where the pointer was `time` seconds in: between the two moments either
+/// side, in proportion, or at the last one before -- if that was recently
+/// enough to say. None before the track starts or after it ends.
+pub fn pointer_at(track: &[(f64, f64, f64)], time: f64) -> Option<(f64, f64)> {
+    const STALE: f64 = 0.25;
+    let after = track.partition_point(|(at, _, _)| *at <= time);
+    let (at, x, y) = *track.get(after.checked_sub(1)?)?;
+    match track.get(after) {
+        Some(&(next, nx, ny)) if next - at <= STALE => {
+            let share = if next > at { (time - at) / (next - at) } else { 0.0 };
+            Some((x + (nx - x) * share, y + (ny - y) * share))
+        }
+        _ => (time - at <= STALE).then_some((x, y)),
+    }
+}
+
+/// The halo, centred on the origin, as Core Image draws it: yellow fading to
+/// nothing, solid enough near the middle to find at a glance.
+fn halo_image(radius: f64) -> Result<Retained<CIImage>, String> {
+    let yellow = |alpha: f64| unsafe { CIColor::colorWithRed_green_blue_alpha(1.0, 0.84, 0.04, alpha) };
+    let number = |value: f64| NSNumber::new_f64(value);
+    let keys = ["inputCenter", "inputRadius0", "inputRadius1", "inputColor0", "inputColor1"].map(NSString::from_str);
+    let centre = unsafe { CIVector::vectorWithX_Y(0.0, 0.0) };
+    let (inner, outer, solid, clear) = (number(radius * 0.35), number(radius), yellow(0.42), yellow(0.0));
+    let values: [&AnyObject; 5] = [&centre, &inner, &outer, &solid, &clear];
+    let keys: Vec<&NSString> = keys.iter().map(|key| &**key).collect();
+    let settings = NSDictionary::<NSString, AnyObject>::from_slices(&keys, &values);
+    let filter = unsafe { CIFilter::filterWithName_withInputParameters(&NSString::from_str("CIRadialGradient"), Some(&settings)) }
+        .ok_or("The pointer's halo couldn't be drawn.")?;
+    let image = unsafe { filter.outputImage() }.ok_or("The pointer's halo couldn't be drawn.")?;
+    Ok(unsafe { image.imageByCroppingToRect(CGRect::new(CGPoint::new(-radius, -radius), CGSize::new(radius * 2.0, radius * 2.0))) })
+}
 
 /// A part to pixelate, in the recording's pixels from its top left, from `at`
 /// seconds in -- until `until`, if it goes before the end -- in blocks
@@ -300,6 +339,7 @@ fn composition(asset: &AVAsset, drawn: &Drawn, timeline: Option<Timeline>) -> Re
     overlays.sort_by(|a, b| a.0.total_cmp(&b.0));
     let moments: Vec<f64> = overlays.iter().map(|(at, _)| *at).collect();
     let hidden = drawn.redactions.clone();
+    let halo = drawn.halo.as_ref().map(|halo| halo_image(halo.radius).map(|image| (image, halo.track.clone()))).transpose()?;
     let pixellate = NSString::from_str("CIPixellate");
     let scale = NSString::from_str("inputScale");
     let applier = RcBlock::new(move |request: NonNull<AVAsynchronousCIImageFilteringRequest>| {
@@ -318,6 +358,13 @@ fn composition(asset: &AVAsset, drawn: &Drawn, timeline: Option<Timeline>) -> Re
                     .imageByApplyingFilter_withInputParameters(&pixellate, &settings)
                     .imageByCroppingToRect(area).imageByCompositingOverImage(&frame)
             };
+        }
+        // The halo under the marks, so an arrow at the pointer stays sharp.
+        if let Some((image, track)) = &halo {
+            if let Some((x, y)) = pointer_at(track, time) {
+                let there = CGAffineTransform { a: 1.0, b: 0.0, c: 0.0, d: 1.0, tx: x, ty: height - y };
+                frame = unsafe { image.imageByApplyingTransform(there).imageByCompositingOverImage(&frame) };
+            }
         }
         if let Some(index) = overlay_at(&moments, time) { frame = unsafe { overlays[index].1.imageByCompositingOverImage(&frame) }; }
         unsafe { request.finishWithImage_context(&frame, None) };
@@ -555,7 +602,7 @@ mod tests {
         assert_eq!(overlay_at(&[1.0, 2.5], 2.5 - DUE / 2.0), Some(1), "due a frame early, not late");
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("marked.mp4");
-        let drawn = Drawn { overlays: vec![(1.0, square([255, 0, 255], 20, 60))], redactions: vec![] };
+        let drawn = Drawn { overlays: vec![(1.0, square([255, 0, 255], 20, 60))], redactions: vec![], halo: None };
         // Kept from 0.5 to 1.5: the mark is drawn at 1.0 into the recording,
         // which is 0.5 into the copy.
         export(&clip(), Some(&Timeline { parts: vec![Trim { start: 0.5, end: 1.5 }], speed: 1.0 }), Some(&drawn), &out).unwrap();
@@ -574,7 +621,7 @@ mod tests {
         // Core Image's blocks are laid from 150, 150 up from the bottom left, so
         // 150 to 190 across and 50 to 90 down from the top is one whole block.
         let part = Hidden { x: 100.0, y: 40.0, width: 120.0, height: 120.0, at: 0.0, until: None, block: 40.0 };
-        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part] }), &out).unwrap();
+        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], halo: None }), &out).unwrap();
         for at in [0.3, 1.6] {
             let (one, other) = (pixel(&out, at, 154, 54), pixel(&out, at, 186, 86));
             assert!(one.iter().zip(other).all(|(a, b)| (a - b).abs() < 14), "one block, one colour at {at}s: {one:?} {other:?}");
@@ -602,7 +649,7 @@ mod tests {
         let out = folder.path().join("cut.mp4");
         let timeline = Timeline::new(0.0, 2.0, &[(0.5, 1.0)], 1.0, 2.0).unwrap().unwrap();
         // Drawn 1.2 s into the recording: 0.7 s into the copy.
-        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![] };
+        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], halo: None };
         export(&clip(), Some(&timeline), Some(&drawn), &out).unwrap();
         let made = info(&out).unwrap();
         assert!((made.duration - 1.5).abs() < 0.1, "{}", made.duration);
@@ -626,7 +673,7 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("fast.mp4");
         // Drawn 1.2 s into the recording: 0.6 s into a copy twice as fast.
-        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![] };
+        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], halo: None };
         export(&clip(), Some(&timeline), Some(&drawn), &out).unwrap();
         let made = info(&out).unwrap();
         assert!((made.duration - 1.0).abs() < 0.1, "{}", made.duration);
@@ -651,12 +698,41 @@ mod tests {
     }
 
     #[test]
+    fn the_pointer_is_where_it_was_between_two_moments_and_nowhere_once_the_track_runs_out() {
+        let track = [(0.0, 10.0, 10.0), (0.1, 20.0, 30.0), (1.0, 90.0, 90.0)];
+        assert_eq!(pointer_at(&track, 0.05), Some((15.0, 20.0)));
+        assert_eq!(pointer_at(&track, 0.0), Some((10.0, 10.0)));
+        // Too long between two moments to say where it went: where it was, for a while.
+        assert_eq!(pointer_at(&track, 0.2), Some((20.0, 30.0)));
+        assert_eq!(pointer_at(&track, 0.5), None);
+        assert_eq!(pointer_at(&track, 1.1), Some((90.0, 90.0)));
+        assert_eq!(pointer_at(&track, 2.0), None);
+        assert_eq!(pointer_at(&track, -1.0), None);
+        assert_eq!(pointer_at(&[], 0.0), None);
+    }
+
+    #[test]
+    fn a_halo_follows_the_pointer_into_the_frames_and_nowhere_else() {
+        let folder = tempfile::tempdir().unwrap();
+        let (plain, haloed) = (folder.path().join("plain.mp4"), folder.path().join("halo.mp4"));
+        let track: Vec<_> = (0..60).map(|frame| (frame as f64 / 30.0, 100.0, 80.0)).collect();
+        export(&clip(), Some(&Timeline::new(0.0, 2.0, &[], 1.0, 2.0).unwrap().unwrap_or(Timeline::whole(2.0))), None, &plain).unwrap();
+        let drawn = Drawn { overlays: vec![], redactions: vec![], halo: Some(Halo { track, radius: 28.0 }) };
+        export(&clip(), None, Some(&drawn), &haloed).unwrap();
+        let apart = |a: [i32; 3], b: [i32; 3]| a.iter().zip(b).map(|(a, b)| (a - b).abs()).max().unwrap();
+        let (under, bare) = (pixel(&haloed, 1.0, 100, 80), pixel(&plain, 1.0, 100, 80));
+        assert!(apart(under, bare) > 25, "tinted at the pointer: {under:?} over {bare:?}");
+        assert!(under[0] >= bare[0] - 4 && under[2] <= bare[2] + 4, "towards yellow: {under:?} over {bare:?}");
+        assert!(apart(pixel(&haloed, 1.0, 290, 20), pixel(&plain, 1.0, 290, 20)) < 14, "and not far from it");
+    }
+
+    #[test]
     fn a_redaction_with_an_end_is_pixelated_until_it_and_not_after() {
         let part = Hidden { x: 100.0, y: 40.0, width: 120.0, height: 120.0, at: 0.5, until: Some(1.2), block: 40.0 };
         assert!(!part.due(0.3) && part.due(0.6) && part.due(1.1) && !part.due(1.5));
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("hidden.mp4");
-        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part] }), &out).unwrap();
+        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], halo: None }), &out).unwrap();
         let blocky = |at: f64| {
             let (one, other) = (pixel(&out, at, 154, 54), pixel(&out, at, 186, 86));
             one.iter().zip(other).all(|(a, b)| (a - b).abs() < 14)

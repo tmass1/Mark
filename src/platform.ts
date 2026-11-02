@@ -78,6 +78,9 @@ export interface SavedSettings {
   /** Whether a recording takes in the microphone, and shows clicks. */
   recordMic?: boolean;
   recordClicks?: boolean;
+  /** Whether a recording shows the pointer, and starts with a halo following it. */
+  recordPointer?: boolean;
+  recordHighlight?: boolean;
 }
 
 /** Settings change in their own window; the editor shows the shortcuts, so it listens. */

@@ -1,6 +1,7 @@
 import './style.css';
 import { command, isTauri, videoSource, watchCapture, watchCopied, watchMenuCopy, watchRequestWithdrawn, watchSettings, type Asked,
          type CapturePreview, type SavedSettings, type Snapshot } from './platform';
+import { pointerAt, type Track } from './pointer';
 import { addCut, clock, everything, fitCuts, keptLength, moveCutEdge, moveEdge, playFrom, skip, whole, type Trim } from './trim';
 import { MAX_BASE64, describeMarks, resultText, sendSize } from './send';
 import { suggestedName } from './names';
@@ -121,7 +122,7 @@ function toolCursor(tool: Tool, numbering: boolean, style: ArrowStyle, color: st
 
 /** Captures kept after they leave the editor, newest first. Memory only: this
  *  is an undo for closing, not a library. A recording keeps its trim. */
-interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number; trim?: Trim; cuts?: Trim[]; speed?: number }
+interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number; trim?: Trim; cuts?: Trim[]; speed?: number; highlight?: boolean }
 const KEPT = 6;
 /** How many of them Recent's strip shows side by side; the rest scroll. */
 const STRIP = 4;
@@ -341,6 +342,7 @@ app.innerHTML = `
       <div class="stage" hidden>
         <img class="capture" alt="Captured screenshot" draggable="false" />
         <video class="movie" playsinline preload="auto" hidden></video>
+        <div class="pointer-halo" aria-hidden="true" hidden></div>
         <svg class="overlay" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Arrow annotations"></svg>
       </div>
     </div></div>
@@ -377,6 +379,8 @@ app.innerHTML = `
       <svg class="when-playing" viewBox="0 0 20 20" aria-hidden="true" hidden><path d="M6 4.6h2.8v10.8H6zM11.2 4.6H14v10.8h-2.8z" fill="currentColor"/></svg>
     </button>
     <button class="speed glassy" type="button" aria-label="Speed" title="Play and copy it twice as fast">1×</button>
+    <button class="highlight-pointer glassy icon" type="button" aria-label="Highlight the pointer" aria-pressed="false" hidden
+      title="Highlight the pointer"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="6.2" fill="currentColor" opacity=".22"/><path d="M7.4 6.2 14 12l-3.2.4 1.7 3.4-1.4.7-1.7-3.4L7.4 15z" fill="currentColor"/></svg></button>
     <button class="cut-out glassy icon" type="button" aria-label="Cut a part out" title="Cut a part out around the playhead (K)">
       <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="6" cy="14.2" r="2.3" ${STROKE}/><circle cx="14" cy="14.2" r="2.3" ${STROKE}/><path d="M7.6 12.5 14.6 3.8M12.4 12.5 5.4 3.8" ${STROKE}/></svg>
     </button>
@@ -558,6 +562,8 @@ const kept = strip.querySelector<HTMLElement>('.kept')!;
 const cutBands = strip.querySelector<HTMLElement>('.cuts')!;
 const cutButton = trimBar.querySelector<HTMLButtonElement>('.cut-out')!;
 const speedButton = trimBar.querySelector<HTMLButtonElement>('.speed')!;
+const highlightButton = trimBar.querySelector<HTMLButtonElement>('.highlight-pointer')!;
+const halo = stage.querySelector<HTMLElement>('.pointer-halo')!;
 const playhead = strip.querySelector<HTMLElement>('.playhead')!;
 const trimTime = trimBar.querySelector<HTMLElement>('.trim-time')!;
 const markAt = strip.querySelector<HTMLElement>('.mark-at')!;
@@ -591,6 +597,13 @@ let trim: Trim | null = null;
 let cuts: Trim[] = [];
 /** How fast it plays, and every copy of it: 1, or 2 for twice as fast. */
 let speed = 1;
+/** Where the pointer went through it, as Mark followed it; whether a halo
+ *  follows it, here and in every copy; and which recording that is for. */
+let pointerTrack: Track = [];
+let highlight = false;
+let pointerFor = 0;
+/** How far the halo reaches, in points: movie.rs draws it the same. */
+const HALO = 28;
 /** Which GIF the menu makes: full size, or small, for a chat. Remembered, as
  *  the next GIF is likely for the same place. */
 const GIF_SIZE = 'mark.gifSize';
@@ -1352,9 +1365,36 @@ async function loadFrames(id: number) {
   stripFrames.replaceChildren(...frames.map(url => Object.assign(new Image(), { src: url, alt: '' })));
 }
 
+/** Where the pointer went through recording `id`, and whether its halo is on:
+ *  as it was left, or as Settings starts a recording. */
+async function loadPointer(id: number, keep?: boolean) {
+  pointerFor = id;
+  const found = await command<{ track: [number, number, number][]; highlight: boolean }>('video_pointer', { id }).catch(() => null);
+  if (pointerFor !== id || !found) return;
+  pointerTrack = found.track;
+  highlight = keep ?? found.highlight;
+  drawTrim();
+}
+
+/** The halo over the movie, where the pointer was at the playhead -- and the
+ *  switch for it, there only for a recording whose pointer was followed. */
+function placeHalo() {
+  const video = capture?.video;
+  highlightButton.hidden = !video || !pointerTrack.length;
+  highlightButton.setAttribute('aria-pressed', String(highlight));
+  highlightButton.dataset.tip = highlight ? 'The pointer is highlighted: click to stop' : 'Highlight the pointer';
+  const at = video && highlight ? pointerAt(pointerTrack, movie.currentTime) : null;
+  halo.hidden = !at;
+  if (!at || !capture) return;
+  halo.style.left = `${(at[0] / capture.width) * 100}%`;
+  halo.style.top = `${(at[1] / capture.height) * 100}%`;
+  halo.style.width = `${((2 * HALO * (capture.scale ?? 1)) / capture.width) * 100}%`;
+}
+on(highlightButton, 'click', () => { highlight = !highlight; drawTrim(); });
+
 /** Put a recording in the player, kept as `keep` says or all of it -- or, for
  *  anything else, take the player down. */
-function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], keepSpeed = 1) {
+function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], keepSpeed = 1, keepHighlight?: boolean) {
   const video = next?.video ?? null;
   movie.pause();
   // Marks on a recording are shown from the moment they are drawn at, so the
@@ -1368,6 +1408,7 @@ function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], 
     movie.hidden = true;
     if (movie.hasAttribute('src')) { movie.removeAttribute('src'); movie.removeAttribute('poster'); movie.load(); }
     trim = null; cuts = []; speed = 1; framesFor = 0; stripFrames.replaceChildren();
+    pointerTrack = []; highlight = false; pointerFor = 0; halo.hidden = true;
     return;
   }
   movie.hidden = false;
@@ -1375,6 +1416,8 @@ function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], 
   movie.src = videoSource(video.path);
   trim = keep ? { ...keep } : everything(video.duration);
   cuts = keepCuts ? keepCuts.map(cut => ({ ...cut })) : [];
+  pointerTrack = []; highlight = false;
+  void loadPointer(video.id, keepHighlight);
   setSpeed(keepSpeed);
   void loadFrames(video.id);
   drawTrim();
@@ -1402,6 +1445,7 @@ function drawTrim() {
   const video = capture?.video;
   if (!video || !trim) return;
   showDueMarks();
+  placeHalo();
   const one = layer.selection.length === 1 ? layer.selection[0] : null;
   markAt.hidden = markUntil.hidden = !one;
   const share = (seconds: number) => `${Math.min(100, Math.max(0, (seconds / (video.duration || 1)) * 100))}%`;
@@ -1626,7 +1670,7 @@ async function copyVideo(close: boolean) {
   const trimming = marks ? working('Drawing the marks into the recording…')
     : whole(part, video.duration) && !cuts.length && speed === 1 ? null : working('Trimming the recording…');
   try {
-    await command('copy_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, close, marks });
+    await command('copy_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, highlight, close, marks });
     if (close) { capture = null; showMessage(null); }
     else flash('Copied the recording. Paste it into a message, a mail or a chat.');
   } catch (error) { report(error); }
@@ -1652,7 +1696,7 @@ async function copyGif() {
   const making = working('Making the GIF…');
   try {
     const bytes = await command<number>('copy_gif', {
-      id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, small: smallGif, name: videoName('gif'), marks: videoMarks(),
+      id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, highlight, small: smallGif, name: videoName('gif'), marks: videoMarks(),
     });
     making();
     flash(`Copied the GIF (${size(bytes)}). Paste it into a message, a chat or a page.`);
@@ -1669,10 +1713,10 @@ async function exportVideo(how: 'save' | 'gif' | 'share') {
   copyPending = true; render();
   const marks = videoMarks();
   try {
-    if (how === 'share') await command('share_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, marks });
+    if (how === 'share') await command('share_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, highlight, marks });
     else {
       const saved = await command<{ name: string; bytes: number } | null>('save_video', {
-        id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, gif: how === 'gif', small: how === 'gif' && smallGif,
+        id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, highlight, gif: how === 'gif', small: how === 'gif' && smallGif,
         name: videoName(how === 'gif' ? 'gif' : 'mp4'), marks,
       });
       flash(saved ? `Saved as ${saved.name} (${size(saved.bytes)}).` : 'Not saved.');
@@ -2485,7 +2529,7 @@ function remember(leaving: CapturePreview) {
   if (!image.complete || !image.naturalWidth) return;
   keep({ capture: leaving, thumb: thumbnail(), at: shownAt, annotations: layer.annotations.map(item => ({ ...item })),
          trim: leaving.video && trim ? { ...trim } : undefined, cuts: leaving.video && cuts.length ? cuts.map(cut => ({ ...cut })) : undefined,
-         speed: leaving.video && speed !== 1 ? speed : undefined });
+         speed: leaving.video && speed !== 1 ? speed : undefined, highlight: leaving.video ? highlight : undefined });
 }
 
 /** Captures copied straight from the overlay, which the editor never showed,
@@ -2527,7 +2571,7 @@ function restore(entry: Past) {
   layer.load(entry.annotations);
   shown = entry.capture; shownAt = entry.at;
   zoom = startingZoom(entry.capture);
-  showMovie(entry.capture, entry.trim, entry.cuts, entry.speed);
+  showMovie(entry.capture, entry.trim, entry.cuts, entry.speed, entry.highlight);
   render();
 }
 

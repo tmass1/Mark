@@ -39,7 +39,7 @@ pub fn supported() -> bool { AnyClass::get(c"SCRecordingOutput").is_some() }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Source { Area(Rect), Window(u32) }
 
-pub struct Options { pub source: Source, pub mic: bool, pub clicks: bool, pub output: PathBuf }
+pub struct Options { pub source: Source, pub mic: bool, pub clicks: bool, pub pointer: bool, pub output: PathBuf }
 
 /// What happens to a recording after it starts, from whichever queue macOS
 /// says it on. Finished or Failed comes once the file is closed; Ended means
@@ -167,7 +167,7 @@ pub fn start(options: Options, events: Sender<Event>) -> Result<Shape, String> {
             config.setSourceRect(CGRect::new(CGPoint::new(area.x, area.y), CGSize::new(area.width, area.height)));
         }
         config.setScalesToFit(true);
-        config.setShowsCursor(true);
+        config.setShowsCursor(options.pointer);
         config.setShowMouseClicks(options.clicks);
         config.setCaptureMicrophone(options.mic);
         config.setMinimumFrameInterval(CMTime::new(1, RATE));

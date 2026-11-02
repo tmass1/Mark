@@ -690,6 +690,13 @@ footer > * { flex: none; }
 .speed { flex: none; min-width: 40px; height: 34px; padding: 0 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
   font-variant-numeric: tabular-nums; }
 .speed.on { color: var(--blue); }
+.highlight-pointer { flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.trim .highlight-pointer svg { width: 18px; height: 18px; }
+.highlight-pointer[aria-pressed="true"] { color: var(--blue); }
+/* Where the pointer was, as a soft halo over the movie and under the marks:
+   yellow fading out, as movie.rs draws it into every copy. */
+.pointer-halo { position: absolute; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgb(255 214 10 / .42) 35%, rgb(255 214 10 / 0) 100%); }
 .save-menu button:hover kbd, .save-menu button:focus-visible kbd { opacity: .8; }
 
 /* ---- the frame ---------------------------------------------------------- */

@@ -18,6 +18,8 @@ interface Settings {
   /** Whether a recording takes in the microphone, and shows clicks. */
   recordMic?: boolean;
   recordClicks?: boolean;
+  recordPointer?: boolean;
+  recordHighlight?: boolean;
 }
 /** One AI tool Mark can be added to, and how -- made by Rust for the copy of
  *  Mark that is running, so what is copied starts this very copy. */
@@ -74,6 +76,9 @@ root.innerHTML = `
       <label class="check"><input class="record-mic" type="checkbox" aria-describedby="record-mic-hint" /> Record the microphone too</label>
       <p class="pref-hint" id="record-mic-hint">macOS asks the first time. The microphone button beside Record turns it on and off too.</p>
       <label class="check"><input class="record-clicks" type="checkbox" checked /> Show clicks in recordings</label>
+      <label class="check"><input class="record-pointer" type="checkbox" checked /> Show the pointer in recordings</label>
+      <label class="check"><input class="record-highlight" type="checkbox" aria-describedby="record-highlight-hint" /> Highlight the pointer</label>
+      <p class="pref-hint" id="record-highlight-hint">A soft halo follows it, in the editor and in every copy. Each recording can turn it off or on.</p>
       <p class="pref-note record-note" role="status" hidden></p>
     </div>
   </section>
@@ -121,6 +126,8 @@ const mcp = root.querySelector<HTMLInputElement>('.mcp')!;
 const mcpNote = root.querySelector<HTMLElement>('.mcp-note')!;
 const recordMic = root.querySelector<HTMLInputElement>('.record-mic')!;
 const recordClicks = root.querySelector<HTMLInputElement>('.record-clicks')!;
+const recordPointer = root.querySelector<HTMLInputElement>('.record-pointer')!;
+const recordHighlight = root.querySelector<HTMLInputElement>('.record-highlight')!;
 const recordNote = root.querySelector<HTMLElement>('.record-note')!;
 let current: Settings = { appearance: 'dark', shortcut: DEFAULT_SHORTCUT };
 /** The recorder listening for keys, if one is. */
@@ -147,6 +154,8 @@ function show(settings: Settings) {
   mcp.checked = settings.mcp !== false;
   recordMic.checked = settings.recordMic === true;
   recordClicks.checked = settings.recordClicks !== false;
+  recordPointer.checked = settings.recordPointer !== false;
+  recordHighlight.checked = settings.recordHighlight === true;
   placeLens();
 }
 
@@ -247,12 +256,13 @@ mcp.addEventListener('change', () => {
     .catch(error => { note(mcpNote, String(error)); mcp.checked = current.mcp !== false; });
 });
 
-for (const [box, option] of [[recordMic, 'mic'], [recordClicks, 'clicks']] as const) {
+const recordOptions = [[recordMic, 'mic'], [recordClicks, 'clicks'], [recordPointer, 'pointer'], [recordHighlight, 'highlight']] as const;
+for (const [box, option] of recordOptions) {
   box.addEventListener('change', () => {
     note(recordNote, null);
     void command<Settings>('set_record_options', { [option]: box.checked }).then(show).catch(error => {
       note(recordNote, String(error));
-      box.checked = option === 'mic' ? current.recordMic === true : current.recordClicks !== false;
+      show(current);
     });
   });
 }
