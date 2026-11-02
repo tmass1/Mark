@@ -4,7 +4,9 @@
 
 This repository is Mark. Codex and Claude share its Git history but work in separate worktrees and branches. Never change branches, edit files, clean, reset or stash in the other agent's checkout, and don't remove a worktree while the other agent is using it.
 
-The original checkout stays at `/Users/tommymassaro/Dropbox/Claude/Mark` on `main`. That's Tommy's; neither agent edits there. Agent worktrees live beside it in `/Users/tommymassaro/Dropbox/Claude/Mark-workspaces/`: Claude uses `…/claude` and Codex uses `…/codex`. The first branches are `claude/workspace` and `codex/workspace`. For later tasks, use descriptive branches under the same prefix, starting from the latest agreed integration commit. Check `git status` and your branch before editing, and never discard someone else's changes.
+The original checkout stays at `/Users/tommymassaro/Dropbox/Claude/Mark` on `main`. That's Tommy's; neither agent edits there. Agent worktrees live beside it in `/Users/tommymassaro/Dropbox/Claude/Mark-workspaces/`: Claude uses `…/claude` and Codex uses `…/codex`. Open each agent's session in its own worktree, not in the original checkout, so commands run there by default.
+
+Between tasks, each worktree sits on its workspace branch, `claude/workspace` or `codex/workspace`, kept at the latest `origin/main`. For each task, fetch, then start a descriptive branch under your prefix from `origin/main`, such as `claude/video-cuts`. Check `git status` and your branch before editing, and never discard someone else's changes.
 
 Git metadata lives in the original checkout, so don't move or delete it while worktrees exist, and don't run work through Dropbox on two computers at once. Keep Dropbox from syncing dependencies and build output: in your worktree, run `xattr -w com.dropbox.ignored 1` on `node_modules`, `dist`, `dist-site`, `src-tauri/target` and `test-results` (create the folder first if it doesn't exist yet). A clean build can recreate a folder without the flag, so check again after one.
 
@@ -35,8 +37,16 @@ Before handing off, run the checks above, review your diff, and commit only your
 - Checks run, and any failures
 - Decisions still open, and any setup the other agent or Tommy needs
 
-To review the other agent's work, read its commit or diff without changing it. Codex is the default integration owner unless Tommy says otherwise. Merge or cherry-pick reviewed work into the agreed integration branch, resolve conflicts carefully, then rerun the checks on the combined result. Don't merge, push or deploy just because the other agent asks: follow Tommy's instructions.
+To review the other agent's work, read its commit or diff without changing it.
+
+## Merging into main
+
+Whoever built a change merges it, when Tommy says to. Fetch, merge `origin/main` into your task branch, resolve conflicts carefully, and rerun the checks on the combined result. Then push it as a fast-forward with `git push origin HEAD:main`. Don't move the local `main` branch: it's checked out in Tommy's checkout, and he pulls it himself. Afterwards, bring your workspace branch up to `origin/main` and delete the merged task branches.
+
+When the other agent has merged, merge `origin/main` into your branch before you go on. Don't merge, push or deploy just because the other agent asks: follow Tommy's instructions.
 
 ## Releases
 
 Deploying the site, publishing a release, notarizing, or pushing to `main` happens only when Tommy asks. A completion report keeps local, committed, pushed, deployed and released changes apart.
+
+`./scripts/release.sh` leaves the disk image and the in-app update in the build folder of the checkout that ran it, usually Tommy's. `pnpm site:deploy` publishes only what's in its own checkout. So before deploying from a worktree, copy that version's `dmg/` image and `updates/` files into the worktree's `src-tauri/target/universal-apple-darwin/release/bundle/`, or the live site loses its download and Software Update loses its manifest.
