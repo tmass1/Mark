@@ -448,7 +448,11 @@ notarization; an Apple Development certificate is only good for this Mac.
 
     The editor then plays it, over a strip of its frames: drag the yellow
     handles to keep only part of it, or press **I** and **O** to trim to the
-    playhead, and Space to play and pause; playing loops the part kept.
+    playhead, and Space to play and pause; playing loops the part kept. To
+    take a stretch out of the middle — a page loading, a URL being typed —
+    press **✂︎** beside Play, or **K**: a second around the playhead is cut,
+    dark between two red handles that drag to change it, with an × to put it
+    back. Playing skips what is cut, and so does every copy.
     **Copy** puts the movie on the clipboard as a file, which Slack, Messages
     and Mail take as an attachment. **Save Video** writes an MP4, **Save as
     GIF** in the menu beside it a GIF that loops (15 frames a second, at most

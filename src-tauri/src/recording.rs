@@ -340,16 +340,16 @@ fn drawn(marks: Option<Marks>, pixels: (u32, u32)) -> Result<Option<(movie::Draw
 /// part between `start` and `end`, with what was drawn on it drawn in -- made
 /// once for each such copy, and kept beside the movie, under the same name,
 /// until another replaces it.
-fn movie_for(app: &AppHandle, id: u64, start: f64, end: f64, marks: Option<Marks>) -> Result<PathBuf, String> {
+fn movie_for(app: &AppHandle, id: u64, start: f64, end: f64, cuts: &[(f64, f64)], marks: Option<Marks>) -> Result<PathBuf, String> {
     let found = find(app, id)?;
-    let trim = movie::Trim::new(start, end, found.duration)?;
+    let timeline = movie::Timeline::new(start, end, cuts, found.duration)?;
     let drawn = drawn(marks, found.pixels)?;
-    if trim.is_none() && drawn.is_none() { return Ok(found.file); }
-    let edit = movie::Edit { trim, marks: drawn.as_ref().map(|(_, print)| *print) };
+    if timeline.is_none() && drawn.is_none() { return Ok(found.file); }
+    let edit = movie::Edit { timeline: timeline.clone(), marks: drawn.as_ref().map(|(_, print)| *print) };
     if let Some((made, path)) = found.edited { if made == edit && path.exists() { return Ok(path); } }
     let out = found.folder.join("Edited").join(found.file.file_name().ok_or(GONE)?);
     std::fs::create_dir_all(out.parent().ok_or(GONE)?).map_err(|e| e.to_string())?;
-    movie::export(&found.file, trim, drawn.as_ref().map(|(drawn, _)| drawn), &out)?;
+    movie::export(&found.file, timeline.as_ref(), drawn.as_ref().map(|(drawn, _)| drawn), &out)?;
     if let Some(video) = app.state::<State>().lock().unwrap().video(id) { video.edited = Some((edit, out.clone())); }
     Ok(out)
 }
@@ -370,10 +370,11 @@ pub async fn video_frames(app: AppHandle, id: u64, count: usize) -> Result<Vec<S
 /// Copy: the movie, or the part kept, with what was drawn on it, on the
 /// clipboard as a file. Closing is the caller's choice, as for a screenshot.
 #[tauri::command]
-pub async fn copy_video(app: AppHandle, id: u64, start: f64, end: f64, close: bool, marks: Option<Marks>) -> Result<(), String> {
+pub async fn copy_video(app: AppHandle, id: u64, start: f64, end: f64, cuts: Option<Vec<(f64, f64)>>, close: bool, marks: Option<Marks>)
+    -> Result<(), String> {
     if app.state::<State>().lock().unwrap().busy { return Err("Finish the capture under way first.".into()); }
     let handle = app.clone();
-    let movie = blocking(move || movie_for(&handle, id, start, end, marks)).await?;
+    let movie = blocking(move || movie_for(&handle, id, start, end, &cuts.unwrap_or_default(), marks)).await?;
     on_main(&app, move |app| {
         macos::copy_file(&movie)?;
         if close { crate::put_away(app, None) } else { Ok(()) }
@@ -384,7 +385,8 @@ pub async fn copy_video(app: AppHandle, id: u64, start: f64, end: f64, close: bo
 /// or as a GIF that loops. Returns the name it was saved under, or None if
 /// Save was cancelled.
 #[tauri::command]
-pub async fn save_video(app: AppHandle, id: u64, start: f64, end: f64, gif: bool, name: String, marks: Option<Marks>)
+pub async fn save_video(app: AppHandle, id: u64, start: f64, end: f64, cuts: Option<Vec<(f64, f64)>>, gif: bool, name: String,
+                        marks: Option<Marks>)
     -> Result<Option<String>, String> {
     let found = find(&app, id)?;
     let (extension, kind) = if gif { ("gif", "GIF image") } else { ("mp4", "MPEG-4 movie") };
@@ -395,11 +397,12 @@ pub async fn save_video(app: AppHandle, id: u64, start: f64, end: f64, gif: bool
     let handle = app.clone();
     blocking(move || {
         if gif {
-            let trim = movie::Trim::new(start, end, found.duration)?.unwrap_or(movie::Trim { start: 0.0, end: found.duration });
+            let cuts = cuts.unwrap_or_default();
+            let timeline = movie::Timeline::new(start, end, &cuts, found.duration)?.unwrap_or_else(|| movie::Timeline::whole(found.duration));
             let drawn = drawn(marks, found.pixels)?;
-            movie::gif(&found.file, &movie::gif_plan(trim, found.pixels, found.scale), drawn.as_ref().map(|(drawn, _)| drawn), &target)
+            movie::gif(&found.file, &movie::gif_plan(&timeline, found.pixels, found.scale), drawn.as_ref().map(|(drawn, _)| drawn), &target)
         } else {
-            let movie = movie_for(&handle, id, start, end, marks)?;
+            let movie = movie_for(&handle, id, start, end, &cuts.unwrap_or_default(), marks)?;
             std::fs::copy(&movie, &target).map(|_| ()).map_err(|e| format!("The recording couldn't be saved ({e})."))
         }
     }).await?;
@@ -409,9 +412,10 @@ pub async fn save_video(app: AppHandle, id: u64, start: f64, end: f64, gif: bool
 /// Share: the movie, or the part kept, with what was drawn on it, to macOS's
 /// share sheet.
 #[tauri::command]
-pub async fn share_video(app: AppHandle, id: u64, start: f64, end: f64, marks: Option<Marks>) -> Result<(), String> {
+pub async fn share_video(app: AppHandle, id: u64, start: f64, end: f64, cuts: Option<Vec<(f64, f64)>>, marks: Option<Marks>)
+    -> Result<(), String> {
     let handle = app.clone();
-    let movie = blocking(move || movie_for(&handle, id, start, end, marks)).await?;
+    let movie = blocking(move || movie_for(&handle, id, start, end, &cuts.unwrap_or_default(), marks)).await?;
     on_main(&app, move |app| {
         let window = app.get_webview_window(crate::EDITOR).ok_or("Mark's editor isn't open.")?;
         macos::share_file(window.ns_window().map_err(|e| e.to_string())?, &movie)
@@ -474,9 +478,9 @@ pub fn selftest(app: AppHandle) {
             std::fs::write(out.join("strip-5.jpg"), &strip[5]).map_err(|e| e.to_string())?;
             eprintln!("[Mark] selftest: strip of {} frames", strip.len());
             let trimmed = out.join("trim.mp4");
-            movie::export(&file, Some(movie::Trim { start: 0.5, end: 1.5 }), None, &trimmed)?;
+            movie::export(&file, Some(&movie::Timeline { parts: vec![movie::Trim { start: 0.5, end: 1.5 }] }), None, &trimmed)?;
             eprintln!("[Mark] selftest: trim -> {:?}", movie::info(&trimmed));
-            let plan = movie::gif_plan(movie::Trim { start: 0.0, end: video.duration.min(2.0) }, (made.width, made.height), made.scale);
+            let plan = movie::gif_plan(&movie::Timeline { parts: vec![movie::Trim { start: 0.0, end: video.duration.min(2.0) }] }, (made.width, made.height), made.scale);
             let began = Instant::now();
             movie::gif(&file, &plan, None, &out.join("clip.gif"))?;
             eprintln!("[Mark] selftest: gif of {} frames at {:?} in {:.1}s, {} bytes", plan.times.len(), plan.size,

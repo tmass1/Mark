@@ -271,6 +271,57 @@ test('a recording closed waits in Recent with its length, and comes back trimmed
   expect(copied.end).toBeCloseTo(6, 0);
 });
 
+test('a part can be cut out of the middle: Cut makes one, its handles move, × puts it back, and copies leave it out', async ({ page }) => {
+  await editing(page);
+  await seek(page, 0.5);                                    // 0:06
+  await page.locator('.cut-out').click();
+  await expect(page.locator('.cut')).toHaveCount(1);
+  await expect(page.locator('.trim-time')).toHaveText('0:11 of 0:12');
+  await clear(page);
+  await page.keyboard.press('Meta+c');
+  const copied = (await waitFor(page, 'copy_video')).args as { cuts: [number, number][] };
+  expect(copied.cuts).toHaveLength(1);
+  expect(copied.cuts[0][0]).toBeCloseTo(5.5, 1);
+  expect(copied.cuts[0][1]).toBeCloseTo(6.5, 1);
+
+  // Its end handle drags out to 0:09.
+  const handle = (await page.locator('.cut .cut-edge[data-cut-edge="end"]').boundingBox())!;
+  const strip = (await page.locator('.strip').boundingBox())!;
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(strip.x + strip.width * 0.75, strip.y + strip.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.locator('.trim-time')).toHaveText(/^0:0[89] of 0:12$/);
+
+  // K cuts another, at 0:02; the GIF leaves both out.
+  await seek(page, 0.17);
+  await page.keyboard.press('k');
+  await expect(page.locator('.cut')).toHaveCount(2);
+  await clear(page);
+  await page.keyboard.press('Meta+Alt+s');
+  const saved = (await waitFor(page, 'save_video')).args as { gif: boolean; cuts: [number, number][] };
+  expect(saved.gif).toBe(true);
+  expect(saved.cuts.map(([start, end]) => [Math.round(start), Math.round(end)])).toEqual([[2, 3], [6, 9]]);
+
+  // × puts one back.
+  await page.locator('.cut').first().hover();
+  await page.locator('.cut').first().locator('.cut-back').click();
+  await expect(page.locator('.cut')).toHaveCount(1);
+});
+
+test('a recording reopened from Recent keeps its cuts', async ({ page }) => {
+  await editing(page);
+  await seek(page, 0.5);
+  await page.keyboard.press('k');
+  await page.keyboard.press('Escape');
+  await waitFor(page, 'dismiss_editor');
+  const recent = page.locator('.recent').first();
+  await expect(recent.locator('.recent-length')).toHaveText('0:11');
+  await recent.click();
+  await expect(page.locator('.cut')).toHaveCount(1);
+  await expect(page.locator('.trim-time')).toHaveText('0:11 of 0:12');
+});
+
 test('an ask open over a recording is not answered with it: the primary copies as ever', async ({ page }) => {
   await editing(page, { request: true });
   await expect(page.locator('.copy-label')).toHaveText('Copy and Close');

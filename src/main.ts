@@ -1,7 +1,7 @@
 import './style.css';
 import { command, isTauri, videoSource, watchCapture, watchCopied, watchMenuCopy, watchRequestWithdrawn, watchSettings, type Asked,
          type CapturePreview, type SavedSettings, type Snapshot } from './platform';
-import { clock, everything, moveEdge, playFrom, whole, type Trim } from './trim';
+import { addCut, clock, everything, fitCuts, keptLength, moveCutEdge, moveEdge, playFrom, skip, whole, type Trim } from './trim';
 import { MAX_BASE64, describeMarks, resultText, sendSize } from './send';
 import { suggestedName } from './names';
 import { ago } from './ago';
@@ -121,7 +121,7 @@ function toolCursor(tool: Tool, numbering: boolean, style: ArrowStyle, color: st
 
 /** Captures kept after they leave the editor, newest first. Memory only: this
  *  is an undo for closing, not a library. A recording keeps its trim. */
-interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number; trim?: Trim }
+interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number; trim?: Trim; cuts?: Trim[] }
 const KEPT = 6;
 /** How many of them Recent's strip shows side by side; the rest scroll. */
 const STRIP = 4;
@@ -376,9 +376,13 @@ app.innerHTML = `
       <svg class="when-paused" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 4.6v10.8L15.4 10z" fill="currentColor"/></svg>
       <svg class="when-playing" viewBox="0 0 20 20" aria-hidden="true" hidden><path d="M6 4.6h2.8v10.8H6zM11.2 4.6H14v10.8h-2.8z" fill="currentColor"/></svg>
     </button>
+    <button class="cut-out glassy icon" type="button" aria-label="Cut a part out" title="Cut a part out around the playhead (K)">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="6" cy="14.2" r="2.3" ${STROKE}/><circle cx="14" cy="14.2" r="2.3" ${STROKE}/><path d="M7.6 12.5 14.6 3.8M12.4 12.5 5.4 3.8" ${STROKE}/></svg>
+    </button>
     <div class="strip">
       <div class="frames"></div>
       <div class="kept"></div>
+      <div class="cuts"></div>
       <div class="playhead"></div>
       <span class="mark-at" hidden title="When the selected mark appears: drag to change it"></span>
       <span class="mark-until" hidden title="When the selected mark goes: drag to change it"></span>
@@ -543,6 +547,8 @@ const playButton = trimBar.querySelector<HTMLButtonElement>('.play')!;
 const strip = trimBar.querySelector<HTMLElement>('.strip')!;
 const stripFrames = strip.querySelector<HTMLElement>('.frames')!;
 const kept = strip.querySelector<HTMLElement>('.kept')!;
+const cutBands = strip.querySelector<HTMLElement>('.cuts')!;
+const cutButton = trimBar.querySelector<HTMLButtonElement>('.cut-out')!;
 const playhead = strip.querySelector<HTMLElement>('.playhead')!;
 const trimTime = trimBar.querySelector<HTMLElement>('.trim-time')!;
 const markAt = strip.querySelector<HTMLElement>('.mark-at')!;
@@ -572,6 +578,8 @@ const cleanups: (() => void)[] = [];
 let capture: CapturePreview | null = null;
 /** The part of the recording open, if one is, that Copy, Save and Share take. */
 let trim: Trim | null = null;
+/** The parts cut out of the middle of it, in order and apart. */
+let cuts: Trim[] = [];
 /** Whether this Mac can record, which Rust says once: macOS 15 or later. */
 let recordable = false;
 /** An AI tool's ask, while one waits for a screenshot. */
@@ -1331,7 +1339,7 @@ async function loadFrames(id: number) {
 
 /** Put a recording in the player, kept as `keep` says or all of it -- or, for
  *  anything else, take the player down. */
-function showMovie(next: CapturePreview | null, keep?: Trim) {
+function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[]) {
   const video = next?.video ?? null;
   movie.pause();
   // Marks on a recording are shown from the moment they are drawn at, so the
@@ -1344,13 +1352,14 @@ function showMovie(next: CapturePreview | null, keep?: Trim) {
   if (!video) {
     movie.hidden = true;
     if (movie.hasAttribute('src')) { movie.removeAttribute('src'); movie.removeAttribute('poster'); movie.load(); }
-    trim = null; framesFor = 0; stripFrames.replaceChildren();
+    trim = null; cuts = []; framesFor = 0; stripFrames.replaceChildren();
     return;
   }
   movie.hidden = false;
   movie.poster = next!.dataUrl;
   movie.src = videoSource(video.path);
   trim = keep ? { ...keep } : everything(video.duration);
+  cuts = keepCuts ? keepCuts.map(cut => ({ ...cut })) : [];
   void loadFrames(video.id);
   drawTrim();
 }
@@ -1396,6 +1405,23 @@ function drawTrim() {
   const at = (seconds: number) => `${Math.min(100, Math.max(0, (seconds / length) * 100))}%`;
   kept.style.left = at(trim.start);
   kept.style.right = `calc(100% - ${at(trim.end)})`;
+  // Each part cut out, dark between red handles, with an × to put it back:
+  // rebuilt only when there are more or fewer, moved every time.
+  if (cutBands.childElementCount !== cuts.length) {
+    cutBands.replaceChildren(...cuts.map((_, index) => {
+      const band = document.createElement('div');
+      band.className = 'cut'; band.dataset.cut = String(index);
+      band.innerHTML = `<span class="cut-edge" data-cut-edge="start" title="Drag to change what is cut"></span>`
+        + `<span class="cut-edge" data-cut-edge="end" title="Drag to change what is cut"></span>`
+        + `<button class="cut-back" type="button" aria-label="Put this part back" title="Put this part back">×</button>`;
+      return band;
+    }));
+  }
+  cuts.forEach((cut, index) => {
+    const band = cutBands.children[index] as HTMLElement;
+    band.style.left = at(cut.start);
+    band.style.right = `calc(100% - ${at(cut.end)})`;
+  });
   for (const edge of strip.querySelectorAll<HTMLElement>('.edge')) {
     const seconds = edge.dataset.edge === 'start' ? trim.start : trim.end;
     edge.style.left = at(seconds);
@@ -1411,26 +1437,30 @@ function drawTrim() {
   playButton.querySelector('.when-playing')!.toggleAttribute('hidden', !playing);
   playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
   playButton.dataset.tip = playing ? 'Pause (Space)' : 'Play (Space)';
-  trimTime.textContent = whole(trim, length) ? clock(length) : `${clock(trim.end - trim.start)} of ${clock(length)}`;
-  trimBar.classList.toggle('trimmed', !whole(trim, length));
+  const edited = !whole(trim, length) || cuts.length > 0;
+  trimTime.textContent = edited ? `${clock(keptLength(trim, cuts))} of ${clock(length)}` : clock(length);
+  trimBar.classList.toggle('trimmed', edited);
 }
 
 /** Playing, the playhead moves every frame, and at the end of the part kept
  *  goes back to its start. */
 function follow() {
   if (movie.paused || !trim) return;
-  if (movie.currentTime >= trim.end - 0.01) movie.currentTime = trim.start;
+  // Over any part cut out, as the copy will be.
+  const past = skip(movie.currentTime, cuts);
+  if (past !== movie.currentTime) movie.currentTime = past;
+  if (movie.currentTime >= trim.end - 0.01) movie.currentTime = playFrom(trim.start, trim, cuts);
   drawTrim();
   requestAnimationFrame(follow);
 }
 on(movie, 'play', () => { drawTrim(); requestAnimationFrame(follow); });
 on(movie, 'pause', () => drawTrim());
-on(movie, 'ended', () => { if (trim) { movie.currentTime = trim.start; void movie.play().catch(() => {}); } });
+on(movie, 'ended', () => { if (trim) { movie.currentTime = playFrom(trim.start, trim, cuts); void movie.play().catch(() => {}); } });
 
 function togglePlay() {
   if (!trim || movie.hidden) return;
   if (movie.paused) {
-    movie.currentTime = playFrom(movie.currentTime, trim);
+    movie.currentTime = playFrom(movie.currentTime, trim, cuts);
     void movie.play().catch(report);
   } else movie.pause();
 }
@@ -1441,10 +1471,23 @@ function setEdge(edge: 'start' | 'end', seconds: number) {
   const video = capture?.video;
   if (!video || !trim) return;
   trim = moveEdge(trim, edge, seconds, video.duration);
+  cuts = fitCuts(trim, cuts);
   movie.pause();
   movie.currentTime = edge === 'start' ? trim.start : trim.end;
   drawTrim();
 }
+
+/** Cut a part out around the playhead -- or say why not. */
+function cutOut() {
+  const video = capture?.video;
+  if (!video || !trim) return;
+  const next = addCut(trim, cuts, movie.currentTime);
+  if (!next) { flash('There’s no room to cut there: move the playhead into what is kept.'); return; }
+  movie.pause();
+  cuts = next;
+  drawTrim();
+}
+on(cutButton, 'click', cutOut);
 
 /** Where on the strip a pointer is, in seconds into the recording. */
 function stripTime(event: PointerEvent): number {
@@ -1452,7 +1495,9 @@ function stripTime(event: PointerEvent): number {
   return Math.min(1, Math.max(0, (event.clientX - box.left) / Math.max(box.width, 1))) * (capture?.video?.duration ?? 0);
 }
 /** A handle is dragged; anywhere else on the strip moves the playhead there. */
-let dragging: 'start' | 'end' | 'seek' | 'mark' | 'until' | null = null;
+let dragging: 'start' | 'end' | 'seek' | 'mark' | 'until' | 'cut' | null = null;
+/** Which end of which cut is being dragged. */
+let draggingCut: { index: number; edge: 'start' | 'end' } | null = null;
 /** Where the selected mark's start or end is being dragged to, until it is let go. */
 let draggingAt: number | null = null;
 /** A mark lasts at least this long: its end can't be dragged onto its start. */
@@ -1474,6 +1519,19 @@ on(strip, 'pointerdown', event => {
     strip.setPointerCapture(event.pointerId);
     return;
   }
+  const band = (event.target as Element).closest<HTMLElement>('.cut');
+  if ((event.target as Element).closest('.cut-back') && band) {
+    cuts = cuts.filter((_, index) => index !== Number(band.dataset.cut));
+    drawTrim();
+    return;
+  }
+  const cutEdge = (event.target as Element).closest<HTMLElement>('.cut-edge')?.dataset.cutEdge as 'start' | 'end' | undefined;
+  if (cutEdge && band) {
+    dragging = 'cut'; draggingCut = { index: Number(band.dataset.cut), edge: cutEdge };
+    movie.pause();
+    strip.setPointerCapture(event.pointerId);
+    return;
+  }
   const edge = (event.target as Element).closest<HTMLElement>('.edge')?.dataset.edge as 'start' | 'end' | undefined;
   dragging = edge ?? 'seek';
   strip.setPointerCapture(event.pointerId);
@@ -1489,8 +1547,12 @@ on(strip, 'pointermove', event => {
     flag.style.left = `${(draggingAt / (capture!.video!.duration || 1)) * 100}%`;
     flag.classList.remove('stays');
     drawTrim();
+  } else if (dragging === 'cut' && draggingCut && trim) {
+    cuts = moveCutEdge(trim, cuts, draggingCut.index, draggingCut.edge, stripTime(event));
+    movie.currentTime = cuts[draggingCut.index][draggingCut.edge];
+    drawTrim();
   } else if (dragging === 'seek') { movie.currentTime = stripTime(event); drawTrim(); }
-  else setEdge(dragging, stripTime(event));
+  else if (dragging === 'start' || dragging === 'end') setEdge(dragging, stripTime(event));
 });
 const letGo = (event: PointerEvent) => {
   const one = layer.selection.length === 1 ? layer.selection[0] : null;
@@ -1500,7 +1562,7 @@ const letGo = (event: PointerEvent) => {
   if (dragging === 'until' && when !== null && one) {
     layer.retime(one.id, { until: when >= (capture?.video?.duration ?? 0) - BRIEFEST ? null : when });
   }
-  dragging = null; draggingAt = null;
+  dragging = null; draggingAt = null; draggingCut = null;
   drawTrim();
   if (strip.hasPointerCapture(event.pointerId)) strip.releasePointerCapture(event.pointerId);
 };
@@ -1534,14 +1596,17 @@ async function copyVideo(close: boolean) {
   copyPending = true; render(); showMessage(null);
   const marks = videoMarks();
   const trimming = marks ? working('Drawing the marks into the recording…')
-    : whole(part, video.duration) ? null : working('Trimming the recording…');
+    : whole(part, video.duration) && !cuts.length ? null : working('Trimming the recording…');
   try {
-    await command('copy_video', { id: video.id, start: part.start, end: part.end, close, marks });
+    await command('copy_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), close, marks });
     if (close) { capture = null; showMessage(null); }
     else flash('Copied the recording. Paste it into a message, a mail or a chat.');
   } catch (error) { report(error); }
   finally { trimming?.(); copyPending = false; render(); }
 }
+
+/** The parts cut out, as Rust takes them: start and end, in seconds. */
+function cutPairs(): [number, number][] { return cuts.map(cut => [cut.start, cut.end]); }
 
 /** Save, as a movie or as a GIF that loops, or Share: the part kept. */
 async function exportVideo(how: 'save' | 'gif' | 'share') {
@@ -1552,10 +1617,11 @@ async function exportVideo(how: 'save' | 'gif' | 'share') {
   copyPending = true; render();
   const marks = videoMarks();
   try {
-    if (how === 'share') await command('share_video', { id: video.id, start: part.start, end: part.end, marks });
+    if (how === 'share') await command('share_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), marks });
     else {
       const saved = await command<string | null>('save_video', {
-        id: video.id, start: part.start, end: part.end, gif: how === 'gif', name: videoName(how === 'gif' ? 'gif' : 'mp4'), marks,
+        id: video.id, start: part.start, end: part.end, cuts: cutPairs(), gif: how === 'gif',
+        name: videoName(how === 'gif' ? 'gif' : 'mp4'), marks,
       });
       flash(saved ? `Saved as ${saved}.` : 'Not saved.');
     }
@@ -1575,6 +1641,7 @@ function videoKey(event: KeyboardEvent, key: string): boolean {
   if (key === ' ' && !commanded) return event.target instanceof HTMLButtonElement ? true : done(togglePlay);
   if (!commanded && !event.altKey && !event.shiftKey && key === 'i') return done(() => setEdge('start', movie.currentTime));
   if (!commanded && !event.altKey && !event.shiftKey && key === 'o') return done(() => setEdge('end', movie.currentTime));
+  if (!commanded && !event.altKey && !event.shiftKey && key === 'k') return done(cutOut);
   // [ and ]: the selected mark starts, or goes, at the playhead.
   if (!commanded && !event.altKey && (key === '[' || key === ']')) return done(() => markAtPlayhead(key === '[' ? 'at' : 'until'));
   if (!commanded && key === 'c') return without();
@@ -2354,7 +2421,7 @@ function thumbnail(source = image, annotations = layer.annotations, density = la
 function remember(leaving: CapturePreview) {
   if (!image.complete || !image.naturalWidth) return;
   keep({ capture: leaving, thumb: thumbnail(), at: shownAt, annotations: layer.annotations.map(item => ({ ...item })),
-         trim: leaving.video && trim ? { ...trim } : undefined });
+         trim: leaving.video && trim ? { ...trim } : undefined, cuts: leaving.video && cuts.length ? cuts.map(cut => ({ ...cut })) : undefined });
 }
 
 /** Captures copied straight from the overlay, which the editor never showed,
@@ -2396,7 +2463,7 @@ function restore(entry: Past) {
   layer.load(entry.annotations);
   shown = entry.capture; shownAt = entry.at;
   zoom = startingZoom(entry.capture);
-  showMovie(entry.capture, entry.trim);
+  showMovie(entry.capture, entry.trim, entry.cuts);
   render();
 }
 
@@ -2412,7 +2479,7 @@ function drawRecents() {
   recentList.replaceChildren(...past.map(entry => {
     const size = `${entry.capture.width} × ${entry.capture.height}`;
     const video = entry.capture.video;
-    const length = video ? clock(entry.trim ? entry.trim.end - entry.trim.start : video.duration) : '';
+    const length = video ? clock(entry.trim ? keptLength(entry.trim, entry.cuts ?? []) : video.duration) : '';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'recent';

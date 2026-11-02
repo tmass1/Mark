@@ -647,6 +647,19 @@ footer > * { flex: none; }
 .mark-until::before { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: var(--blue); }
 .mark-until::after { content: ""; position: absolute; left: 1px; bottom: 0; width: 12px; height: 10px; border-radius: 6px 6px 0 0; background: var(--blue);
   box-shadow: 0 -1px 3px #00000066; }
+/* Cut a part out, beside Play. A part cut out: dark, edged in red, a red
+   handle at each end, and an × on hover to put it back. */
+.cut-out { flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.trim .cut-out svg { width: 17px; height: 17px; }
+.cuts { position: absolute; inset: 0; pointer-events: none; }
+.cut { --cut: #ff453a; position: absolute; top: 0; bottom: 0; pointer-events: auto;
+  background: repeating-linear-gradient(135deg, #000000b8 0 6px, #000000d9 6px 12px); border-block: 3px solid var(--cut); }
+.cut-edge { position: absolute; top: -3px; bottom: -3px; width: 8px; background: var(--cut); cursor: ew-resize; }
+.cut-edge[data-cut-edge="start"] { left: 0; border-radius: 4px 0 0 4px; }
+.cut-edge[data-cut-edge="end"] { right: 0; border-radius: 0 4px 4px 0; }
+.cut-back { position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; padding: 0; border: 0;
+  border-radius: 50%; background: var(--cut); color: #fff; font: 600 14px/20px system-ui; text-align: center; cursor: pointer; opacity: 0; transition: opacity .12s; }
+.cut:hover .cut-back, .cut-back:focus-visible { opacity: 1; }
 .trim-time { flex: none; min-width: 70px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .trim.trimmed .trim-time { color: var(--ink); }
 /* A recording saves as a video, in words, with its ▾ for a GIF ending the
