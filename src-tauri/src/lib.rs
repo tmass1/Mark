@@ -434,9 +434,14 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bo
     macos::restore_focus(previous);
     let app = app.clone();
     std::thread::spawn(move || {
-        // The screen must stay clear during a delay so the user can open the menu
-        // or hover state they are capturing. The count goes in the menu bar
-        // instead of on top of the shot.
+        // During a delay the user is setting up what is to be taken -- opening
+        // a menu, hovering a button -- so the count is in the menu bar, and
+        // over the middle of it in a panel that clicks go straight through,
+        // gone before the shutter.
+        if delay > 0 {
+            let (handle, area) = (app.clone(), target.rect());
+            let _ = app.run_on_main_thread(move || recording::show_countdown(&handle, area, delay, record));
+        }
         for remaining in (1..=delay).rev() {
             if cancelled.load(Ordering::SeqCst) { break; }
             let handle = app.clone();
@@ -444,7 +449,7 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bo
             std::thread::sleep(Duration::from_secs(1));
         }
         let handle = app.clone();
-        let _ = app.run_on_main_thread(move || set_tray_title(&handle, None));
+        let _ = app.run_on_main_thread(move || { set_tray_title(&handle, None); recording::hide_countdown(&handle); });
         // Let the overlay actually leave the screen before the shutter.
         std::thread::sleep(Duration::from_millis(180));
         // A recording is a shutter held open: this thread waits until it ends.

@@ -128,8 +128,10 @@ notarization; an Apple Development certificate is only good for this Mac.
    Height. The link button locks the ratio and ⌘A takes the whole display.
    Press **Capture** to shoot, or the clock first to arm a 3, 5, or 10 second
    delay. A delayed shot clears the screen immediately so you can open the menu
-   or hover state you are capturing, and counts down in the menu bar rather
-   than over the shot. Escape cancels.
+   or hover state you are capturing, and counts down in the menu bar and in a
+   disc over the middle of what will be taken: the seconds left, a ring going
+   round each one — red before a recording — that clicks go straight through
+   and that is gone before the shutter, so it is never in the shot. Escape cancels.
 
    When a screenshot is all you want, press **Copy** (or ⌘C) instead of
    Capture: the shot goes straight to the clipboard and into Recent, the
@@ -914,7 +916,8 @@ or a restart:
 
 1. **Whole Screen** grabs the display the pointer is on, not another one.
 2. **Timed Region** opens with the delay already armed, the screen clears at
-   once, and the count runs in the menu bar.
+   once, the count runs in the menu bar and over the region, clicks pass
+   through it, and it is not in the shot.
 3. A selection on a second display captures that display's content.
 4. With **Open at Login** on, a restart brings Mark back with no editor window,
    while opening it by hand still shows one.

@@ -59,3 +59,27 @@ html.outline #recording { inset: 0; }
   .live { animation: pulse 1.6s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: .35; } }
 }
+
+/* The count before a delayed shot: a dark disc over the middle of what will
+   be taken, the seconds left in it, a ring going round once a second -- red
+   before a recording -- and what is coming. Nothing in it can be clicked:
+   the panel lets every click through to what is being set up. */
+html.countdown #recording { inset: 0; display: grid; place-items: center; }
+.count {
+  position: relative; width: 148px; height: 148px; display: grid; place-items: center; align-content: center; gap: 2px;
+  border-radius: 50%; background: #1c1c1ed9; color: #fff;
+  box-shadow: 0 14px 40px #00000066, inset 0 0 0 .5px var(--control-line);
+  transition: opacity .15s ease-out, transform .15s ease-out;
+}
+.count.done { opacity: 0; transform: scale(.92); }
+.ring { position: absolute; inset: 6px; width: calc(100% - 12px); height: calc(100% - 12px); transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 3.5; }
+.ring .track { stroke: #ffffff26; }
+.ring .sweep { stroke: #fff; stroke-dasharray: 1; stroke-linecap: round; }
+html.video .ring .sweep { stroke: var(--record); }
+.number { font-size: 60px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.what { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+@media (prefers-reduced-motion: no-preference) {
+  .number.arrive { animation: arrive .22s cubic-bezier(.2, .9, .3, 1.2); }
+  @keyframes arrive { from { opacity: .3; transform: scale(.82); } }
+}

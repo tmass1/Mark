@@ -5,7 +5,9 @@ import { clock } from './trim';
 /** The bar beside a recording, and -- as recording.html?outline -- the line
  *  round the part of the screen being recorded. Both are panels that never
  *  take the focus, and both are Mark's, which the recording leaves out. Rust
- *  runs the recording and says each second how long it has run. */
+ *  runs the recording and says each second how long it has run. And -- as
+ *  recording.html?countdown -- the count before a delayed screenshot or
+ *  recording, over what is to be taken, which clicks go straight through. */
 
 interface Status { elapsed: number; limit: number; mic: boolean }
 
@@ -13,10 +15,13 @@ interface Status { elapsed: number; limit: number; mic: boolean }
 const WARN = 30;
 
 const root = document.querySelector<HTMLDivElement>('#recording')!;
+const asked = new URLSearchParams(location.search);
 
-if (new URLSearchParams(location.search).has('outline')) {
+if (asked.has('outline')) {
   document.documentElement.classList.add('outline');
   root.innerHTML = '<div class="line"></div>';
+} else if (asked.has('countdown')) {
+  countdown(Number(asked.get('until')), asked.has('video'));
 } else {
   root.innerHTML = `
     <div class="bar" role="toolbar" aria-label="Recording">
@@ -59,4 +64,35 @@ if (new URLSearchParams(location.search).has('outline')) {
     }));
     void command<Status | null>('recording_status').then(status => { if (status) show(status); }).catch(() => {});
   }
+}
+
+/** The seconds left until `until`, by the clock, each sweeping round the
+ *  ring as it goes: red before a recording, as Record is. Nothing once it is
+ *  over, which is a moment before Rust takes the panel away for the shutter. */
+function countdown(until: number, video: boolean) {
+  document.documentElement.classList.add('countdown');
+  document.documentElement.classList.toggle('video', video);
+  root.innerHTML = `
+    <div class="count" role="timer" aria-live="assertive">
+      <svg class="ring" viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="track" cx="50" cy="50" r="46"/><circle class="sweep" cx="50" cy="50" r="46" pathLength="1"/>
+      </svg>
+      <span class="number"></span><span class="what">${video ? 'Recording' : 'Screenshot'}</span>
+    </div>`;
+  const count = root.querySelector<HTMLElement>('.count')!;
+  const number = root.querySelector<HTMLElement>('.number')!;
+  const sweep = root.querySelector<SVGCircleElement>('.sweep')!;
+  const tick = () => {
+    const left = (until - Date.now()) / 1000;
+    if (!Number.isFinite(left) || left <= 0) { count.classList.add('done'); return; }
+    const shown = String(Math.ceil(left));
+    if (number.textContent !== shown) {
+      number.textContent = shown;
+      // Each new number arrives with a small lift.
+      number.classList.remove('arrive'); void number.offsetWidth; number.classList.add('arrive');
+    }
+    sweep.style.strokeDashoffset = String(1 - (left % 1 || 1));
+    requestAnimationFrame(tick);
+  };
+  tick();
 }

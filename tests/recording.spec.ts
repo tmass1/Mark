@@ -856,3 +856,17 @@ test('a recording’s thumbnail shows how long it runs', async ({ page }) => {
   await expect(page.locator('.thumb-length')).toHaveText('0:12', { timeout: 15_000 });
   await expect(page.locator('.thumb-image')).toHaveAttribute('alt', 'The recording just made');
 });
+
+test('a delayed shot counts down over what it will take, by the clock, and is gone at the end', async ({ page }) => {
+  await installBridge(page);
+  const until = await page.evaluate(() => Date.now()) + 2500;
+  await page.goto(`/recording.html?countdown&until=${until}&video`);
+  const count = page.getByRole('timer');
+  await expect(count.locator('.number')).toHaveText('3');
+  await expect(count.locator('.what')).toHaveText('Recording');
+  await expect(count.locator('.number')).toHaveText('2', { timeout: 2000 });
+  await expect(count).toHaveClass(/done/, { timeout: 4000 });
+  // A screenshot's count says so.
+  await page.goto(`/recording.html?countdown&until=${Date.now() + 5000}`);
+  await expect(page.getByRole('timer').locator('.what')).toHaveText('Screenshot');
+});

@@ -106,8 +106,9 @@ test('settings open from the gear, and the appearance switches every frame and t
   await expect(editor.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(settings.locator('html')).toHaveAttribute('data-theme', 'light');
 
-  // What the browser cannot do is said, not faked.
-  await settings.locator('.login').check();
+  // What the browser cannot do is said, not faked. A click rather than a
+  // check: the box is put back at once, which check() can catch half done.
+  await settings.locator('.login').click();
   await expect(settings.locator('.login-note')).toContainText('Mac feature');
   await expect(settings.locator('.login')).not.toBeChecked();
 

@@ -18,6 +18,10 @@ use tauri_plugin_dialog::DialogExt;
 
 pub const BAR: &str = "recording";
 pub const OUTLINE: &str = "recording-outline";
+/// The count before a delayed screenshot or recording: a panel of the same
+/// page, centred on what will be taken, which clicks go straight through.
+pub const COUNTDOWN: &str = "recording-countdown";
+const COUNTDOWN_SIZE: (f64, f64) = (180.0, 180.0);
 /// Recordings stop by themselves after this long. Mark is for short ones.
 pub const LONGEST: Duration = Duration::from_secs(300);
 /// The trim strip under a recording in the editor and the gap above it, kept
@@ -284,6 +288,39 @@ fn show_bar(app: &AppHandle, area: capture::Rect, outline: bool, mic: bool) {
         Ok::<(), String>(())
     })();
     if let Err(error) = placed { eprintln!("[Mark] the recording's bar: {error}"); }
+}
+
+/// The countdown's page: when it ends, in milliseconds since 1970 -- the clock
+/// the page reads too, so it counts by itself without being told each second
+/// -- and whether a recording follows it.
+fn countdown_page(until: u128, record: bool) -> String {
+    format!("recording.html?countdown&until={until}{}", if record { "&video" } else { "" })
+}
+
+/// Count `seconds` down over the middle of `area`, ending as the delay does.
+/// The page counts by the clock; this only puts it there. Main thread.
+pub fn show_countdown(app: &AppHandle, area: capture::Rect, seconds: u32, record: bool) {
+    let shown = (|| {
+        let since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| e.to_string())?;
+        let page = countdown_page(since.as_millis() + u128::from(seconds) * 1000, record);
+        // Made once and kept: after the first, it is sent to the new count.
+        let fresh = app.get_webview_window(COUNTDOWN).is_none();
+        let window = panel_window(app, COUNTDOWN, &page, COUNTDOWN_SIZE)?;
+        if !fresh { window.eval(format!("location.replace({page:?})")).map_err(|e| e.to_string())?; }
+        window.set_ignore_cursor_events(true).map_err(|e| e.to_string())?;
+        let work = thumbnail::work_area(app, area.x + area.width / 2.0, area.y + area.height / 2.0).unwrap_or(area);
+        let x = (area.x + (area.width - COUNTDOWN_SIZE.0) / 2.0).clamp(work.x, (work.x + work.width - COUNTDOWN_SIZE.0).max(work.x));
+        let y = (area.y + (area.height - COUNTDOWN_SIZE.1) / 2.0).clamp(work.y, (work.y + work.height - COUNTDOWN_SIZE.1).max(work.y));
+        window.set_position(tauri::LogicalPosition::new(x, y)).map_err(|e| e.to_string())?;
+        if let Ok(panel) = app.get_webview_panel(COUNTDOWN) { panel.show(); }
+        Ok::<(), String>(())
+    })();
+    if let Err(error) = shown { eprintln!("[Mark] the countdown: {error}"); }
+}
+
+/// The countdown gone, before the shutter. Main thread.
+pub fn hide_countdown(app: &AppHandle) {
+    if let Ok(panel) = app.get_webview_panel(COUNTDOWN) { if panel.is_visible() { panel.hide(); } }
 }
 
 fn hide_bar(app: &AppHandle) {
@@ -706,6 +743,12 @@ mod tests {
         assert!(followed(vec![(1.1, 10.0, 10.0, 2.0), (1.0, 10.0, 10.0, 2.0)]).is_err(), "out of order");
         assert!(followed(vec![(1.0, f64::NAN, 10.0, 2.0)]).is_err());
         assert!(followed(vec![(1.0, 0.0, 0.0, 1.0); MOST_CAMERA + 1]).is_err());
+    }
+
+    #[test]
+    fn a_countdown_is_told_when_it_ends_and_whether_a_recording_follows() {
+        assert_eq!(countdown_page(1_790_000_005_000, false), "recording.html?countdown&until=1790000005000");
+        assert_eq!(countdown_page(1_790_000_003_000, true), "recording.html?countdown&until=1790000003000&video");
     }
 
     #[test]
