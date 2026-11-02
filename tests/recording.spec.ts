@@ -438,15 +438,47 @@ test('Space chooses a window and ⌘A the screen, as they do for a screenshot', 
   await expect(fresh.getByRole('radio', { name: 'Screen' })).toHaveAttribute('aria-checked', 'true');
 });
 
-test('a window is recorded by a click, ⌘ or not', async ({ page }) => {
+test('a click chooses the window to record, and Record or Return records it with what the bar says', async ({ page }) => {
   await picking(page, false, 'window');
-  await expect(page.locator('.hint')).toHaveText('Click a window to record it · Escape to cancel');
+  await expect(page.locator('.hint')).toHaveText('Click a window to choose it · Escape to cancel');
   await expect(page.locator('.choice[aria-checked="true"]')).toHaveText('Window');
+  // Nothing to record yet.
+  await expect(page.locator('.go')).toBeDisabled();
+  // A click, ⌘ or not, only chooses it; it stays chosen as the pointer moves on.
   await page.keyboard.down('Meta');
   await page.mouse.click(200, 150);
   await page.keyboard.up('Meta');
+  await expect(page.locator('.pick')).toHaveClass(/held/);
+  await expect(page.locator('.pick-name')).toHaveText('Safari — Apple');
+  await expect(page.locator('.hint')).toHaveText('Record, or press Return, to record it · Click another window to switch');
+  await page.mouse.move(700, 500);
+  await expect(page.locator('.pick')).toBeVisible();
+  expect(await commands(page)).not.toContain('capture_window');
+  // Everything it is recorded with is still in the bar, after choosing.
+  await page.locator('.mic').click();
+  await page.locator('.delay').click();
+  await expect(page.locator('.delay')).toHaveText('3s');
+  await page.locator('.go').click();
   expect((await waitFor(page, 'capture_window')).args)
-    .toEqual({ id: 11, delay: 0, copy: false, record: true, mic: false, pointer: 'arrow', clicks: 'rings' });
+    .toEqual({ id: 11, delay: 3, copy: false, record: true, mic: true, pointer: 'arrow', clicks: 'rings' });
+});
+
+test('Return records the window chosen, and the bar holds everything a recording is set up with', async ({ page }) => {
+  await picking(page, false, 'window');
+  const bar = page.locator('.choices');
+  for (const name of ['Cancel', 'Region', 'Window', 'Screen', 'Record the microphone too', 'Record after a delay']) {
+    await expect(bar.getByRole(name === 'Region' || name === 'Window' || name === 'Screen' ? 'radio' : 'button', { name, exact: true })).toBeVisible();
+  }
+  await expect(bar.locator('.look-button')).toBeVisible();
+  await expect(bar.locator('.go')).toHaveText('Record');
+  await page.mouse.click(200, 150);
+  await page.keyboard.press('Enter');
+  expect((await waitFor(page, 'capture_window')).args).toMatchObject({ id: 11, record: true });
+  // × in the bar cancels.
+  const fresh = await page.context().newPage();
+  await picking(fresh, false, 'window');
+  await fresh.locator('.choices').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await waitFor(fresh, 'cancel_selection');
 });
 
 test('the bar says how the pointer and clicks will show, and its menu changes them before Record', async ({ page }) => {
@@ -473,8 +505,9 @@ test('the bar says how the pointer and clicks will show, and its menu changes th
   await button.click();
   await page.mouse.click(200, 150);
   await expect(menu).toBeHidden();
-  expect(await commands(page)).not.toContain('capture_window');
+  await expect(page.locator('.pick')).not.toHaveClass(/held/);
   await page.mouse.click(200, 150);
+  await page.keyboard.press('Enter');
   expect((await waitFor(page, 'capture_window')).args)
     .toEqual({ id: 11, delay: 0, copy: false, record: true, mic: false, pointer: 'hidden', clicks: 'rings' });
 });
@@ -503,7 +536,7 @@ test('a recording is of a region, a window or the screen, chosen up front', asyn
   // Window: picking windows, as Space would.
   await choice('Window').click();
   await expect(choice('Window')).toHaveAttribute('aria-checked', 'true');
-  await expect(page.locator('.hint')).toHaveText('Click a window to record it · Escape to cancel');
+  await expect(page.locator('.hint')).toHaveText('Click a window to choose it · Escape to cancel');
   expect(await sent(page)).toEqual([]);                        // pressing a choice records nothing
 
   // Screen: all of this display, ready to record.

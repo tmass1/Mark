@@ -434,10 +434,14 @@ notarization; an Apple Development certificate is only good for this Mac.
 11. **Short recordings.** On macOS 15 or later, press **Record** on the start
     screen, choose **Record Video** from Mark's menu, or give it a shortcut in
     Settings. The overlay first asks what to record — **Region**, **Window**
-    or **Screen**, or Space for a window and ⌘A for the screen — then works as
-    it does for a screenshot, with **Record** in place of Capture and Copy, and
-    a **microphone** button beside the clock that is remembered from one
-    recording to the next. A window picked to record comes to the front with
+    or **Screen**, or Space for a window and ⌘A for the screen — in a bar
+    along the bottom that holds everything a recording is set up with, as
+    macOS's own does: **×** to cancel, the three choices, the **microphone**
+    and the **delay**, both remembered, how the pointer and clicks show, and
+    **Record**. A region is dragged out as for a screenshot, with its size
+    beside it; a window is chosen with a click and stays chosen, outlined,
+    until another is clicked; and Record, or Return, records what is chosen,
+    so nothing starts before all of it is set. A window picked to record comes to the front with
     its app as recording starts, so it can be used while it is recorded; it
     is recorded whole even if something later covers it.
     While it records, a small bar sits just outside what is being recorded,

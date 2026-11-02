@@ -38,7 +38,7 @@ const recording = window.__MARK_KIND__ === 'video';
 const CHOOSE_HINT = 'Choose what to record · Escape to cancel';
 const HINTS: Record<Mode, string> = recording ? {
   region: 'Drag to select a region to record · Escape to cancel',
-  window: windows.length ? 'Click a window to record it · Escape to cancel' : 'No windows to record · Escape to cancel',
+  window: windows.length ? 'Click a window to choose it · Escape to cancel' : 'No windows to record · Escape to cancel',
 } : {
   region: 'Drag to select a region · Space for a window · Escape to cancel',
   window: windows.length ? 'Click a window to capture it, ⌘-click to copy it · Space for a region · Escape to cancel'
@@ -58,6 +58,16 @@ const CHOICES: { id: Choice; name: string; tip: string; art: string }[] = [
     '<rect x="3.2" y="4.5" width="13.6" height="9.6" rx="1.8"/><path d="M7.6 16.6h4.8"/>' },
 ];
 
+/** The delay, and for a recording the microphone: in the panel by a
+ *  screenshot's selection, and in a recording's bar, with everything else a
+ *  recording is set up with, whatever it is of. */
+const DELAY = `<button class="delay icon" type="button" aria-label="Capture after a delay" title="Capture after a delay">
+  <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="10" cy="10.5" r="6.6"/><path d="M10 6.6v4l2.6 1.7"/><path d="M7.6 2.6h4.8"/></svg></button>`;
+const MIC = `<button class="mic icon" type="button" aria-pressed="false" aria-label="Record the microphone too" title="Record the microphone too">
+  <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="7.4" y="2.8" width="5.2" height="9.2" rx="2.6"/><path d="M4.6 9.6a5.4 5.4 0 0 0 10.8 0M10 15v2.4"/></svg></button>`;
+
 const root = document.querySelector<HTMLDivElement>('#selector')!;
 root.innerHTML = `
   <div class="veil"></div>
@@ -70,16 +80,23 @@ root.innerHTML = `
   <div class="pick-label" hidden><span class="pick-name"></span><span class="pick-size"></span></div>
   <div class="readout" hidden></div>
   <div class="hint"></div>
-  ${recording ? `<div class="choices"><div class="choice-set" role="radiogroup" aria-label="What to record">${CHOICES.map(choice =>
+  ${recording ? `<div class="choices">
+    <button class="cancel icon" type="button" aria-label="Cancel" title="Cancel (Escape)">
+      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6 6l8 8M14 6l-8 8"/></svg>
+    </button>
+    <span class="divider" aria-hidden="true"></span>
+    <div class="choice-set" role="radiogroup" aria-label="What to record">${CHOICES.map(choice =>
     `<button class="choice" type="button" role="radio" aria-checked="false" data-choice="${choice.id}" title="${choice.tip}">`
     + `<svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${choice.art}</svg>`
     + `${choice.name}</button>`).join('')}</div>
     <span class="divider" aria-hidden="true"></span>
+    ${MIC}${DELAY}
     <button class="look-button" type="button" aria-haspopup="menu" aria-expanded="false" title="How the pointer and clicks show">
       <span class="look-art"></span><span class="look-label"></span>
       <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.6 6 7.6l3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
-    <div class="look-menu" role="menu" aria-label="Pointer and clicks" hidden></div></div>` : ''}
+    <div class="look-menu" role="menu" aria-label="Pointer and clicks" hidden></div>
+    <button class="go" type="button"><span class="dot" aria-hidden="true"></span>Record</button></div>` : ''}
   <div class="panel" hidden>
     <label class="field">Width <input class="w" type="number" min="1" step="1" /></label>
     <label class="field">Height <input class="h" type="number" min="1" step="1" /></label>
@@ -87,22 +104,15 @@ root.innerHTML = `
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
         <path d="M7.4 10h5.2M8.6 6.6H6.4a3.4 3.4 0 0 0 0 6.8h2.2M11.4 6.6h2.2a3.4 3.4 0 0 1 0 6.8h-2.2"/></svg>
     </button>
-    <span class="gap"></span>
+    ${recording ? '' : `<span class="gap"></span>
     <button class="cancel" type="button">Cancel</button>
-    <button class="delay icon" type="button" aria-label="Capture after a delay" title="Capture after a delay">
-      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="10" cy="10.5" r="6.6"/><path d="M10 6.6v4l2.6 1.7"/><path d="M7.6 2.6h4.8"/></svg>
-    </button>
-    <button class="mic icon" type="button" aria-pressed="false" aria-label="Record the microphone too" title="Record the microphone too"${recording ? '' : ' hidden'}>
-      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="7.4" y="2.8" width="5.2" height="9.2" rx="2.6"/><path d="M4.6 9.6a5.4 5.4 0 0 0 10.8 0M10 15v2.4"/></svg>
-    </button>
+    ${DELAY}
     <button class="full icon" type="button" aria-label="Whole display" title="Whole display">
       <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
         <path d="M4 8V5.2A1.2 1.2 0 0 1 5.2 4H8M12 4h2.8A1.2 1.2 0 0 1 16 5.2V8M16 12v2.8a1.2 1.2 0 0 1-1.2 1.2H12M8 16H5.2A1.2 1.2 0 0 1 4 14.8V12"/></svg>
     </button>
-    <button class="copy" type="button" title="Copy it without opening the editor (⌘C)"${recording ? ' hidden' : ''}>Copy</button>
-    <button class="go" type="button">${recording ? '<span class="dot" aria-hidden="true"></span>Record' : 'Capture'}</button>
+    <button class="copy" type="button" title="Copy it without opening the editor (⌘C)">Copy</button>
+    <button class="go" type="button">Capture</button>`}
   </div>
 `;
 const veil = root.querySelector<HTMLElement>('.veil')!;
@@ -118,7 +128,8 @@ const widthField = root.querySelector<HTMLInputElement>('.w')!;
 const heightField = root.querySelector<HTMLInputElement>('.h')!;
 const lock = root.querySelector<HTMLButtonElement>('.lock')!;
 const delayButton = root.querySelector<HTMLButtonElement>('.delay')!;
-const micButton = root.querySelector<HTMLButtonElement>('.mic')!;
+const micButton = root.querySelector<HTMLButtonElement>('.mic');
+const goButton = root.querySelector<HTMLButtonElement>('.go')!;
 const choices = root.querySelector<HTMLElement>('.choices');
 const lookButton = root.querySelector<HTMLButtonElement>('.look-button');
 const lookMenu = root.querySelector<HTMLElement>('.look-menu');
@@ -144,8 +155,12 @@ let mode: Mode = window.__MARK_MODE__ === 'window' ? 'window' : 'region';
  *  the screen does nothing until one is chosen. Asked for a window, it is
  *  already chosen. */
 let choosing = recording && mode !== 'window';
-/** In window mode, the window under the pointer: the one a click takes. */
+/** In window mode, the window under the pointer: the one a click takes. For
+ *  a recording, a click only chooses it -- `held`, it stays chosen as the
+ *  pointer moves on -- and Record or Return records it, so everything it is
+ *  recorded with can still be set in the bar. */
 let picked: ScreenWindow | null = null;
+let held = false;
 /** Where the pointer last was, so switching to window mode can pick at once --
  *  to begin with, where Rust saw it, if that is on this display. */
 let pointer: [number, number] | null = (() => {
@@ -186,7 +201,13 @@ const whole = () => rect !== null && rect.x <= 0 && rect.y <= 0
   && rect.width >= display.width - 0.5 && rect.height >= display.height - 0.5;
 
 function show() {
-  hint.textContent = hint.dataset.error ?? (choosing ? CHOOSE_HINT : HINTS[mode]);
+  hint.textContent = hint.dataset.error
+    ?? (choosing ? CHOOSE_HINT : held ? 'Record, or press Return, to record it · Click another window to switch' : HINTS[mode]);
+  // A recording's Record waits for something to record.
+  if (recording) {
+    goButton.disabled = choosing || (mode === 'window' ? !held : !(rect && rect.width >= 1 && rect.height >= 1));
+    pick.classList.toggle('held', held);
+  }
   const chosen: Choice | null = choosing ? null : mode === 'window' ? 'window' : whole() ? 'screen' : 'region';
   for (const button of choices?.querySelectorAll<HTMLButtonElement>('.choice') ?? []) {
     button.setAttribute('aria-checked', String(button.dataset.choice === chosen));
@@ -270,7 +291,7 @@ function windowAt(x: number, y: number): ScreenWindow | null {
 }
 
 function hover(next: ScreenWindow | null) {
-  if (next?.id === picked?.id) return;
+  if (held || next?.id === picked?.id) return;
   picked = next;
   show();
 }
@@ -281,7 +302,7 @@ function setMode(next: Mode, tell: boolean) {
   if (next === mode && !choosing) return;
   choosing = false;
   mode = next;
-  drag = null; rect = null; delete hint.dataset.error;
+  drag = null; rect = null; held = false; delete hint.dataset.error;
   picked = mode === 'window' && pointer ? windowAt(...pointer) : null;
   show();
   if (tell && inTauri) {
@@ -311,7 +332,8 @@ root.addEventListener('pointerdown', event => {
   if (mode === 'window') {
     event.preventDefault();
     const under = windowAt(event.clientX, event.clientY);
-    if (under) void captureWindow(under, event.metaKey);
+    if (under && recording) hold(under, true);
+    else if (under) void captureWindow(under, event.metaKey);
     return;
   }
   const target = event.target as Element;
@@ -407,14 +429,23 @@ delayButton.addEventListener('click', () => {
 });
 showDelay();
 function showMic() {
+  if (!micButton) return;
   micButton.setAttribute('aria-pressed', String(mic));
   micButton.title = mic ? 'Recording the microphone too' : 'Record the microphone too';
 }
-micButton.addEventListener('click', () => { mic = !mic; showMic(); });
+micButton?.addEventListener('click', () => { mic = !mic; showMic(); });
 showMic();
-root.querySelector('.full')!.addEventListener('click', () => {
+root.querySelector('.full')?.addEventListener('click', () => {
   setRect({ x: 0, y: 0, width: display.width, height: display.height });
 });
+
+/** A window chosen to record, on every display's overlay, whichever was clicked. */
+function hold(target: ScreenWindow, tell: boolean) {
+  picked = target; held = true;
+  delete hint.dataset.error;
+  show();
+  if (tell && inTauri) void import('@tauri-apps/api/event').then(({ emit }) => emit('selection-window', { id: target.id }));
+}
 choices?.addEventListener('click', event => {
   const choice = (event.target as Element).closest<HTMLButtonElement>('.choice')?.dataset.choice as Choice | undefined;
   if (choice) choose(choice);
@@ -467,8 +498,13 @@ function choose(choice: Choice) {
   }
 }
 root.querySelector('.cancel')!.addEventListener('click', () => void cancel());
-root.querySelector('.go')!.addEventListener('click', () => void capture());
-root.querySelector('.copy')!.addEventListener('click', () => void capture(true));
+goButton.addEventListener('click', () => go());
+root.querySelector('.copy')?.addEventListener('click', () => void capture(true));
+/** Record, or Capture: the window chosen, or the region. */
+function go() {
+  if (mode === 'window') { if (picked && (held || !recording)) void captureWindow(picked); }
+  else void capture();
+}
 
 /** What a recording takes with it: that it is one, the microphone or not, and
  *  how it shows the pointer and clicks. */
@@ -516,8 +552,7 @@ document.addEventListener('keydown', event => {
   } else if (event.key === 'Enter') {
     event.preventDefault();
     if (typing) (event.target as HTMLInputElement).blur();
-    else if (mode === 'window') { if (picked) void captureWindow(picked); }
-    else void capture();
+    else go();
   } else if (mode === 'region' && !typing && event.key === 'a' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
     if (recording) choose('screen');
@@ -537,6 +572,10 @@ if (inTauri) {
     listen('selection-started', () => { if (!drag) { rect = null; show(); } }),
     listen<{ mode: Mode }>('selection-mode', event => setMode(event.payload.mode, false)),
     listen<Look>('selection-look', event => setLook(lookOf(event.payload), false)),
+    listen<{ id: number }>('selection-window', event => {
+      const chosen = windows.find(w => w.id === event.payload.id);
+      if (chosen && mode === 'window') hold(chosen, false);
+    }),
   ]));
 }
 if (mode === 'window' && pointer) picked = windowAt(...pointer);
