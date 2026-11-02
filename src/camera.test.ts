@@ -8,18 +8,18 @@ describe('zooms suggested from clicks', () => {
     // Two clicks a second apart, then one well after.
     const zooms = suggestZooms([[5, 5.1], [6, 6.1], [15, 15.2]], all);
     expect(zooms).toHaveLength(2);
-    expect(zooms[0]).toEqual({ start: 4.2, end: expect.closeTo(7.6, 5), scale: 2 });
-    expect(zooms[1].start).toBeCloseTo(14.2);
-    expect(zooms[1].end).toBeCloseTo(16.7);
+    expect(zooms[0]).toEqual({ start: 4, end: expect.closeTo(8.1, 5), scale: 1.5 });
+    expect(zooms[1].start).toBeCloseTo(14);
+    expect(zooms[1].end).toBeCloseTo(17.2);
   });
 
   it('stay inside what is kept, merge where they meet, and leave out clicks cut off', () => {
     expect(suggestZooms([[0.2, 0.3]], all)[0].start).toBe(0);
-    expect(suggestZooms([[29.5, 29.6]], all)[0].end).toBe(30);
+    expect(suggestZooms([[28.5, 28.6]], all)[0].end).toBe(30);
     expect(suggestZooms([[5, 5.1]], { start: 6, end: 30 })).toEqual([]);
-    // Clicks under 3 seconds apart are one burst; more, two.
+    // Clicks under 4 seconds apart are one burst; more, two.
     expect(suggestZooms([[5, 5.1], [8, 8.1]], all)).toHaveLength(1);
-    expect(suggestZooms([[5, 5.1], [8.3, 8.4]], all)).toHaveLength(2);
+    expect(suggestZooms([[5, 5.1], [9.3, 9.4]], all)).toHaveLength(2);
     // Overlapping zooms are one, at the closer level; touching ones stay two.
     expect(merge([{ start: 1, end: 4, scale: 2 }, { start: 3, end: 6, scale: 3 }])).toEqual([{ start: 1, end: 6, scale: 3 }]);
     expect(merge([{ start: 1, end: 4, scale: 2 }, { start: 4, end: 6, scale: 3 }])).toHaveLength(2);
@@ -30,11 +30,11 @@ describe('zooms suggested from clicks', () => {
 describe('zooms made and changed by hand', () => {
   it('can be added round the playhead where there is room', () => {
     const zooms = addZoom([], all, 10)!;
-    expect(zooms).toEqual([{ start: 9, end: 11, scale: 2 }]);
+    expect(zooms).toEqual([{ start: 9, end: 11, scale: 1.5 }]);
     // Not inside another, and squeezed between two if it can still go in and out.
     expect(addZoom(zooms, all, 10.5)).toBeNull();
     const between = addZoom([{ start: 4, end: 9, scale: 2 }, { start: 11.5, end: 14, scale: 2 }], all, 10)!;
-    expect(between[1]).toEqual({ start: 9, end: 11, scale: 2 });
+    expect(between[1]).toEqual({ start: 9, end: 11, scale: 1.5 });
     expect(addZoom([{ start: 4, end: 9.5, scale: 2 }, { start: 10.5, end: 14, scale: 2 }], all, 10)).toBeNull();
   });
 
@@ -75,7 +75,7 @@ describe('the camera', () => {
     const at = cameraAt(4, zooms, jump, canvas).x;
     expect(at).toBeGreaterThan(300 + 100);
     expect(at).toBeLessThan(700 - 100);
-    expect(cameraAt(4.5, zooms, jump, canvas).x).toBe(700);
+    expect(cameraAt(4.7, zooms, jump, canvas).x).toBe(700);
   });
 
   it('is sampled for Rust only through the zooms, ending on the whole picture', () => {

@@ -13,22 +13,23 @@ export interface Zoom { start: number; end: number; scale: number }
  *  copy comes out on, and how much closer than the whole of it. */
 export interface Camera { x: number; y: number; scale: number }
 
-/** How close a zoom may come; a new one comes to 2×. */
+/** How close a zoom may come; a new one comes to 1.5×, which reads as a
+ *  camera leaning in rather than a jump. */
 export const LEVELS = [1.5, 2, 3] as const;
-export const SCALE = 2;
-/** How long the picture takes to move in, and back out. */
-export const RAMP = 0.6;
+export const SCALE = 1.5;
+/** How long the picture takes to move in, and back out: unhurried. */
+export const RAMP = 0.9;
 /** A zoom is at least long enough to go in and come out. */
 export const SHORTEST_ZOOM = 2 * RAMP;
 /** A zoom suggested for a burst starts this long before its first click, so
  *  it is in by then, and ends this long after its last; clicks this close
- *  together are one burst. */
-const LEAD = 0.8;
-const HOLD = 1.5;
-const BURST = 3;
+ *  together are one burst, so the view stays in rather than bobbing. */
+const LEAD = 1;
+const HOLD = 2;
+const BURST = 4;
 /** The pointer is followed as it was over this long either side, so the view
  *  glides after it rather than shaking with every twitch. */
-const FOLLOW = 0.4;
+const FOLLOW = 0.6;
 /** Frames a second in the track Rust follows. */
 export const CAMERA_RATE = 30;
 

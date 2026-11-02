@@ -100,10 +100,10 @@ fn on_main<T: Send + 'static>(app: &AppHandle, work: impl FnOnce(&AppHandle) -> 
 /// recorded as a capture: None if it was thrown away, or Mark is quitting. On
 /// the capture thread, which it holds for the whole recording.
 pub fn record(app: &AppHandle, target: capture::Target, cancelled: &AtomicBool) -> Result<Option<capture::Capture>, String> {
-    let (mic, look) = {
+    let (mic, look, zoom) = {
         let prefs = app.state::<crate::Prefs>();
         let prefs = prefs.0.lock().unwrap();
-        (prefs.record_mic, prefs.look())
+        (prefs.record_mic, prefs.look(), prefs.record_zoom)
     };
     // Asked for here, before anything is on screen, the first time: macOS's
     // own question comes up while the overlay is gone and nothing is recording.
@@ -206,7 +206,7 @@ pub fn record(app: &AppHandle, target: capture::Target, cancelled: &AtomicBool) 
     let video = capture::Video { id, path: file.to_string_lossy().into_owned(), duration: info.duration, sound: info.sound };
     let pointer = track.into_iter().map(|(at, x, y)| (at, x * scale, y * scale)).collect();
     let gone = app.state::<State>().lock().unwrap().keep_video(Recorded {
-        id, folder, file, duration: info.duration, pixels: (info.width, info.height), scale, edited: None, pointer, presses, look,
+        id, folder, file, duration: info.duration, pixels: (info.width, info.height), scale, edited: None, pointer, presses, look, zoom,
     });
     for folder in gone { let _ = std::fs::remove_dir_all(folder); }
     Ok(Some(capture::Capture { png: poster, width: info.width, height: info.height, scale, video: Some(video) }))
@@ -480,17 +480,18 @@ fn with_pointer(drawn: Option<(movie::Drawn, u64)>, look: Option<Look>, found: &
 }
 
 /// Where the pointer went through a recording, in its pixels, and when the
-/// button went down and up, for the editor to draw over the movie -- and how
-/// the pointer and clicks were shown as it was made.
+/// button went down and up, for the editor to draw over the movie -- how the
+/// pointer and clicks were shown as it was made, and whether it was made to
+/// zoom in on its clicks.
 #[derive(Serialize)]
-pub struct Followed { track: Vec<(f64, f64, f64)>, presses: Vec<(f64, f64)>, look: Look }
+pub struct Followed { track: Vec<(f64, f64, f64)>, presses: Vec<(f64, f64)>, look: Look, zoom: bool }
 
 #[tauri::command]
 pub fn video_pointer(app: AppHandle, id: u64) -> Result<Followed, String> {
     let state = app.state::<State>();
     let mut session = state.lock().unwrap();
     let video = session.video(id).ok_or(GONE)?;
-    Ok(Followed { track: video.pointer.clone(), presses: video.presses.clone(), look: video.look })
+    Ok(Followed { track: video.pointer.clone(), presses: video.presses.clone(), look: video.look, zoom: video.zoom })
 }
 
 async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {

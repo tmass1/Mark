@@ -81,6 +81,8 @@ export interface SavedSettings {
   /** How a recording shows the pointer and clicks. */
   recordingPointer?: 'arrow' | 'halo' | 'touch' | 'hidden';
   recordingClicks?: 'rings' | 'ripple' | 'none';
+  /** Whether a recording opens with zooms round its clicks. */
+  recordZoom?: boolean;
   /** Whether Mark is in the Dock, or in the menu bar alone. */
   showInDock?: boolean;
   /** Whether Mark looks for updates by itself, and installs them without asking. */

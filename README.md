@@ -435,13 +435,15 @@ notarization; an Apple Development certificate is only good for this Mac.
     screen, choose **Record Video** from Mark's menu, or give it a shortcut in
     Settings. The overlay first asks what to record — **Region**, **Window**
     or **Screen**, or Space for a window and ⌘A for the screen — in a bar
-    along the bottom that holds everything a recording is set up with, as
-    macOS's own does: **×** to cancel, the three choices, the **microphone**
-    and the **delay**, both remembered, how the pointer and clicks show, and
-    **Record**. A region is dragged out as for a screenshot, with its size
-    beside it; a window is chosen with a click and stays chosen, outlined,
-    until another is clicked; and Record, or Return, records what is chosen,
-    so nothing starts before all of it is set. A window picked to record comes to the front with
+    that holds everything a recording is set up with, as macOS's own does:
+    **×** to cancel, the three choices, the **microphone** and the **delay**,
+    how the pointer and clicks show, **zoom in on clicks**, all remembered,
+    and **Record**. A region is dragged out as for a screenshot, its size over
+    it; a window is chosen with a click and stays chosen, outlined, until
+    another is clicked; and Record, or Return, records what is chosen, so
+    nothing starts before all of it is set. The bar sits just under what is
+    chosen, where the eye already is — over it if there is no room — and
+    above the Dock until then, smaller only on a screen too narrow for it. A window picked to record comes to the front with
     its app as recording starts, so it can be used while it is recorded; it
     is recorded whole even if something later covers it.
     While it records, a small bar sits just outside what is being recorded,
@@ -495,8 +497,10 @@ notarization; an Apple Development certificate is only good for this Mac.
     every frame, since what is under it moves; the editor shows a block where
     it will be. Copy, Save, GIF and Share draw the marks into the movie.
     **Zooms** move the picture in around what is clicked, as a walkthrough
-    wants: a recording opens with one round each burst of clicks — in just
-    before the first, out a moment after the last — following the pointer
+    wants. Recorded with **zoom in on clicks** on — the magnifier in the bar,
+    or Settings; off until chosen — a recording opens with a gentle 1.5× zoom
+    round each burst of clicks — in just before the first, out a moment after
+    the last — following the pointer
     smoothly while it is in, and never past the edge of the picture. Each is a
     violet band along the foot of the strip: drag its ends, click it for
     **1.5×**, **2×**, **3×** or **Remove**, and press the magnifier beside ✂︎,

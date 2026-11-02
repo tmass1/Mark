@@ -645,8 +645,9 @@ const RIPPLE = 30;
 /** A ripple's ring, as a share of its widest radius. */
 const RIPPLE_STROKE = 0.08;
 /** Where the picture moves in, in order, apart: null until the recording's
- *  clicks are known, when they suggest some -- and then whatever is made of
- *  them, none at all included. Which one is picked on the strip, if any. */
+ *  clicks are known -- when, if it was made to zoom in on them, they suggest
+ *  some -- and then whatever is made of them, none at all included. Which one
+ *  is picked on the strip, if any. */
 let zooms: Zoom[] | null = null;
 let pickedZoom: number | null = null;
 /** Which GIF the menu makes: full size, or small, for a chat. Remembered, as
@@ -1413,7 +1414,7 @@ async function loadFrames(id: number) {
  *  and how the pointer and clicks show: as they were left, or as it was made. */
 async function loadPointer(id: number, keep?: PointerAndClicks) {
   pointerFor = id;
-  const found = await command<{ track: [number, number, number][]; presses: [number, number][]; look: PointerAndClicks }>('video_pointer', { id })
+  const found = await command<{ track: [number, number, number][]; presses: [number, number][]; look: PointerAndClicks; zoom?: boolean }>('video_pointer', { id })
     .catch(() => null);
   if (pointerFor !== id || !found) return;
   pointerTrack = found.track;
@@ -1421,7 +1422,9 @@ async function loadPointer(id: number, keep?: PointerAndClicks) {
   recordedLook = lookOf(found.look);
   pointerLook = keep ?? recordedLook;
   const video = capture?.video;
-  if (zooms === null && video) zooms = suggestZooms(presses, trim ?? everything(video.duration));
+  // Made to zoom in on its clicks, it opens with a zoom round each burst;
+  // otherwise with none, any added by hand.
+  if (zooms === null && video) zooms = found.zoom ? suggestZooms(presses, trim ?? everything(video.duration)) : [];
   drawTrim();
 }
 

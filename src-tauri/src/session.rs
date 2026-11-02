@@ -64,6 +64,8 @@ pub struct Recorded {
     pub pointer: Vec<(f64, f64, f64)>,
     pub presses: Vec<(f64, f64)>,
     pub look: crate::settings::Look,
+    /// Whether it was made to open with zooms round its clicks.
+    pub zoom: bool,
 }
 
 /// As many recordings as the editor could ask for: Recent's six, and the one open.
@@ -215,7 +217,7 @@ mod tests {
             let id = session.next_video_id();
             dropped.extend(session.keep_video(Recorded { id, folder: format!("/r/{id}").into(), file: format!("/r/{id}/m.mp4").into(),
                                                          duration: 1.0, pixels: (2, 2), scale: 1.0, edited: None, pointer: vec![], presses: vec![],
-                                                         look: Default::default() }));
+                                                         look: Default::default(), zoom: false }));
         }
         assert_eq!(session.videos.iter().map(|v| v.id).collect::<Vec<_>>(), [3, 4, 5, 6, 7, 8, 9]);
         assert_eq!(dropped, [PathBuf::from("/r/1"), PathBuf::from("/r/2")]);

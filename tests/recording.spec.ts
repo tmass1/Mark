@@ -460,7 +460,7 @@ test('a click chooses the window to record, and Record or Return records it with
   await expect(page.locator('.delay')).toHaveText('3s');
   await page.locator('.go').click();
   expect((await waitFor(page, 'capture_window')).args)
-    .toEqual({ id: 11, delay: 3, copy: false, record: true, mic: true, pointer: 'arrow', clicks: 'rings' });
+    .toEqual({ id: 11, delay: 3, copy: false, record: true, mic: true, pointer: 'arrow', clicks: 'rings', zoom: false });
 });
 
 test('Return records the window chosen, and the bar holds everything a recording is set up with', async ({ page }) => {
@@ -509,7 +509,7 @@ test('the bar says how the pointer and clicks will show, and its menu changes th
   await page.mouse.click(200, 150);
   await page.keyboard.press('Enter');
   expect((await waitFor(page, 'capture_window')).args)
-    .toEqual({ id: 11, delay: 0, copy: false, record: true, mic: false, pointer: 'hidden', clicks: 'rings' });
+    .toEqual({ id: 11, delay: 0, copy: false, record: true, mic: false, pointer: 'hidden', clicks: 'rings', zoom: false });
 });
 
 test('a recording is of a region, a window or the screen, chosen up front', async ({ page }) => {
@@ -543,10 +543,11 @@ test('a recording is of a region, a window or the screen, chosen up front', asyn
   await choice('Screen').click();
   await expect(choice('Screen')).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('.go')).toBeVisible();
-  // The panel never sits over the choices.
-  const panel = (await page.locator('.panel').boundingBox())!;
+  // A recording is set up in its bar alone, its size said over it.
+  await expect(page.locator('.panel')).toBeHidden();
+  await expect(page.locator('.readout')).toBeVisible();
   const bar = (await page.locator('.choices').boundingBox())!;
-  expect(panel.y + panel.height).toBeLessThanOrEqual(bar.y);
+  expect(bar.y + bar.height).toBeLessThanOrEqual(page.viewportSize()!.height);
 
   // Region again: back to choosing part of it.
   await choice('Region').click();
@@ -613,6 +614,36 @@ test('Settings offers Record Video and the recording options on a Mac that can r
   await expect(page.locator('.record-mic')).toBeChecked();
 });
 
+test('zooming in on clicks is chosen in the bar before recording, off until it is', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await picking(page, false, 'window');
+  const zoom = page.locator('.choices').getByRole('button', { name: 'Zoom in on clicks' });
+  await expect(zoom).toHaveAttribute('aria-pressed', 'false');
+  await zoom.click();
+  await expect(zoom).toHaveAttribute('aria-pressed', 'true');
+  await page.mouse.click(200, 150);
+  // Chosen, the bar glides to just under the window, where the eye already is.
+  const pick = (await page.locator('.pick').boundingBox())!;
+  await expect.poll(async () => {
+    const bar = (await page.locator('.choices').boundingBox())!;
+    return [bar.y > pick.y + pick.height && bar.y < pick.y + pick.height + 40, bar.x < pick.x + pick.width && bar.x + bar.width > pick.x];
+  }).toEqual([true, true]);
+  await page.keyboard.press('Enter');
+  expect((await waitFor(page, 'capture_window')).args).toMatchObject({ id: 11, zoom: true });
+});
+
+test('Settings turns zooming in on clicks on for the next recording', async ({ page }) => {
+  const saved = { appearance: 'dark', shortcut: 'Super+Digit4' };
+  await installBridge(page, { returns: { get_settings: saved, login_enabled: false, recording_supported: true,
+                                          set_record_options: { ...saved, recordZoom: true } } });
+  await page.goto('/settings.html');
+  const zoom = page.getByRole('checkbox', { name: 'Zoom in on clicks' });
+  await expect(zoom).not.toBeChecked({ timeout: 15_000 });
+  await zoom.check();
+  expect((await waitFor(page, 'set_record_options')).args).toEqual({ zoom: true });
+  await expect(zoom).toBeChecked();
+});
+
 test('Settings chooses how a recording shows the pointer and clicks', async ({ page }) => {
   const saved = { appearance: 'dark', shortcut: 'Super+Digit4', recordingPointer: 'arrow', recordingClicks: 'none' };
   await installBridge(page, { returns: { get_settings: saved, login_enabled: false, recording_supported: true,
@@ -632,9 +663,9 @@ test('Settings chooses how a recording shows the pointer and clicks', async ({ p
 
 /** A recording whose pointer Mark followed through the middle of the picture,
  *  made as `look` says, with the button down from 0:06 to 0:07. */
-async function followed(page: Page, look: object, track = Array.from({ length: 121 }, (_, i) => [i / 10, 120, 80])) {
+async function followed(page: Page, look: object, track = Array.from({ length: 121 }, (_, i) => [i / 10, 120, 80]), zoom = true) {
   await installBridge(page, { capture: VIDEO, returns: { recording_supported: true, video_frames: [CAPTURE.dataUrl],
-                                                          video_pointer: { track, presses: [[6, 7]], look } } });
+                                                          video_pointer: { track, presses: [[6, 7]], look, zoom } } });
   await page.goto('/');
   await expect(page.locator('.trim')).toBeVisible({ timeout: 15_000 });
 }
@@ -736,17 +767,17 @@ test('a recording can be framed too, in a phone, and every copy is sent the fram
 
 test('a zoom is suggested round the clicks, shown on the strip, and its level changed or taken away', async ({ page }) => {
   await followed(page, { pointer: 'touch', clicks: 'ripple' });
-  // Pressed from 0:06 to 0:07: in from 0:05.2, out by 0:08.5.
+  // Pressed from 0:06 to 0:07: in from 0:05, out by 0:09, a gentle 1.5×.
   const band = page.locator('.zoom-band');
   await expect(band).toHaveCount(1);
-  await expect(band).toHaveText('2×');
+  await expect(band).toHaveText('1.5×');
   const [box, strip] = [(await band.boundingBox())!, (await page.locator('.strip').boundingBox())!];
-  expect((box.x - strip.x) / strip.width).toBeCloseTo(5.2 / 12, 2);
-  expect(box.width / strip.width).toBeCloseTo(3.3 / 12, 2);
+  expect((box.x - strip.x) / strip.width).toBeCloseTo(5 / 12, 2);
+  expect(box.width / strip.width).toBeCloseTo(4 / 12, 2);
   await band.click();
   const menu = page.getByRole('menu', { name: 'Zoom' });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole('menuitemradio', { name: '2×' })).toHaveAttribute('aria-checked', 'true');
+  await expect(menu.getByRole('menuitemradio', { name: '1.5×' })).toHaveAttribute('aria-checked', 'true');
   await menu.getByRole('menuitemradio', { name: '3×' }).click();
   await expect(band).toHaveText('3×');
   await expect(menu).toBeHidden();
@@ -754,7 +785,7 @@ test('a zoom is suggested round the clicks, shown on the strip, and its level ch
   await clear(page);
   await page.keyboard.press('Meta+c');
   const { camera } = (await waitFor(page, 'copy_video')).args.marks as { camera: number[][] };
-  expect(camera[0]).toEqual([5.2, 120, 80, 1]);
+  expect(camera[0]).toEqual([5, 120, 80, 1]);
   expect(Math.max(...camera.map(sample => sample[3]))).toBe(3);
   await band.click();
   await menu.getByRole('menuitem', { name: 'Remove' }).click();
@@ -775,9 +806,9 @@ test('Z zooms in at the playhead, and paused, an outline shows what the camera t
   await page.keyboard.press('z');
   await expect(page.locator('.zoom-band')).toHaveCount(2);
   await expect(page.locator('.camera-view')).toBeVisible();
-  // At 2×, with the pointer in the middle of the picture, half of it, centred.
+  // At 1.5×, with the pointer in the middle of the picture, two thirds of it, centred.
   const [view, stage] = [(await page.locator('.camera-view').boundingBox())!, (await page.locator('.stage').boundingBox())!];
-  expect(view.width).toBeCloseTo(stage.width / 2, -1);
+  expect(view.width).toBeCloseTo(stage.width / 1.5, -1);
   expect(view.x + view.width / 2).toBeCloseTo(stage.x + stage.width / 2, -1);
   expect(view.y + view.height / 2).toBeCloseTo(stage.y + stage.height / 2, -1);
   // Nowhere to put one inside another.
@@ -785,6 +816,15 @@ test('Z zooms in at the playhead, and paused, an outline shows what the camera t
   await expect(page.locator('.zoom-band')).toHaveCount(2);
   await seek(page, 0.05);                                   // outside them all
   await expect(page.locator('.camera-view')).toBeHidden();
+});
+
+test('a recording made without zooming in on clicks opens with no zooms, though one can be added', async ({ page }) => {
+  await followed(page, { pointer: 'touch', clicks: 'ripple' }, undefined, false);
+  await waitFor(page, 'video_pointer');
+  await expect(page.locator('.zoom-band')).toHaveCount(0);
+  await seek(page, 0.25);
+  await page.keyboard.press('z');
+  await expect(page.locator('.zoom-band')).toHaveCount(1);
 });
 
 test('no pointer menu for a recording whose pointer wasn\'t followed', async ({ page }) => {

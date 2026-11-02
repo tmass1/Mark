@@ -23,8 +23,11 @@ declare global {
     __MARK_KIND__?: 'shot' | 'video';
     /** For a recording, whether the microphone was on last time. */
     __MARK_MIC__?: boolean;
-    /** And how the pointer and clicks were shown. */
+    /** And how the pointer and clicks were shown, and whether it zoomed in on clicks. */
     __MARK_LOOK__?: Look | null;
+    __MARK_ZOOM__?: boolean;
+    /** What of this display is free of the menu bar and the Dock, in its own points. */
+    __MARK_WORK__?: { x: number; y: number; width: number; height: number };
   }
 }
 const display = window.__MARK_DISPLAY__ ?? { x: 0, y: 0, width: innerWidth, height: innerHeight, scale: 1 };
@@ -96,6 +99,10 @@ root.innerHTML = `
       <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.6 6 7.6l3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div class="look-menu" role="menu" aria-label="Pointer and clicks" hidden></div>
+    <button class="zoom-toggle icon" type="button" aria-pressed="false" aria-label="Zoom in on clicks" title="Zoom in on clicks">
+      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8.6" cy="8.6" r="5.2"/><path d="M12.4 12.4 16.4 16.4M8.6 6.4v4.4M6.4 8.6h4.4"/></svg>
+    </button>
     <button class="go" type="button"><span class="dot" aria-hidden="true"></span>Record</button></div>` : ''}
   <div class="panel" hidden>
     <label class="field">Width <input class="w" type="number" min="1" step="1" /></label>
@@ -130,6 +137,13 @@ const lock = root.querySelector<HTMLButtonElement>('.lock')!;
 const delayButton = root.querySelector<HTMLButtonElement>('.delay')!;
 const micButton = root.querySelector<HTMLButtonElement>('.mic');
 const goButton = root.querySelector<HTMLButtonElement>('.go')!;
+const zoomToggle = root.querySelector<HTMLButtonElement>('.zoom-toggle');
+/** Where the bar may go: clear of the menu bar and the Dock. */
+const work = (() => {
+  const given = window.__MARK_WORK__;
+  const sound = given && [given.x, given.y, given.width, given.height].every(Number.isFinite) && given.width > 0 && given.height > 0;
+  return sound ? given : { x: 0, y: 0, width: display.width, height: display.height };
+})();
 const choices = root.querySelector<HTMLElement>('.choices');
 const lookButton = root.querySelector<HTMLButtonElement>('.look-button');
 const lookMenu = root.querySelector<HTMLElement>('.look-menu');
@@ -149,6 +163,9 @@ let mic = recording && window.__MARK_MIC__ === true;
 /** How a recording shows the pointer and clicks: as the last one did, until
  *  the bar's menu changes it. */
 let look = lookOf(window.__MARK_LOOK__);
+/** Whether it opens with zooms round its clicks, as the last one did, until
+ *  the bar's switch changes it. */
+let zoom = recording && window.__MARK_ZOOM__ === true;
 let mode: Mode = window.__MARK_MODE__ === 'window' ? 'window' : 'region';
 /** A recording starts by asking what it is of -- a region, a window or the
  *  screen -- with nothing to aim yet: no crosshair, no guides, and a press on
@@ -201,6 +218,11 @@ const whole = () => rect !== null && rect.x <= 0 && rect.y <= 0
   && rect.width >= display.width - 0.5 && rect.height >= display.height - 0.5;
 
 function show() {
+  layout();
+  placeBar();
+}
+
+function layout() {
   hint.textContent = hint.dataset.error
     ?? (choosing ? CHOOSE_HINT : held ? 'Record, or press Return, to record it · Click another window to switch' : HINTS[mode]);
   // A recording's Record waits for something to record.
@@ -228,7 +250,8 @@ function show() {
   if (mode === 'window') {
     veil.hidden = false;
     shot.hidden = panel.hidden = readout.hidden = true;
-    hint.hidden = false;
+    // Chosen to record, the bar beside it says what to do.
+    hint.hidden = recording && held && !hint.dataset.error;
     guideX.hidden = guideY.hidden = true;
     if (picked) placePick(picked);
     return;
@@ -237,8 +260,9 @@ function show() {
   veil.hidden = has;
   shot.hidden = !has;
   hint.hidden = has || drag !== null;
-  panel.hidden = !has || drag !== null;
-  readout.hidden = !has || drag === null;
+  // A recording is set up in its bar, its size said over it as it stands.
+  panel.hidden = recording || !has || drag !== null;
+  readout.hidden = !has || (drag === null && !recording);
   if (!rect) return;
   Object.assign(shot.style, { left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.width}px`, height: `${rect.height}px` });
   const w = Math.round(rect.width), h = Math.round(rect.height);
@@ -250,6 +274,52 @@ function show() {
   if (document.activeElement !== widthField) widthField.value = String(w);
   if (document.activeElement !== heightField) heightField.value = String(h);
   if (!panel.hidden) placePanel();
+}
+
+/** A recording's bar: in the middle while it asks what to record; then beside
+ *  what is chosen -- under it, over it, or inside its foot -- and before
+ *  anything is, along the foot of the screen, above the Dock: where the eye
+ *  already is, rather than out of the way. */
+function placeBar() {
+  if (!choices) return;
+  const style = choices.style;
+  const margin = 12;
+  // Narrower than the bar, a screen gets it smaller rather than cut off.
+  const room = (work.width - 2 * margin) / Math.max(choices.offsetWidth, 1);
+  const fit = Math.min(1, room);
+  if (choosing) {
+    for (const element of [choices, hint]) element.style.left = element.style.top = element.style.bottom = element.style.transform = '';
+    style.transformOrigin = '';
+    // In the middle, a little larger than it will sit, room allowing.
+    if (room < 1.1) style.transform = `translate(-50%, 50%) scale(${room})`;
+    choices.classList.remove('opens-down');
+    return;
+  }
+  const chosenBox = mode === 'window'
+    ? (held && picked ? { x: picked.x - display.x, y: picked.y - display.y, width: picked.width, height: picked.height } : null)
+    : (rect && rect.width >= 1 && rect.height >= 1 && drag === null ? rect : null);
+  const width = choices.offsetWidth * fit, height = choices.offsetHeight * fit;
+  const gap = 16;
+  const floor = work.y + work.height - margin, ceiling = work.y + margin;
+  let left: number, top: number;
+  if (chosenBox) {
+    // What of it is on this display: a window can hang off the edge.
+    const x = Math.max(chosenBox.x, 0), y = Math.max(chosenBox.y, 0);
+    const right = Math.min(chosenBox.x + chosenBox.width, display.width), bottom = Math.min(chosenBox.y + chosenBox.height, display.height);
+    left = (x + right) / 2 - width / 2;
+    const below = bottom + gap, above = y - gap - height;
+    top = below + height <= floor ? below : above >= ceiling ? above : Math.min(bottom, floor) - gap - height;
+  } else {
+    left = work.x + work.width / 2 - width / 2;
+    top = floor - height - 12;
+  }
+  left = Math.min(Math.max(left, work.x + margin), work.x + work.width - width - margin);
+  top = Math.min(Math.max(top, ceiling), floor - height);
+  Object.assign(style, { left: `${left}px`, top: `${top}px`, bottom: 'auto', transformOrigin: '0 0', transform: fit < 1 ? `scale(${fit})` : 'none' });
+  // A menu opens towards the middle of the screen.
+  choices.classList.toggle('opens-down', top + height / 2 < display.height / 2);
+  // The hint, while there is one, just over the bar.
+  Object.assign(hint.style, { left: `${left + width / 2}px`, top: `${Math.max(ceiling, top - 12 - hint.offsetHeight)}px`, bottom: 'auto' });
 }
 
 /** Below the selection when there is room, above it otherwise, and inside as a
@@ -439,6 +509,17 @@ root.querySelector('.full')?.addEventListener('click', () => {
   setRect({ x: 0, y: 0, width: display.width, height: display.height });
 });
 
+function showZoom() {
+  if (!zoomToggle) return;
+  zoomToggle.setAttribute('aria-pressed', String(zoom));
+  zoomToggle.title = zoom ? 'Zooming in on clicks: the editor can still change each zoom' : 'Zoom in on clicks';
+}
+zoomToggle?.addEventListener('click', () => {
+  zoom = !zoom; showZoom();
+  if (inTauri) void import('@tauri-apps/api/event').then(({ emit }) => emit('selection-zoom', { zoom }));
+});
+showZoom();
+
 /** A window chosen to record, on every display's overlay, whichever was clicked. */
 function hold(target: ScreenWindow, tell: boolean) {
   picked = target; held = true;
@@ -506,9 +587,9 @@ function go() {
   else void capture();
 }
 
-/** What a recording takes with it: that it is one, the microphone or not, and
- *  how it shows the pointer and clicks. */
-const asRecording = () => (recording ? { record: true, mic, pointer: look.pointer, clicks: look.clicks } : {});
+/** What a recording takes with it: that it is one, the microphone or not, how
+ *  it shows the pointer and clicks, and whether it zooms in on them. */
+const asRecording = () => (recording ? { record: true, mic, pointer: look.pointer, clicks: look.clicks, zoom } : {});
 
 /** `copy`: straight to the clipboard, without opening the editor. A recording
  *  is never copied from here: it has not been made yet. */
@@ -572,6 +653,7 @@ if (inTauri) {
     listen('selection-started', () => { if (!drag) { rect = null; show(); } }),
     listen<{ mode: Mode }>('selection-mode', event => setMode(event.payload.mode, false)),
     listen<Look>('selection-look', event => setLook(lookOf(event.payload), false)),
+    listen<{ zoom: boolean }>('selection-zoom', event => { zoom = event.payload.zoom === true; showZoom(); }),
     listen<{ id: number }>('selection-window', event => {
       const chosen = windows.find(w => w.id === event.payload.id);
       if (chosen && mode === 'window') hold(chosen, false);

@@ -21,6 +21,8 @@ interface Settings {
   recordMic?: boolean;
   recordingPointer?: PointerLook;
   recordingClicks?: ClickLook;
+  /** Whether a recording opens with zooms round its clicks. */
+  recordZoom?: boolean;
   /** Whether Mark is in the Dock, or in the menu bar alone. */
   showInDock?: boolean;
 }
@@ -87,6 +89,8 @@ root.innerHTML = `
           ${CLICKS.map(choice => `<option value="${choice.id}">${choice.name}</option>`).join('')}</select>${CHEVRON}</span></label>
       </div>
       <p class="pref-hint" id="record-look-hint">Touch shows a fingertip, for a phone prototype; Halo a soft glow round the arrow. The bar beside Record changes them too, and the editor changes Halo, Touch and Ripple afterwards.</p>
+      <label class="check"><input class="record-zoom" type="checkbox" aria-describedby="record-zoom-hint" /> Zoom in on clicks</label>
+      <p class="pref-hint" id="record-zoom-hint">A recording opens with the picture moving in gently round each burst of clicks. The bar beside Record turns it on and off too, and the editor changes or removes each zoom.</p>
       <p class="pref-note record-note" role="status" hidden></p>
     </div>
   </section>
@@ -148,6 +152,7 @@ const mcpNote = root.querySelector<HTMLElement>('.mcp-note')!;
 const recordMic = root.querySelector<HTMLInputElement>('.record-mic')!;
 const recordPointer = root.querySelector<HTMLSelectElement>('.record-pointer')!;
 const recordClicks = root.querySelector<HTMLSelectElement>('.record-clicks')!;
+const recordZoom = root.querySelector<HTMLInputElement>('.record-zoom')!;
 const recordNote = root.querySelector<HTMLElement>('.record-note')!;
 let current: Settings = { appearance: 'dark', shortcut: DEFAULT_SHORTCUT };
 /** The recorder listening for keys, if one is. */
@@ -178,6 +183,7 @@ function show(settings: Settings) {
   const look = lookOf({ pointer: settings.recordingPointer, clicks: settings.recordingClicks });
   recordPointer.value = look.pointer;
   recordClicks.value = look.clicks;
+  recordZoom.checked = settings.recordZoom === true;
   placeLens();
 }
 
@@ -284,7 +290,7 @@ mcp.addEventListener('change', () => {
     .catch(error => { note(mcpNote, String(error)); mcp.checked = current.mcp !== false; });
 });
 
-const recordOptions = [[recordMic, 'mic'], [recordPointer, 'pointer'], [recordClicks, 'clicks']] as const;
+const recordOptions = [[recordMic, 'mic'], [recordPointer, 'pointer'], [recordClicks, 'clicks'], [recordZoom, 'zoom']] as const;
 for (const [control, option] of recordOptions) {
   control.addEventListener('change', () => {
     note(recordNote, null);

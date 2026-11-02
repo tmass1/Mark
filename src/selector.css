@@ -129,31 +129,32 @@ html[data-kind="video"] .go:hover { background: var(--record-hover) !important; 
 /* What to record -- a region, a window, the screen -- along the bottom of the
    display, as in macOS's own recording toolbar, with the hint above it. */
 .choices {
-  position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); display: flex; gap: 4px; padding: 5px;
-  border-radius: 16px; background: var(--panel); cursor: default;
-  box-shadow: 0 18px 44px #00000080, inset 0 0 0 .5px var(--control-line);
+  position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 7px;
+  border-radius: 20px; background: var(--panel); cursor: default; font-size: 14px;
+  box-shadow: 0 22px 54px #00000080, inset 0 0 0 .5px var(--control-line);
 }
 .choice {
-  display: flex; align-items: center; gap: 8px; padding: 7px 14px 7px 11px; border: none; border-radius: 11px;
+  display: flex; align-items: center; gap: 9px; padding: 10px 17px 10px 14px; border: none; border-radius: 14px;
   background: transparent; color: var(--muted); font: inherit; font-weight: 500; cursor: default;
 }
-.choice svg { width: 20px; height: 20px; }
+.choice svg { width: 22px; height: 22px; }
 .choice:hover { color: var(--ink); background: var(--control); }
 .choice[aria-checked="true"] { color: var(--ink); background: var(--control-hover); box-shadow: inset 0 0 0 .5px var(--control-line); }
 .choice:focus-visible { outline: 2.5px solid var(--blue); outline-offset: 1px; }
 .choice-set { display: contents; }
 /* A recording's bar holds all of it, as macOS's own does: cancel, what to
    record, the microphone, the delay, the pointer and clicks, and Record. */
-.choices .cancel, .choices .mic, .choices .delay {
-  display: flex; align-items: center; gap: 6px; padding: 7px 10px; border: none; border-radius: 11px;
+.choices .cancel, .choices .mic, .choices .delay, .choices .zoom-toggle {
+  display: flex; align-items: center; gap: 6px; padding: 10px 12px; border: none; border-radius: 14px;
   background: transparent; color: var(--muted); font: inherit; cursor: default;
 }
-.choices .cancel svg, .choices .mic svg, .choices .delay svg { display: block; width: 20px; height: 20px; }
-.choices .cancel:hover, .choices .mic:hover, .choices .delay:hover { color: var(--ink); background: var(--control); }
-.choices .mic[aria-pressed="true"], .choices .delay.armed { color: #fff; background: var(--blue); }
-.choices .cancel:focus-visible, .choices .mic:focus-visible, .choices .delay:focus-visible { outline: 2.5px solid var(--blue); outline-offset: 1px; }
+.choices .cancel svg, .choices .mic svg, .choices .delay svg, .choices .zoom-toggle svg { display: block; width: 22px; height: 22px; }
+.choices .cancel:hover, .choices .mic:hover, .choices .delay:hover, .choices .zoom-toggle:hover { color: var(--ink); background: var(--control); }
+.choices .mic[aria-pressed="true"], .choices .delay.armed, .choices .zoom-toggle[aria-pressed="true"] { color: #fff; background: var(--blue); }
+.choices .cancel:focus-visible, .choices .mic:focus-visible, .choices .delay:focus-visible, .choices .zoom-toggle:focus-visible {
+  outline: 2.5px solid var(--blue); outline-offset: 1px; }
 .choices .go {
-  display: flex; align-items: center; gap: 8px; margin-left: 4px; padding: 7px 16px 7px 14px; border: none; border-radius: 11px;
+  display: flex; align-items: center; gap: 9px; margin-left: 6px; padding: 10px 20px 10px 17px; border: none; border-radius: 14px;
   color: #fff; font: inherit; font-weight: 600; cursor: default; box-shadow: inset 0 1px 0 #ffffff2b;
 }
 .choices .go:disabled { opacity: .4; }
@@ -166,10 +167,10 @@ html[data-kind="video"] .go:hover { background: var(--record-hover) !important; 
    its Options: the pointer's picture and both choices named, so what will be
    recorded is plain before Record. */
 .look-button {
-  display: flex; align-items: center; gap: 7px; padding: 7px 10px 7px 10px; border: none; border-radius: 11px;
+  display: flex; align-items: center; gap: 8px; padding: 10px 13px; border: none; border-radius: 14px;
   background: transparent; color: var(--muted); font: inherit; font-weight: 500; cursor: default; white-space: nowrap;
 }
-.look-button .look-art svg { display: block; width: 20px; height: 20px; }
+.look-button .look-art svg { display: block; width: 22px; height: 22px; }
 .look-button .chevron { width: 12px; height: 12px; opacity: .8; }
 .look-button:hover, .look-button[aria-expanded="true"] { color: var(--ink); background: var(--control); }
 .look-button:focus-visible { outline: 2.5px solid var(--blue); outline-offset: 1px; }
@@ -180,17 +181,17 @@ html[data-kind="video"] .go:hover { background: var(--record-hover) !important; 
   position: absolute; z-index: 2; right: 0; bottom: calc(100% + 8px); min-width: 300px; padding: 5px; border-radius: 13px;
   background: var(--panel); box-shadow: 0 18px 44px #00000080, inset 0 0 0 .5px var(--control-line);
 }
-html[data-mode="choose"] .look-menu { bottom: auto; top: calc(100% + 8px); }
+html[data-mode="choose"] .look-menu, .choices.opens-down .look-menu { bottom: auto; top: calc(100% + 8px); }
 html.look-open .hint { visibility: hidden; }
 html[data-kind="video"] .hint { bottom: 104px; }
 /* Before anything is chosen there is nothing to aim, so no crosshair, and the
    choice is the one thing on screen: in the middle of it, larger. Once one is
    made, the choices go down to the bottom, out of the way but there to change. */
 html[data-mode="choose"] body { cursor: default; }
-html[data-mode="choose"] .choices { bottom: 50%; transform: translate(-50%, 50%) scale(1.25); }
+html[data-mode="choose"] .choices { bottom: 50%; transform: translate(-50%, 50%) scale(1.1); }
 html[data-mode="choose"] .hint { bottom: calc(50% + 50px); }
 @media (prefers-reduced-motion: no-preference) {
-  .choices { transition: bottom .28s cubic-bezier(.22, 1, .36, 1), transform .28s cubic-bezier(.22, 1, .36, 1); }
+  .choices { transition: bottom .28s cubic-bezier(.22, 1, .36, 1), transform .28s cubic-bezier(.22, 1, .36, 1), top .22s ease-out, left .22s ease-out; }
 }
 .gap { width: 2px; }
 
