@@ -3,12 +3,13 @@
 //! Which appearance the windows take, which keys start a capture, what follows
 //! a capture, whether Mark looks for updates by itself and which version it was
 //! told to skip, how a capture is framed, whether AI tools may ask for a
-//! screenshot, whether a recording takes in the microphone and shows clicks,
-//! and -- read from macOS rather than stored -- whether Mark opens at login. The file
+//! screenshot, whether a recording takes in the microphone and how it shows
+//! the pointer and clicks, and -- read from macOS rather than stored -- whether
+//! Mark opens at login. The file
 //! is written only when a setting changes, so a Mark that has never been
 //! configured has written nothing.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -45,13 +46,59 @@ pub struct Settings {
     /// Whether a screen recording takes in the microphone too: off until
     /// turned on, in the overlay or here, and remembered after.
     pub record_mic: bool,
-    /// Whether a screen recording shows where the pointer clicked.
+    /// Whether a screen recording shows macOS's rings where the pointer
+    /// clicked. What Marks before 0.9 read; kept in step with `recording_clicks`.
     pub record_clicks: bool,
-    /// Whether a screen recording shows the pointer at all.
-    pub record_pointer: bool,
-    /// Whether a new recording starts with a halo following the pointer, which
-    /// the editor can turn off or on for each.
-    pub record_highlight: bool,
+    /// How a new recording shows the pointer, chosen in the overlay or here.
+    #[serde(deserialize_with = "or_default")]
+    pub recording_pointer: PointerLook,
+    /// And how it shows clicks. A file without it goes by `record_clicks`.
+    #[serde(deserialize_with = "or_default")]
+    pub recording_clicks: ClickLook,
+}
+
+/// How a recording shows the pointer. The arrow is the Mac's own, which macOS
+/// records into the movie; the halo, the fingertip and nothing are the movie
+/// without it, Mark drawing what is wanted over it from where it followed the
+/// pointer, so a recording can change between them afterwards.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PointerLook {
+    #[default] Arrow,
+    /// The arrow with a soft yellow glow following it.
+    Halo,
+    /// A fingertip, for a phone prototype: faint where the pointer rests,
+    /// pressed in while the button is down.
+    Touch,
+    Hidden,
+}
+
+/// How a recording shows clicks: macOS's own rings, recorded into the movie,
+/// or Mark's ripple, drawn over it from when the button went down.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ClickLook {
+    #[default] Rings,
+    Ripple,
+    #[serde(rename = "none")] Hidden,
+}
+
+/// The pointer and clicks together, as a recording has them and as the
+/// editor asks for them in a copy.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Look { pub pointer: PointerLook, pub clicks: ClickLook }
+
+impl Look {
+    /// Whether macOS records the arrow into the movie, and its rings.
+    pub fn arrow(self) -> bool { matches!(self.pointer, PointerLook::Arrow | PointerLook::Halo) }
+    pub fn rings(self) -> bool { self.clicks == ClickLook::Rings }
+}
+
+/// A value this Mark doesn't know -- a hand edit, a later Mark's -- is the
+/// default, rather than a file that no longer reads at all.
+fn or_default<'de, D: Deserializer<'de>, T: Deserialize<'de> + Default>(deserializer: D) -> Result<T, D::Error> {
+    Ok(T::deserialize(serde_json::Value::deserialize(deserializer)?).unwrap_or_default())
 }
 
 impl Default for Settings {
@@ -59,7 +106,7 @@ impl Default for Settings {
         Settings { appearance: "dark".into(), shortcut: DEFAULT_SHORTCUT.into(), shortcuts: Shortcuts::default(),
                    check_updates: true, install_updates: false, skipped_version: None, frame: Frame::default(),
                    after_capture: "editor".into(), mcp: true, record_mic: false, record_clicks: true,
-                   record_pointer: true, record_highlight: false }
+                   recording_pointer: PointerLook::Arrow, recording_clicks: ClickLook::Rings }
     }
 }
 
@@ -67,6 +114,13 @@ impl Settings {
     pub fn appearance_is_valid(name: &str) -> bool { matches!(name, "dark" | "light" | "system") }
     pub fn after_capture_is_valid(name: &str) -> bool { matches!(name, "editor" | "thumbnail") }
     pub fn thumbnail(&self) -> bool { self.after_capture == "thumbnail" }
+    pub fn look(&self) -> Look { Look { pointer: self.recording_pointer, clicks: self.recording_clicks } }
+    /// A new look for recordings, either half of it, with the older setting
+    /// kept in step for a Mark from before there was a choice.
+    pub fn set_look(&mut self, pointer: Option<PointerLook>, clicks: Option<ClickLook>) {
+        if let Some(pointer) = pointer { self.recording_pointer = pointer; }
+        if let Some(clicks) = clicks { self.recording_clicks = clicks; self.record_clicks = clicks == ClickLook::Rings; }
+    }
 }
 
 /// Shortcuts for a window, the whole screen, a timed region and a recording. None comes
@@ -136,7 +190,11 @@ pub fn load(app: &AppHandle) -> Settings {
 }
 
 pub fn parse(bytes: &[u8]) -> Option<Settings> {
-    let mut settings: Settings = serde_json::from_slice(bytes).ok()?;
+    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let chose_clicks = value.get("recordingClicks").is_some();
+    let mut settings: Settings = serde_json::from_value(value).ok()?;
+    // Before there was a choice, clicks were rings or nothing.
+    if !chose_clicks { settings.recording_clicks = if settings.record_clicks { ClickLook::Rings } else { ClickLook::Hidden }; }
     if !Settings::appearance_is_valid(&settings.appearance) { settings.appearance = Settings::default().appearance; }
     if !Settings::after_capture_is_valid(&settings.after_capture) { settings.after_capture = Settings::default().after_capture; }
     if settings.shortcut.trim().is_empty() { settings.shortcut = DEFAULT_SHORTCUT.into(); }
@@ -180,7 +238,7 @@ mod tests {
             check_updates: false, install_updates: false, skipped_version: Some("0.5.0".into()),
             frame: Frame { on: true, background: "midnight".into(), padding: 0.25, radius: 0.75, shadow: 0.0, chrome: true },
             after_capture: "thumbnail".into(), mcp: false, record_mic: true, record_clicks: false,
-            record_pointer: false, record_highlight: true,
+            recording_pointer: PointerLook::Touch, recording_clicks: ClickLook::Ripple,
         };
         let json = serde_json::to_vec(&settings).unwrap();
         assert_eq!(parse(&json).unwrap(), settings);
@@ -255,9 +313,35 @@ mod tests {
     fn a_file_from_before_recordings_records_without_the_microphone_and_shows_clicks() {
         let settings = parse(br#"{"appearance":"light","shortcut":"Super+Digit4"}"#).unwrap();
         assert!(!settings.record_mic && settings.record_clicks);
-        assert!(settings.record_pointer && !settings.record_highlight);
+        assert_eq!(settings.look(), Look { pointer: PointerLook::Arrow, clicks: ClickLook::Rings });
         assert_eq!(settings.shortcuts.record, None);
         let json = String::from_utf8(serde_json::to_vec(&Settings::default()).unwrap()).unwrap();
         assert!(json.contains("\"recordMic\":false") && json.contains("\"recordClicks\":true"));
+        assert!(json.contains("\"recordingPointer\":\"arrow\"") && json.contains("\"recordingClicks\":\"rings\""));
+    }
+
+    #[test]
+    fn clicks_turned_off_before_there_was_a_choice_stay_off() {
+        assert_eq!(parse(br#"{"recordClicks":false}"#).unwrap().recording_clicks, ClickLook::Hidden);
+        // Once chosen, the choice is what counts.
+        assert_eq!(parse(br#"{"recordClicks":false,"recordingClicks":"ripple"}"#).unwrap().recording_clicks, ClickLook::Ripple);
+        // A look this Mark doesn't know is the default, and the rest still reads.
+        let odd = parse(br#"{"recordingPointer":"laser","recordingClicks":7,"recordMic":true}"#).unwrap();
+        assert_eq!((odd.look(), odd.record_mic), (Look::default(), true));
+        // A Mark from before reads clicks as on only when they are rings.
+        let mut settings = Settings::default();
+        settings.set_look(Some(PointerLook::Touch), Some(ClickLook::Ripple));
+        assert!(!settings.record_clicks);
+        settings.set_look(None, Some(ClickLook::Rings));
+        assert!(settings.record_clicks && settings.recording_pointer == PointerLook::Touch);
+    }
+
+    #[test]
+    fn only_the_arrow_and_the_rings_are_recorded_by_macos() {
+        let look = |pointer, clicks| Look { pointer, clicks };
+        assert!(look(PointerLook::Arrow, ClickLook::Rings).arrow() && look(PointerLook::Halo, ClickLook::Rings).rings());
+        assert!(!look(PointerLook::Touch, ClickLook::Ripple).arrow() && !look(PointerLook::Hidden, ClickLook::Hidden).rings());
+        assert_eq!(serde_json::to_string(&look(PointerLook::Touch, ClickLook::Hidden)).unwrap(),
+                   r#"{"pointer":"touch","clicks":"none"}"#);
     }
 }

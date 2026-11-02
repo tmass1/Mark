@@ -6,6 +6,7 @@
 //! the part kept.
 
 use crate::{capture, macos, movie, sck, session::{Live, Recorded, State, Stop}, thumbnail};
+use crate::settings::{ClickLook, Look, PointerLook};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -99,10 +100,10 @@ fn on_main<T: Send + 'static>(app: &AppHandle, work: impl FnOnce(&AppHandle) -> 
 /// recorded as a capture: None if it was thrown away, or Mark is quitting. On
 /// the capture thread, which it holds for the whole recording.
 pub fn record(app: &AppHandle, target: capture::Target, cancelled: &AtomicBool) -> Result<Option<capture::Capture>, String> {
-    let (mic, clicks, pointer, highlight) = {
+    let (mic, look) = {
         let prefs = app.state::<crate::Prefs>();
         let prefs = prefs.0.lock().unwrap();
-        (prefs.record_mic, prefs.record_clicks, prefs.record_pointer, prefs.record_highlight)
+        (prefs.record_mic, prefs.look())
     };
     // Asked for here, before anything is on screen, the first time: macOS's
     // own question comes up while the overlay is gone and nothing is recording.
@@ -117,7 +118,10 @@ pub fn record(app: &AppHandle, target: capture::Target, cancelled: &AtomicBool) 
         capture::Target::Window { id, .. } => sck::Source::Window(id),
     };
     let (events, heard) = mpsc::channel();
-    let shape = match sck::start(sck::Options { source, mic, clicks, pointer, output: file.clone() }, events) {
+    // macOS draws the arrow and its rings into the movie; anything else is
+    // Mark's to draw over it, from what it follows here.
+    let options = sck::Options { source, mic, clicks: look.rings(), pointer: look.arrow(), output: file.clone() };
+    let shape = match sck::start(options, events) {
         Ok(shape) => shape,
         Err(error) => { let _ = std::fs::remove_dir_all(&folder); return Err(error); }
     };
@@ -125,6 +129,9 @@ pub fn record(app: &AppHandle, target: capture::Target, cancelled: &AtomicBool) 
     // follow: in points from the top left of what is recorded.
     let began = Instant::now();
     let mut track = Vec::new();
+    // And when the button goes down and comes up, on the same clock. Without
+    // them the movie is still a movie, so a failure here only loses them.
+    let presses = on_main(app, move |_| Ok(macos::watch_presses(began))).unwrap_or_default();
     let (stop, stopped) = mpsc::channel();
     app.state::<State>().lock().unwrap().recording = Some(Live { stop, mic, started: Some(Instant::now()) });
     let outline = matches!(target, capture::Target::Region(_));
@@ -161,7 +168,14 @@ pub fn record(app: &AppHandle, target: capture::Target, cancelled: &AtomicBool) 
         std::thread::sleep(Duration::from_millis(33));
     }
     app.state::<State>().lock().unwrap().recording = None;
-    let _ = on_main(app, |app| { hide_bar(app); crate::recording_menu(app, false); crate::set_tray_title(app, None); Ok(()) });
+    let _ = on_main(app, |app| {
+        macos::unwatch_presses();
+        hide_bar(app); crate::recording_menu(app, false); crate::set_tray_title(app, None); Ok(())
+    });
+    // A press still down as it stopped ends there.
+    let end = began.elapsed().as_secs_f64();
+    let presses: Vec<(f64, f64)> = presses.lock()
+        .map(|noted| noted.iter().map(|&(down, up)| (down, up.unwrap_or(end).max(down))).collect()).unwrap_or_default();
 
     if !ended && failed.is_none() {
         if let Err(error) = sck::stop() { eprintln!("[Mark] stopping the recording: {error}"); }
@@ -192,7 +206,7 @@ pub fn record(app: &AppHandle, target: capture::Target, cancelled: &AtomicBool) 
     let video = capture::Video { id, path: file.to_string_lossy().into_owned(), duration: info.duration, sound: info.sound };
     let pointer = track.into_iter().map(|(at, x, y)| (at, x * scale, y * scale)).collect();
     let gone = app.state::<State>().lock().unwrap().keep_video(Recorded {
-        id, folder, file, duration: info.duration, pixels: (info.width, info.height), scale, edited: None, pointer, highlight,
+        id, folder, file, duration: info.duration, pixels: (info.width, info.height), scale, edited: None, pointer, presses, look,
     });
     for folder in gone { let _ = std::fs::remove_dir_all(folder); }
     Ok(Some(capture::Capture { png: poster, width: info.width, height: info.height, scale, video: Some(video) }))
@@ -308,7 +322,7 @@ pub fn recording_supported() -> bool { sck::supported() }
 
 struct Found {
     file: PathBuf, folder: PathBuf, duration: f64, pixels: (u32, u32), scale: f64, edited: Option<(movie::Edit, PathBuf)>,
-    pointer: Vec<(f64, f64, f64)>,
+    pointer: Vec<(f64, f64, f64)>, presses: Vec<(f64, f64)>, look: Look,
 }
 
 fn find(app: &AppHandle, id: u64) -> Result<Found, String> {
@@ -316,7 +330,8 @@ fn find(app: &AppHandle, id: u64) -> Result<Found, String> {
     let mut session = state.lock().unwrap();
     let video = session.video(id).ok_or(GONE)?;
     Ok(Found { file: video.file.clone(), folder: video.folder.clone(), duration: video.duration, pixels: video.pixels,
-               scale: video.scale, edited: video.edited.clone(), pointer: video.pointer.clone() })
+               scale: video.scale, edited: video.edited.clone(), pointer: video.pointer.clone(), presses: video.presses.clone(),
+               look: video.look })
 }
 
 /// What the editor drew on a recording, as it sends it: a PNG of the marks,
@@ -361,18 +376,19 @@ fn drawn(marks: Option<Marks>, pixels: (u32, u32)) -> Result<Option<(movie::Draw
         for n in numbers { n.to_bits().hash(&mut print); }
         part.until.map(f64::to_bits).hash(&mut print);
     }
-    Ok(Some((movie::Drawn { overlays, redactions: marks.redactions, halo: None }, print.finish())))
+    Ok(Some((movie::Drawn { overlays, redactions: marks.redactions, pointer: None }, print.finish())))
 }
 
 /// The movie to hand on for recording `id`: all of it as it was made, or the
 /// part between `start` and `end`, with what was drawn on it drawn in -- made
 /// once for each such copy, and kept beside the movie, under the same name,
 /// until another replaces it.
-fn movie_for(app: &AppHandle, id: u64, start: f64, end: f64, cuts: &[(f64, f64)], speed: f64, highlight: bool, marks: Option<Marks>)
+#[allow(clippy::too_many_arguments)]
+fn movie_for(app: &AppHandle, id: u64, start: f64, end: f64, cuts: &[(f64, f64)], speed: f64, look: Option<Look>, marks: Option<Marks>)
     -> Result<PathBuf, String> {
     let found = find(app, id)?;
     let timeline = movie::Timeline::new(start, end, cuts, speed, found.duration)?;
-    let drawn = with_halo(drawn(marks, found.pixels)?, highlight, &found);
+    let drawn = with_pointer(drawn(marks, found.pixels)?, look, &found);
     if timeline.is_none() && drawn.is_none() { return Ok(found.file); }
     let edit = movie::Edit { timeline: timeline.clone(), marks: drawn.as_ref().map(|(_, print)| *print) };
     if let Some((made, path)) = found.edited { if made == edit && path.exists() { return Ok(path); } }
@@ -383,29 +399,53 @@ fn movie_for(app: &AppHandle, id: u64, start: f64, end: f64, cuts: &[(f64, f64)]
     Ok(out)
 }
 
-/// How far the pointer's halo reaches, in points.
+/// How far the pointer's halo reaches, the fingertip's radius, and a ripple's
+/// at its widest, in points. The editor draws them the same.
 const HALO: f64 = 28.0;
+const TOUCH: f64 = 20.0;
+const RIPPLE: f64 = 30.0;
 
-/// What is drawn on a recording, and -- asked for, where the pointer was
-/// followed -- the halo following it, told apart by the fingerprint.
-fn with_halo(drawn: Option<(movie::Drawn, u64)>, highlight: bool, found: &Found) -> Option<(movie::Drawn, u64)> {
-    if !highlight || found.pointer.is_empty() { return drawn; }
-    let (mut drawn, print) = drawn.unwrap_or_default();
-    drawn.halo = Some(movie::Halo { track: found.pointer.clone(), radius: HALO * found.scale });
-    Some((drawn, print ^ 0x9e37_79b9_7f4a_7c15))
+/// What Mark draws of the pointer, as `look` asks, or as the recording was
+/// made: only what the movie can take. A halo needs the arrow macOS put into
+/// it, a fingertip needs the movie without one, and a ripple without macOS's
+/// rings. None where nothing is drawn.
+fn pointing(look: Option<Look>, found: &Found) -> Option<movie::Pointer> {
+    let look = look.unwrap_or(found.look);
+    let shape = match look.pointer {
+        PointerLook::Halo if found.look.arrow() => Some(movie::Shape::Halo(HALO * found.scale)),
+        PointerLook::Touch if !found.look.arrow() => Some(movie::Shape::Touch(TOUCH * found.scale)),
+        _ => None,
+    };
+    let ripple = (look.clicks == ClickLook::Ripple && !found.look.rings() && !found.presses.is_empty())
+        .then_some(RIPPLE * found.scale);
+    if found.pointer.is_empty() || (shape.is_none() && ripple.is_none()) { return None; }
+    Some(movie::Pointer { track: found.pointer.clone(), presses: found.presses.clone(), shape, ripple })
 }
 
-/// Where the pointer went through a recording, in its pixels, for the
-/// editor's halo -- and whether the halo starts on.
+/// What is drawn on a recording, and what Mark draws of the pointer, told
+/// apart by the fingerprint.
+fn with_pointer(drawn: Option<(movie::Drawn, u64)>, look: Option<Look>, found: &Found) -> Option<(movie::Drawn, u64)> {
+    use std::hash::{Hash, Hasher};
+    let Some(pointer) = pointing(look, found) else { return drawn };
+    let (mut drawn, print) = drawn.unwrap_or_default();
+    let mut drew = std::collections::hash_map::DefaultHasher::new();
+    (pointer.shape.map(|shape| matches!(shape, movie::Shape::Touch(_))), pointer.ripple.is_some()).hash(&mut drew);
+    drawn.pointer = Some(pointer);
+    Some((drawn, print ^ drew.finish()))
+}
+
+/// Where the pointer went through a recording, in its pixels, and when the
+/// button went down and up, for the editor to draw over the movie -- and how
+/// the pointer and clicks were shown as it was made.
 #[derive(Serialize)]
-pub struct Pointer { track: Vec<(f64, f64, f64)>, highlight: bool }
+pub struct Followed { track: Vec<(f64, f64, f64)>, presses: Vec<(f64, f64)>, look: Look }
 
 #[tauri::command]
-pub fn video_pointer(app: AppHandle, id: u64) -> Result<Pointer, String> {
+pub fn video_pointer(app: AppHandle, id: u64) -> Result<Followed, String> {
     let state = app.state::<State>();
     let mut session = state.lock().unwrap();
     let video = session.video(id).ok_or(GONE)?;
-    Ok(Pointer { track: video.pointer.clone(), highlight: video.highlight })
+    Ok(Followed { track: video.pointer.clone(), presses: video.presses.clone(), look: video.look })
 }
 
 async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
@@ -425,10 +465,10 @@ pub async fn video_frames(app: AppHandle, id: u64, count: usize) -> Result<Vec<S
 /// clipboard as a file. Closing is the caller's choice, as for a screenshot.
 #[tauri::command]
 pub async fn copy_video(app: AppHandle, id: u64, start: f64, end: f64, cuts: Option<Vec<(f64, f64)>>, speed: Option<f64>,
-                        highlight: Option<bool>, close: bool, marks: Option<Marks>) -> Result<(), String> {
+                        look: Option<Look>, close: bool, marks: Option<Marks>) -> Result<(), String> {
     if app.state::<State>().lock().unwrap().busy { return Err("Finish the capture under way first.".into()); }
     let handle = app.clone();
-    let movie = blocking(move || movie_for(&handle, id, start, end, &cuts.unwrap_or_default(), speed.unwrap_or(1.0), highlight.unwrap_or(false), marks)).await?;
+    let movie = blocking(move || movie_for(&handle, id, start, end, &cuts.unwrap_or_default(), speed.unwrap_or(1.0), look, marks)).await?;
     on_main(&app, move |app| {
         macos::copy_file(&movie)?;
         if close { crate::put_away(app, None) } else { Ok(()) }
@@ -443,7 +483,7 @@ pub struct Saved { name: String, bytes: u64 }
 /// or as a GIF that loops, full size or small. None if Save was cancelled.
 #[tauri::command]
 pub async fn save_video(app: AppHandle, id: u64, start: f64, end: f64, cuts: Option<Vec<(f64, f64)>>, speed: Option<f64>,
-                        highlight: Option<bool>, gif: bool, small: Option<bool>, name: String, marks: Option<Marks>)
+                        look: Option<Look>, gif: bool, small: Option<bool>, name: String, marks: Option<Marks>)
     -> Result<Option<Saved>, String> {
     let found = find(&app, id)?;
     let (extension, kind) = if gif { ("gif", "GIF image") } else { ("mp4", "MPEG-4 movie") };
@@ -452,12 +492,12 @@ pub async fn save_video(app: AppHandle, id: u64, start: f64, end: f64, cuts: Opt
     let path = chosen.into_path().map_err(|e| e.to_string())?;
     let target = path.clone();
     let handle = app.clone();
-    let (cuts, speed, highlight) = (cuts.unwrap_or_default(), speed.unwrap_or(1.0), highlight.unwrap_or(false));
+    let (cuts, speed) = (cuts.unwrap_or_default(), speed.unwrap_or(1.0));
     let bytes = blocking(move || {
         if gif {
-            make_gif(&found, start, end, &cuts, speed, highlight, small.unwrap_or(false), marks, &target)
+            make_gif(&found, start, end, &cuts, speed, look, small.unwrap_or(false), marks, &target)
         } else {
-            let movie = movie_for(&handle, id, start, end, &cuts, speed, highlight, marks)?;
+            let movie = movie_for(&handle, id, start, end, &cuts, speed, look, marks)?;
             std::fs::copy(&movie, &target).map_err(|e| format!("The recording couldn't be saved ({e})."))
         }
     }).await?;
@@ -466,10 +506,10 @@ pub async fn save_video(app: AppHandle, id: u64, start: f64, end: f64, cuts: Opt
 
 /// A GIF of what is kept, with what was drawn on it, written to `out`: its size in bytes.
 #[allow(clippy::too_many_arguments)]
-fn make_gif(found: &Found, start: f64, end: f64, cuts: &[(f64, f64)], speed: f64, highlight: bool, small: bool, marks: Option<Marks>,
+fn make_gif(found: &Found, start: f64, end: f64, cuts: &[(f64, f64)], speed: f64, look: Option<Look>, small: bool, marks: Option<Marks>,
             out: &std::path::Path) -> Result<u64, String> {
     let timeline = movie::Timeline::new(start, end, cuts, speed, found.duration)?.unwrap_or_else(|| movie::Timeline::whole(found.duration));
-    let drawn = with_halo(drawn(marks, found.pixels)?, highlight, found);
+    let drawn = with_pointer(drawn(marks, found.pixels)?, look, found);
     movie::gif(&found.file, &movie::gif_plan(&timeline, found.pixels, found.scale, small), drawn.as_ref().map(|(drawn, _)| drawn), out)
 }
 
@@ -477,14 +517,14 @@ fn make_gif(found: &Found, start: f64, end: f64, cuts: &[(f64, f64)], speed: f64
 /// on the clipboard as a file and as the GIF itself. Its size in bytes.
 #[tauri::command]
 pub async fn copy_gif(app: AppHandle, id: u64, start: f64, end: f64, cuts: Option<Vec<(f64, f64)>>, speed: Option<f64>,
-                      highlight: Option<bool>, small: Option<bool>, name: String, marks: Option<Marks>) -> Result<u64, String> {
+                      look: Option<Look>, small: Option<bool>, name: String, marks: Option<Marks>) -> Result<u64, String> {
     if app.state::<State>().lock().unwrap().busy { return Err("Finish the capture under way first.".into()); }
     let found = find(&app, id)?;
     let out = found.folder.join("Edited").join(crate::safe_name(&name, "gif"));
     let target = out.clone();
     let bytes = blocking(move || {
         std::fs::create_dir_all(target.parent().ok_or(GONE)?).map_err(|e| e.to_string())?;
-        make_gif(&found, start, end, &cuts.unwrap_or_default(), speed.unwrap_or(1.0), highlight.unwrap_or(false), small.unwrap_or(false), marks, &target)
+        make_gif(&found, start, end, &cuts.unwrap_or_default(), speed.unwrap_or(1.0), look, small.unwrap_or(false), marks, &target)
     }).await?;
     on_main(&app, move |_| macos::copy_gif(&out))?;
     Ok(bytes)
@@ -494,10 +534,10 @@ pub async fn copy_gif(app: AppHandle, id: u64, start: f64, end: f64, cuts: Optio
 /// share sheet.
 #[tauri::command]
 pub async fn share_video(app: AppHandle, id: u64, start: f64, end: f64, cuts: Option<Vec<(f64, f64)>>, speed: Option<f64>,
-                         highlight: Option<bool>, marks: Option<Marks>) -> Result<(), String> {
+                         look: Option<Look>, marks: Option<Marks>) -> Result<(), String> {
     let handle = app.clone();
     let movie = blocking(move || {
-        movie_for(&handle, id, start, end, &cuts.unwrap_or_default(), speed.unwrap_or(1.0), highlight.unwrap_or(false), marks)
+        movie_for(&handle, id, start, end, &cuts.unwrap_or_default(), speed.unwrap_or(1.0), look, marks)
     }).await?;
     on_main(&app, move |app| {
         let window = app.get_webview_window(crate::EDITOR).ok_or("Mark's editor isn't open.")?;

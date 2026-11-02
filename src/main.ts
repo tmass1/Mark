@@ -1,7 +1,8 @@
 import './style.css';
 import { command, isTauri, videoSource, watchCapture, watchCopied, watchMenuCopy, watchRequestWithdrawn, watchSettings, type Asked,
          type CapturePreview, type SavedSettings, type Snapshot } from './platform';
-import { pointerAt, type Track } from './pointer';
+import { pointerAt, pressedAt, rippleShape, ripplesAt, type Presses, type Track } from './pointer';
+import { PLAIN, chosen, lookItems, lookLabel, lookOf, pointerArt, recordsArrow, type Look as PointerAndClicks } from './look';
 import { addCut, clock, everything, fitCuts, keptLength, moveCutEdge, moveEdge, playFrom, skip, whole, type Trim } from './trim';
 import { MAX_BASE64, describeMarks, resultText, sendSize } from './send';
 import { suggestedName } from './names';
@@ -122,7 +123,7 @@ function toolCursor(tool: Tool, numbering: boolean, style: ArrowStyle, color: st
 
 /** Captures kept after they leave the editor, newest first. Memory only: this
  *  is an undo for closing, not a library. A recording keeps its trim. */
-interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number; trim?: Trim; cuts?: Trim[]; speed?: number; highlight?: boolean }
+interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number; trim?: Trim; cuts?: Trim[]; speed?: number; pointerLook?: PointerAndClicks }
 const KEPT = 6;
 /** How many of them Recent's strip shows side by side; the rest scroll. */
 const STRIP = 4;
@@ -343,6 +344,8 @@ app.innerHTML = `
         <img class="capture" alt="Captured screenshot" draggable="false" />
         <video class="movie" playsinline preload="auto" hidden></video>
         <div class="pointer-halo" aria-hidden="true" hidden></div>
+        <div class="pointer-ripples" aria-hidden="true"></div>
+        <div class="pointer-touch" aria-hidden="true" hidden></div>
         <svg class="overlay" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Arrow annotations"></svg>
       </div>
     </div></div>
@@ -379,8 +382,7 @@ app.innerHTML = `
       <svg class="when-playing" viewBox="0 0 20 20" aria-hidden="true" hidden><path d="M6 4.6h2.8v10.8H6zM11.2 4.6H14v10.8h-2.8z" fill="currentColor"/></svg>
     </button>
     <button class="speed glassy" type="button" aria-label="Speed" title="Play and copy it twice as fast">1×</button>
-    <button class="highlight-pointer glassy icon" type="button" aria-label="Highlight the pointer" aria-pressed="false" hidden
-      title="Highlight the pointer"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="6.2" fill="currentColor" opacity=".22"/><path d="M7.4 6.2 14 12l-3.2.4 1.7 3.4-1.4.7-1.7-3.4L7.4 15z" fill="currentColor"/></svg></button>
+    <button class="pointer-look glassy icon" type="button" aria-label="Pointer and clicks" aria-haspopup="menu" aria-expanded="false" hidden></button>
     <button class="cut-out glassy icon" type="button" aria-label="Cut a part out" title="Cut a part out around the playhead (K)">
       <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="6" cy="14.2" r="2.3" ${STROKE}/><circle cx="14" cy="14.2" r="2.3" ${STROKE}/><path d="M7.6 12.5 14.6 3.8M12.4 12.5 5.4 3.8" ${STROKE}/></svg>
     </button>
@@ -488,6 +490,9 @@ app.innerHTML = `
       <button type="button" data-gif-size="small" aria-pressed="false" title="10 frames a second, up to 640 across: for a chat">Small</button>
     </div>
   </div>
+  <!-- How the pointer and clicks show in a recording: what Mark draws over it
+       can change here; what macOS recorded into it is dimmed. -->
+  <div class="pointer-menu" role="menu" aria-label="Pointer and clicks" hidden></div>
   <aside class="frame-panel" role="dialog" aria-label="Frame" hidden>
     <div class="frame-head">
       <span class="frame-title">Frame</span>
@@ -562,8 +567,11 @@ const kept = strip.querySelector<HTMLElement>('.kept')!;
 const cutBands = strip.querySelector<HTMLElement>('.cuts')!;
 const cutButton = trimBar.querySelector<HTMLButtonElement>('.cut-out')!;
 const speedButton = trimBar.querySelector<HTMLButtonElement>('.speed')!;
-const highlightButton = trimBar.querySelector<HTMLButtonElement>('.highlight-pointer')!;
+const pointerButton = trimBar.querySelector<HTMLButtonElement>('.pointer-look')!;
+const pointerMenu = app.querySelector<HTMLElement>('.pointer-menu')!;
 const halo = stage.querySelector<HTMLElement>('.pointer-halo')!;
+const touch = stage.querySelector<HTMLElement>('.pointer-touch')!;
+const ripples = stage.querySelector<HTMLElement>('.pointer-ripples')!;
 const playhead = strip.querySelector<HTMLElement>('.playhead')!;
 const trimTime = trimBar.querySelector<HTMLElement>('.trim-time')!;
 const markAt = strip.querySelector<HTMLElement>('.mark-at')!;
@@ -597,13 +605,21 @@ let trim: Trim | null = null;
 let cuts: Trim[] = [];
 /** How fast it plays, and every copy of it: 1, or 2 for twice as fast. */
 let speed = 1;
-/** Where the pointer went through it, as Mark followed it; whether a halo
- *  follows it, here and in every copy; and which recording that is for. */
+/** Where the pointer went through it, as Mark followed it, and when the
+ *  button went down and came up; how it was recorded, and how the pointer and
+ *  clicks show now, here and in every copy; and which recording that is for. */
 let pointerTrack: Track = [];
-let highlight = false;
+let presses: Presses = [];
+let recordedLook: PointerAndClicks = PLAIN;
+let pointerLook: PointerAndClicks = PLAIN;
 let pointerFor = 0;
-/** How far the halo reaches, in points: movie.rs draws it the same. */
+/** How far the halo reaches, the fingertip's radius, and a ripple's at its
+ *  widest, in points: recording.rs draws them the same. */
 const HALO = 28;
+const TOUCH = 20;
+const RIPPLE = 30;
+/** A ripple's ring, as a share of its widest radius. */
+const RIPPLE_STROKE = 0.08;
 /** Which GIF the menu makes: full size, or small, for a chat. Remembered, as
  *  the next GIF is likely for the same place. */
 const GIF_SIZE = 'mark.gifSize';
@@ -1365,36 +1381,95 @@ async function loadFrames(id: number) {
   stripFrames.replaceChildren(...frames.map(url => Object.assign(new Image(), { src: url, alt: '' })));
 }
 
-/** Where the pointer went through recording `id`, and whether its halo is on:
- *  as it was left, or as Settings starts a recording. */
-async function loadPointer(id: number, keep?: boolean) {
+/** Where the pointer went through recording `id`, when the button went down,
+ *  and how the pointer and clicks show: as they were left, or as it was made. */
+async function loadPointer(id: number, keep?: PointerAndClicks) {
   pointerFor = id;
-  const found = await command<{ track: [number, number, number][]; highlight: boolean }>('video_pointer', { id }).catch(() => null);
+  const found = await command<{ track: [number, number, number][]; presses: [number, number][]; look: PointerAndClicks }>('video_pointer', { id })
+    .catch(() => null);
   if (pointerFor !== id || !found) return;
   pointerTrack = found.track;
-  highlight = keep ?? found.highlight;
+  presses = found.presses ?? [];
+  recordedLook = lookOf(found.look);
+  pointerLook = keep ?? recordedLook;
   drawTrim();
 }
 
-/** The halo over the movie, where the pointer was at the playhead -- and the
- *  switch for it, there only for a recording whose pointer was followed. */
-function placeHalo() {
+/** What Mark draws of the pointer over the movie at the playhead, as every
+ *  copy will have it: a halo or a fingertip where the pointer was, pressed
+ *  while the button was down, and ripples where it went down -- and the
+ *  button for the menu, there only for a recording whose pointer was followed. */
+function placePointer() {
   const video = capture?.video;
-  highlightButton.hidden = !video || !pointerTrack.length;
-  highlightButton.setAttribute('aria-pressed', String(highlight));
-  highlightButton.dataset.tip = highlight ? 'The pointer is highlighted: click to stop' : 'Highlight the pointer';
-  const at = video && highlight ? pointerAt(pointerTrack, movie.currentTime) : null;
-  halo.hidden = !at;
-  if (!at || !capture) return;
-  halo.style.left = `${(at[0] / capture.width) * 100}%`;
-  halo.style.top = `${(at[1] / capture.height) * 100}%`;
-  halo.style.width = `${((2 * HALO * (capture.scale ?? 1)) / capture.width) * 100}%`;
+  pointerButton.hidden = !video || !pointerTrack.length;
+  const art = pointerArt(pointerLook.pointer);
+  if (pointerButton.innerHTML !== art) pointerButton.innerHTML = art;
+  pointerButton.dataset.tip = `Pointer and clicks: ${lookLabel(pointerLook)}`;
+  const now = movie.currentTime;
+  const at = video ? pointerAt(pointerTrack, now) : null;
+  const arrow = recordsArrow(recordedLook.pointer);
+  /** Centred on a point of the recording, so many points from it to its edge. */
+  const put = (element: HTMLElement, [x, y]: [number, number], radius: number) => {
+    if (!capture) return;
+    element.style.left = `${(x / capture.width) * 100}%`;
+    element.style.top = `${(y / capture.height) * 100}%`;
+    element.style.width = `${((2 * radius * (capture.scale ?? 1)) / capture.width) * 100}%`;
+  };
+  halo.hidden = !(at && arrow && pointerLook.pointer === 'halo');
+  if (at && !halo.hidden) put(halo, at, HALO);
+  touch.hidden = !(at && !arrow && pointerLook.pointer === 'touch');
+  if (at && !touch.hidden) { put(touch, at, TOUCH); touch.classList.toggle('pressed', pressedAt(presses, now)); }
+  const going = video && pointerLook.clicks === 'ripple' && recordedLook.clicks !== 'rings' ? ripplesAt(presses, now) : [];
+  while (ripples.children.length < going.length) ripples.append(Object.assign(document.createElement('div'), { className: 'pointer-ripple' }));
+  [...ripples.children].forEach((ring, index) => {
+    const ripple = going[index];
+    const from = ripple ? pointerAt(pointerTrack, ripple[0]) : null;
+    (ring as HTMLElement).hidden = !from;
+    if (!ripple || !from) return;
+    const [share, solid] = rippleShape(ripple[1]);
+    put(ring as HTMLElement, from, RIPPLE * share);
+    (ring as HTMLElement).style.opacity = String(solid);
+    // The ring keeps its width as it spreads: a share of the circle, so less of it.
+    (ring as HTMLElement).style.setProperty('--inner', `${100 - (RIPPLE_STROKE / share) * 100}%`);
+  });
 }
-on(highlightButton, 'click', () => { highlight = !highlight; drawTrim(); });
+on(pointerButton, 'click', event => {
+  event.stopPropagation();
+  if (pointerMenu.hidden) openPointerMenu(); else closePointerMenu();
+});
+on(pointerMenu, 'click', event => {
+  const half = chosen(event.target);
+  if (!half) return;
+  pointerLook = { ...pointerLook, ...half };
+  showPointerMenu();
+  pointerMenu.querySelector<HTMLElement>(`[data-${half.pointer ? 'pointer' : 'clicks'}="${half.pointer ?? half.clicks}"]`)?.focus();
+  drawTrim();
+});
+document.addEventListener('pointerdown', event => {
+  if (!pointerMenu.hidden && !pointerMenu.contains(event.target as Node) && !pointerButton.contains(event.target as Node)) closePointerMenu();
+}, { signal: abort.signal });
+function showPointerMenu() { pointerMenu.innerHTML = lookItems(pointerLook, recordedLook); }
+/** Above the trim bar, its left edge over the button it came from. */
+function openPointerMenu() {
+  showPointerMenu();
+  pointerMenu.hidden = false;
+  pointerButton.setAttribute('aria-expanded', 'true');
+  hideTip();
+  const at = pointerButton.getBoundingClientRect(), frame = app.getBoundingClientRect();
+  pointerMenu.style.left = `${Math.max(8, Math.min(at.left - frame.left, frame.width - pointerMenu.offsetWidth - 8))}px`;
+  pointerMenu.style.bottom = `${frame.bottom - at.top + 8}px`;
+  pointerMenu.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+}
+function closePointerMenu(refocus = false) {
+  if (pointerMenu.hidden) return;
+  pointerMenu.hidden = true;
+  pointerButton.setAttribute('aria-expanded', 'false');
+  if (refocus) pointerButton.focus();
+}
 
 /** Put a recording in the player, kept as `keep` says or all of it -- or, for
  *  anything else, take the player down. */
-function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], keepSpeed = 1, keepHighlight?: boolean) {
+function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], keepSpeed = 1, keepLook?: PointerAndClicks) {
   const video = next?.video ?? null;
   movie.pause();
   // Marks on a recording are shown from the moment they are drawn at, so the
@@ -1408,7 +1483,8 @@ function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], 
     movie.hidden = true;
     if (movie.hasAttribute('src')) { movie.removeAttribute('src'); movie.removeAttribute('poster'); movie.load(); }
     trim = null; cuts = []; speed = 1; framesFor = 0; stripFrames.replaceChildren();
-    pointerTrack = []; highlight = false; pointerFor = 0; halo.hidden = true;
+    pointerTrack = []; presses = []; pointerLook = recordedLook = PLAIN; pointerFor = 0;
+    halo.hidden = touch.hidden = true; ripples.replaceChildren(); closePointerMenu();
     return;
   }
   movie.hidden = false;
@@ -1416,8 +1492,8 @@ function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], 
   movie.src = videoSource(video.path);
   trim = keep ? { ...keep } : everything(video.duration);
   cuts = keepCuts ? keepCuts.map(cut => ({ ...cut })) : [];
-  pointerTrack = []; highlight = false;
-  void loadPointer(video.id, keepHighlight);
+  pointerTrack = []; presses = []; pointerLook = recordedLook = PLAIN; closePointerMenu();
+  void loadPointer(video.id, keepLook);
   setSpeed(keepSpeed);
   void loadFrames(video.id);
   drawTrim();
@@ -1445,7 +1521,7 @@ function drawTrim() {
   const video = capture?.video;
   if (!video || !trim) return;
   showDueMarks();
-  placeHalo();
+  placePointer();
   const one = layer.selection.length === 1 ? layer.selection[0] : null;
   markAt.hidden = markUntil.hidden = !one;
   const share = (seconds: number) => `${Math.min(100, Math.max(0, (seconds / (video.duration || 1)) * 100))}%`;
@@ -1670,7 +1746,7 @@ async function copyVideo(close: boolean) {
   const trimming = marks ? working('Drawing the marks into the recording…')
     : whole(part, video.duration) && !cuts.length && speed === 1 ? null : working('Trimming the recording…');
   try {
-    await command('copy_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, highlight, close, marks });
+    await command('copy_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, look: pointerLook, close, marks });
     if (close) { capture = null; showMessage(null); }
     else flash('Copied the recording. Paste it into a message, a mail or a chat.');
   } catch (error) { report(error); }
@@ -1696,7 +1772,7 @@ async function copyGif() {
   const making = working('Making the GIF…');
   try {
     const bytes = await command<number>('copy_gif', {
-      id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, highlight, small: smallGif, name: videoName('gif'), marks: videoMarks(),
+      id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, look: pointerLook, small: smallGif, name: videoName('gif'), marks: videoMarks(),
     });
     making();
     flash(`Copied the GIF (${size(bytes)}). Paste it into a message, a chat or a page.`);
@@ -1713,10 +1789,10 @@ async function exportVideo(how: 'save' | 'gif' | 'share') {
   copyPending = true; render();
   const marks = videoMarks();
   try {
-    if (how === 'share') await command('share_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, highlight, marks });
+    if (how === 'share') await command('share_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, look: pointerLook, marks });
     else {
       const saved = await command<{ name: string; bytes: number } | null>('save_video', {
-        id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, highlight, gif: how === 'gif', small: how === 'gif' && smallGif,
+        id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, look: pointerLook, gif: how === 'gif', small: how === 'gif' && smallGif,
         name: videoName(how === 'gif' ? 'gif' : 'mp4'), marks,
       });
       flash(saved ? `Saved as ${saved.name} (${size(saved.bytes)}).` : 'Not saved.');
@@ -2529,7 +2605,7 @@ function remember(leaving: CapturePreview) {
   if (!image.complete || !image.naturalWidth) return;
   keep({ capture: leaving, thumb: thumbnail(), at: shownAt, annotations: layer.annotations.map(item => ({ ...item })),
          trim: leaving.video && trim ? { ...trim } : undefined, cuts: leaving.video && cuts.length ? cuts.map(cut => ({ ...cut })) : undefined,
-         speed: leaving.video && speed !== 1 ? speed : undefined, highlight: leaving.video ? highlight : undefined });
+         speed: leaving.video && speed !== 1 ? speed : undefined, pointerLook: leaving.video ? pointerLook : undefined });
 }
 
 /** Captures copied straight from the overlay, which the editor never showed,
@@ -2571,7 +2647,7 @@ function restore(entry: Past) {
   layer.load(entry.annotations);
   shown = entry.capture; shownAt = entry.at;
   zoom = startingZoom(entry.capture);
-  showMovie(entry.capture, entry.trim, entry.cuts, entry.speed, entry.highlight);
+  showMovie(entry.capture, entry.trim, entry.cuts, entry.speed, entry.pointerLook);
   render();
 }
 
@@ -2709,6 +2785,11 @@ document.addEventListener('keydown', event => {
   if (key === 'escape' && !saveMenu.hidden) {
     event.preventDefault();
     closeSaveMenu(true);
+    return;
+  }
+  if (key === 'escape' && !pointerMenu.hidden) {
+    event.preventDefault();
+    closePointerMenu(true);
     return;
   }
   if (key === 'escape' && !looksMenu.hidden) {

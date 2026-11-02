@@ -53,13 +53,44 @@ pub struct Trim { pub start: f64, pub end: f64 }
 /// the parts to pixelate, each from its own moment. Pixelated afresh in every
 /// frame, since a recording's pixels change under a redaction.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Drawn { pub overlays: Vec<(f64, Vec<u8>)>, pub redactions: Vec<Hidden>, pub halo: Option<Halo> }
+pub struct Drawn { pub overlays: Vec<(f64, Vec<u8>)>, pub redactions: Vec<Hidden>, pub pointer: Option<Pointer> }
 
-/// A soft yellow halo following the pointer, `radius` pixels from its centre
-/// to where it fades out, along `track`: seconds in, and x and y in the
-/// recording's pixels from its top left, in order.
+/// What Mark draws of the pointer: something following it along `track` --
+/// seconds in, and x and y in the recording's pixels from its top left, in
+/// order -- and a ripple, `ripple` pixels across at its widest, where each of
+/// `presses` went down. A press is the seconds in that the button went down
+/// and came up.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Halo { pub track: Vec<(f64, f64, f64)>, pub radius: f64 }
+pub struct Pointer { pub track: Vec<(f64, f64, f64)>, pub presses: Vec<(f64, f64)>, pub shape: Option<Shape>, pub ripple: Option<f64> }
+
+/// A soft yellow halo, so many pixels from its centre to where it fades out;
+/// or a fingertip, so many pixels across, pressed in while the button is down.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Shape { Halo(f64), Touch(f64) }
+
+/// A press too quick to see -- a trackpad's tap is over in a hundredth of a
+/// second -- is shown pressed for this long. And a ripple runs for this long.
+pub const PRESS_SHORTEST: f64 = 0.12;
+pub const RIPPLE_TIME: f64 = 0.45;
+
+/// Whether the button is down `time` seconds in, as the fingertip shows it.
+pub fn pressed_at(presses: &[(f64, f64)], time: f64) -> bool {
+    presses.iter().any(|&(down, up)| down <= time && time < up.max(down + PRESS_SHORTEST))
+}
+
+/// The ripples under way `time` seconds in: when each began, and how far
+/// through it is, from 0 to 1.
+pub fn ripples_at(presses: &[(f64, f64)], time: f64) -> Vec<(f64, f64)> {
+    presses.iter().filter(|&&(down, _)| down <= time && time < down + RIPPLE_TIME)
+        .map(|&(down, _)| (down, (time - down) / RIPPLE_TIME)).collect()
+}
+
+/// How wide a ripple is, as a share of its widest, and how solid, `progress`
+/// through it: quick to spread, slowing as it fades.
+pub fn ripple_shape(progress: f64) -> (f64, f64) {
+    let p = progress.clamp(0.0, 1.0);
+    (0.35 + 0.65 * (1.0 - (1.0 - p).powi(2)), 1.0 - p)
+}
 
 /// Where the pointer was `time` seconds in: between the two moments either
 /// side, in proportion, or at the last one before -- if that was recently
@@ -77,21 +108,84 @@ pub fn pointer_at(track: &[(f64, f64, f64)], time: f64) -> Option<(f64, f64)> {
     }
 }
 
-/// The halo, centred on the origin, as Core Image draws it: yellow fading to
-/// nothing, solid enough near the middle to find at a glance.
-fn halo_image(radius: f64) -> Result<Retained<CIImage>, String> {
-    let yellow = |alpha: f64| unsafe { CIColor::colorWithRed_green_blue_alpha(1.0, 0.84, 0.04, alpha) };
-    let number = |value: f64| NSNumber::new_f64(value);
+/// Red, green, blue and how solid, from 0 to 1.
+type Rgba = [f64; 4];
+
+/// Core Image's circles, centred on the origin: `inner` all the way in from
+/// `inner_radius`, `outer` all the way out from `outer_radius`, and a blend
+/// between. Endless, until cropped.
+fn gradient(inner_radius: f64, inner: Rgba, outer_radius: f64, outer: Rgba) -> Result<Retained<CIImage>, String> {
+    let color = |[r, g, b, a]: Rgba| unsafe { CIColor::colorWithRed_green_blue_alpha(r, g, b, a) };
     let keys = ["inputCenter", "inputRadius0", "inputRadius1", "inputColor0", "inputColor1"].map(NSString::from_str);
     let centre = unsafe { CIVector::vectorWithX_Y(0.0, 0.0) };
-    let (inner, outer, solid, clear) = (number(radius * 0.35), number(radius), yellow(0.42), yellow(0.0));
-    let values: [&AnyObject; 5] = [&centre, &inner, &outer, &solid, &clear];
+    let (r0, r1) = (NSNumber::new_f64(inner_radius.max(0.0)), NSNumber::new_f64(outer_radius.max(0.0)));
+    let (c0, c1) = (color(inner), color(outer));
+    let values: [&AnyObject; 5] = [&centre, &r0, &r1, &c0, &c1];
     let keys: Vec<&NSString> = keys.iter().map(|key| &**key).collect();
     let settings = NSDictionary::<NSString, AnyObject>::from_slices(&keys, &values);
     let filter = unsafe { CIFilter::filterWithName_withInputParameters(&NSString::from_str("CIRadialGradient"), Some(&settings)) }
-        .ok_or("The pointer's halo couldn't be drawn.")?;
-    let image = unsafe { filter.outputImage() }.ok_or("The pointer's halo couldn't be drawn.")?;
-    Ok(unsafe { image.imageByCroppingToRect(CGRect::new(CGPoint::new(-radius, -radius), CGSize::new(radius * 2.0, radius * 2.0))) })
+        .ok_or("The pointer couldn't be drawn.")?;
+    unsafe { filter.outputImage() }.ok_or_else(|| "The pointer couldn't be drawn.".into())
+}
+
+/// Cropped to the square round a circle `radius` across.
+fn around(image: &CIImage, radius: f64) -> Retained<CIImage> {
+    let side = radius.ceil() + 1.0;
+    unsafe { image.imageByCroppingToRect(CGRect::new(CGPoint::new(-side, -side), CGSize::new(side * 2.0, side * 2.0))) }
+}
+
+/// A disc, its edge softened over a pixel.
+fn disc(radius: f64, color: Rgba) -> Result<Retained<CIImage>, String> {
+    let image = gradient(radius - 1.0, color, radius, [color[0], color[1], color[2], 0.0])?;
+    Ok(around(&image, radius))
+}
+
+/// A ring from `inner` to `outer`: what lies outside the inner edge, kept
+/// only where the outer disc is.
+fn ring(inner: f64, outer: f64, color: Rgba) -> Result<Retained<CIImage>, String> {
+    let outside = gradient(inner - 1.0, [color[0], color[1], color[2], 0.0], inner, color)?;
+    let within = disc(outer, [1.0, 1.0, 1.0, 1.0])?;
+    let settings = NSDictionary::<NSString, AnyObject>::from_slices(&[&*NSString::from_str("inputBackgroundImage")], &[&*within as &AnyObject]);
+    let kept = unsafe { outside.imageByApplyingFilter_withInputParameters(&NSString::from_str("CISourceInCompositing"), &settings) };
+    Ok(around(&kept, outer))
+}
+
+/// The halo, centred on the origin, as Core Image draws it: yellow fading to
+/// nothing, solid enough near the middle to find at a glance.
+fn halo_image(radius: f64) -> Result<Retained<CIImage>, String> {
+    let image = gradient(radius * 0.35, [1.0, 0.84, 0.04, 0.42], radius, [1.0, 0.84, 0.04, 0.0])?;
+    Ok(around(&image, radius))
+}
+
+/// The fingertip's grey, which shows on a white screen and a black one; its
+/// rim, which lifts it off a dark one; and how solid each is, resting and
+/// pressed. The editor's style.css draws it the same.
+const TOUCH_GREY: [f64; 3] = [0.47, 0.47, 0.5];
+const TOUCH_FILL: (f64, f64) = (0.3, 0.5);
+const TOUCH_RIM: (f64, f64) = (0.7, 0.9);
+/// The rim's width, and a press's size, as shares of the fingertip's radius.
+const TOUCH_RIM_SHARE: f64 = 0.075;
+const TOUCH_PRESSED: f64 = 0.88;
+/// A ripple's ring, as a share of its widest radius, and how solid it starts.
+const RIPPLE_STROKE: f64 = 0.08;
+const RIPPLE_SOLID: f64 = 0.75;
+
+/// The fingertip, resting or pressed, centred on the origin: a grey disc in a
+/// white rim.
+fn touch_image(radius: f64, pressed: bool) -> Result<Retained<CIImage>, String> {
+    let radius = if pressed { radius * TOUCH_PRESSED } else { radius };
+    let (fill, rim) = if pressed { (TOUCH_FILL.1, TOUCH_RIM.1) } else { (TOUCH_FILL.0, TOUCH_RIM.0) };
+    let inner = radius * (1.0 - TOUCH_RIM_SHARE);
+    let [r, g, b] = TOUCH_GREY;
+    let (middle, edge) = (disc(inner, [r, g, b, fill])?, ring(inner, radius, [1.0, 1.0, 1.0, rim])?);
+    Ok(unsafe { middle.imageByCompositingOverImage(&edge) })
+}
+
+/// A ripple `progress` through, its widest `radius`, centred on the origin.
+fn ripple_image(radius: f64, progress: f64) -> Result<Retained<CIImage>, String> {
+    let (share, solid) = ripple_shape(progress);
+    let (outer, [r, g, b]) = (radius * share, TOUCH_GREY);
+    ring(outer - radius * RIPPLE_STROKE, outer, [r, g, b, RIPPLE_SOLID * solid])
 }
 
 /// A part to pixelate, in the recording's pixels from its top left, from `at`
@@ -339,7 +433,14 @@ fn composition(asset: &AVAsset, drawn: &Drawn, timeline: Option<Timeline>) -> Re
     overlays.sort_by(|a, b| a.0.total_cmp(&b.0));
     let moments: Vec<f64> = overlays.iter().map(|(at, _)| *at).collect();
     let hidden = drawn.redactions.clone();
-    let halo = drawn.halo.as_ref().map(|halo| halo_image(halo.radius).map(|image| (image, halo.track.clone()))).transpose()?;
+    let pointer = drawn.pointer.clone();
+    // What follows the pointer, made once: the halo, or the fingertip resting
+    // and pressed. Ripples change size every frame, so are made for each.
+    let sprites = match pointer.as_ref().and_then(|pointer| pointer.shape) {
+        Some(Shape::Halo(radius)) => Some((halo_image(radius)?, None)),
+        Some(Shape::Touch(radius)) => Some((touch_image(radius, false)?, Some(touch_image(radius, true)?))),
+        None => None,
+    };
     let pixellate = NSString::from_str("CIPixellate");
     let scale = NSString::from_str("inputScale");
     let applier = RcBlock::new(move |request: NonNull<AVAsynchronousCIImageFilteringRequest>| {
@@ -359,11 +460,21 @@ fn composition(asset: &AVAsset, drawn: &Drawn, timeline: Option<Timeline>) -> Re
                     .imageByCroppingToRect(area).imageByCompositingOverImage(&frame)
             };
         }
-        // The halo under the marks, so an arrow at the pointer stays sharp.
-        if let Some((image, track)) = &halo {
-            if let Some((x, y)) = pointer_at(track, time) {
-                let there = CGAffineTransform { a: 1.0, b: 0.0, c: 0.0, d: 1.0, tx: x, ty: height - y };
-                frame = unsafe { image.imageByApplyingTransform(there).imageByCompositingOverImage(&frame) };
+        // The pointer under the marks, so an arrow at it stays sharp: the
+        // ripples where the button went down, then what follows it.
+        if let Some(pointer) = &pointer {
+            let place = |image: &CIImage, (x, y): (f64, f64)| unsafe {
+                image.imageByApplyingTransform(CGAffineTransform { a: 1.0, b: 0.0, c: 0.0, d: 1.0, tx: x, ty: height - y })
+            };
+            if let Some(radius) = pointer.ripple {
+                for (down, progress) in ripples_at(&pointer.presses, time) {
+                    let (Some(at), Ok(ripple)) = (pointer_at(&pointer.track, down), ripple_image(radius, progress)) else { continue };
+                    frame = unsafe { place(&ripple, at).imageByCompositingOverImage(&frame) };
+                }
+            }
+            if let (Some((resting, pressed)), Some(at)) = (&sprites, pointer_at(&pointer.track, time)) {
+                let image = match pressed { Some(pressed) if pressed_at(&pointer.presses, time) => pressed, _ => resting };
+                frame = unsafe { place(image, at).imageByCompositingOverImage(&frame) };
             }
         }
         if let Some(index) = overlay_at(&moments, time) { frame = unsafe { overlays[index].1.imageByCompositingOverImage(&frame) }; }
@@ -602,7 +713,7 @@ mod tests {
         assert_eq!(overlay_at(&[1.0, 2.5], 2.5 - DUE / 2.0), Some(1), "due a frame early, not late");
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("marked.mp4");
-        let drawn = Drawn { overlays: vec![(1.0, square([255, 0, 255], 20, 60))], redactions: vec![], halo: None };
+        let drawn = Drawn { overlays: vec![(1.0, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None };
         // Kept from 0.5 to 1.5: the mark is drawn at 1.0 into the recording,
         // which is 0.5 into the copy.
         export(&clip(), Some(&Timeline { parts: vec![Trim { start: 0.5, end: 1.5 }], speed: 1.0 }), Some(&drawn), &out).unwrap();
@@ -621,7 +732,7 @@ mod tests {
         // Core Image's blocks are laid from 150, 150 up from the bottom left, so
         // 150 to 190 across and 50 to 90 down from the top is one whole block.
         let part = Hidden { x: 100.0, y: 40.0, width: 120.0, height: 120.0, at: 0.0, until: None, block: 40.0 };
-        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], halo: None }), &out).unwrap();
+        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], pointer: None }), &out).unwrap();
         for at in [0.3, 1.6] {
             let (one, other) = (pixel(&out, at, 154, 54), pixel(&out, at, 186, 86));
             assert!(one.iter().zip(other).all(|(a, b)| (a - b).abs() < 14), "one block, one colour at {at}s: {one:?} {other:?}");
@@ -649,7 +760,7 @@ mod tests {
         let out = folder.path().join("cut.mp4");
         let timeline = Timeline::new(0.0, 2.0, &[(0.5, 1.0)], 1.0, 2.0).unwrap().unwrap();
         // Drawn 1.2 s into the recording: 0.7 s into the copy.
-        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], halo: None };
+        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None };
         export(&clip(), Some(&timeline), Some(&drawn), &out).unwrap();
         let made = info(&out).unwrap();
         assert!((made.duration - 1.5).abs() < 0.1, "{}", made.duration);
@@ -673,7 +784,7 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("fast.mp4");
         // Drawn 1.2 s into the recording: 0.6 s into a copy twice as fast.
-        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], halo: None };
+        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None };
         export(&clip(), Some(&timeline), Some(&drawn), &out).unwrap();
         let made = info(&out).unwrap();
         assert!((made.duration - 1.0).abs() < 0.1, "{}", made.duration);
@@ -716,14 +827,75 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let (plain, haloed) = (folder.path().join("plain.mp4"), folder.path().join("halo.mp4"));
         let track: Vec<_> = (0..60).map(|frame| (frame as f64 / 30.0, 100.0, 80.0)).collect();
-        export(&clip(), Some(&Timeline::new(0.0, 2.0, &[], 1.0, 2.0).unwrap().unwrap_or(Timeline::whole(2.0))), None, &plain).unwrap();
-        let drawn = Drawn { overlays: vec![], redactions: vec![], halo: Some(Halo { track, radius: 28.0 }) };
-        export(&clip(), None, Some(&drawn), &haloed).unwrap();
-        let apart = |a: [i32; 3], b: [i32; 3]| a.iter().zip(b).map(|(a, b)| (a - b).abs()).max().unwrap();
+        // Made the same way with nothing drawn, so only what is drawn differs.
+        export(&clip(), None, Some(&Drawn::default()), &plain).unwrap();
+        let pointer = Pointer { track, presses: vec![], shape: Some(Shape::Halo(28.0)), ripple: None };
+        export(&clip(), None, Some(&Drawn { pointer: Some(pointer), ..Drawn::default() }), &haloed).unwrap();
         let (under, bare) = (pixel(&haloed, 1.0, 100, 80), pixel(&plain, 1.0, 100, 80));
         assert!(apart(under, bare) > 25, "tinted at the pointer: {under:?} over {bare:?}");
         assert!(under[0] >= bare[0] - 4 && under[2] <= bare[2] + 4, "towards yellow: {under:?} over {bare:?}");
         assert!(apart(pixel(&haloed, 1.0, 290, 20), pixel(&plain, 1.0, 290, 20)) < 14, "and not far from it");
+    }
+
+    #[test]
+    fn a_press_shows_while_the_button_is_down_and_a_tap_for_long_enough_to_see() {
+        let presses = [(1.0, 1.5), (2.0, 2.01)];
+        assert!(!pressed_at(&presses, 0.9) && pressed_at(&presses, 1.0) && pressed_at(&presses, 1.4) && !pressed_at(&presses, 1.6));
+        // A tap a hundredth of a second long is shown pressed for longer.
+        assert!(pressed_at(&presses, 2.1) && !pressed_at(&presses, 2.0 + PRESS_SHORTEST + 0.01));
+        // A ripple starts as the button goes down, and runs its own time
+        // however long the press.
+        assert_eq!(ripples_at(&presses, 0.99), vec![]);
+        assert_eq!(ripples_at(&presses, 1.0), vec![(1.0, 0.0)]);
+        let [(down, progress)] = ripples_at(&presses, 1.0 + RIPPLE_TIME / 2.0)[..] else { panic!("one ripple") };
+        assert!(down == 1.0 && (progress - 0.5).abs() < 1e-9);
+        assert_eq!(ripples_at(&presses, 1.0 + RIPPLE_TIME), vec![]);
+        // Spreading from a third of its width, quickly at first, fading as it goes.
+        assert_eq!(ripple_shape(0.0), (0.35, 1.0));
+        assert_eq!(ripple_shape(1.0), (1.0, 0.0));
+        assert!(ripple_shape(0.5).0 > 0.35 + 0.65 * 0.5, "past halfway at half time");
+    }
+
+    /// How far apart two colours are, in the one channel they differ most in.
+    fn apart(a: [i32; 3], b: [i32; 3]) -> i32 { a.iter().zip(b).map(|(a, b)| (a - b).abs()).max().unwrap() }
+
+    #[test]
+    fn a_fingertip_follows_the_pointer_and_presses_in_while_the_button_is_down() {
+        let folder = tempfile::tempdir().unwrap();
+        let (plain, touched) = (folder.path().join("plain.mp4"), folder.path().join("touch.mp4"));
+        let track: Vec<_> = (0..60).map(|frame| (frame as f64 / 30.0, 100.0, 80.0)).collect();
+        // Made the same way with nothing drawn, so only what is drawn differs.
+        export(&clip(), None, Some(&Drawn::default()), &plain).unwrap();
+        let pointer = Pointer { track, presses: vec![(1.0, 1.5)], shape: Some(Shape::Touch(20.0)), ripple: None };
+        export(&clip(), None, Some(&Drawn { pointer: Some(pointer), ..Drawn::default() }), &touched).unwrap();
+        let (resting, pressed) = (pixel(&touched, 0.6, 100, 80), pixel(&touched, 1.2, 100, 80));
+        let (bare_then, bare_now) = (pixel(&plain, 0.6, 100, 80), pixel(&plain, 1.2, 100, 80));
+        assert!(apart(resting, bare_then) > 12, "grey at the pointer: {resting:?} over {bare_then:?}");
+        assert!(apart(pressed, bare_now) > apart(resting, bare_then) + 6, "and more so pressed: {pressed:?} over {bare_now:?}");
+        // Grey: the three channels drawn closer together than they were.
+        let spread = |c: [i32; 3]| c.iter().max().unwrap() - c.iter().min().unwrap();
+        assert!(spread(pressed) < spread(bare_now), "{pressed:?} over {bare_now:?}");
+        assert!(apart(pixel(&touched, 1.2, 290, 20), pixel(&plain, 1.2, 290, 20)) < 14, "and nowhere else");
+    }
+
+    #[test]
+    fn a_ripple_spreads_from_where_the_button_went_down_and_is_gone_after() {
+        let folder = tempfile::tempdir().unwrap();
+        let (plain, rippled) = (folder.path().join("plain.mp4"), folder.path().join("ripple.mp4"));
+        // Pressed at 100, 80; the pointer moves off as the ripple spreads.
+        let track: Vec<_> = (0..60).map(|frame| (frame as f64 / 30.0, if frame < 31 { 100.0 } else { 220.0 }, 80.0)).collect();
+        // Made the same way with nothing drawn, so only what is drawn differs.
+        export(&clip(), None, Some(&Drawn::default()), &plain).unwrap();
+        let pointer = Pointer { track, presses: vec![(1.0, 1.05)], shape: None, ripple: Some(30.0) };
+        export(&clip(), None, Some(&Drawn { pointer: Some(pointer), ..Drawn::default() }), &rippled).unwrap();
+        // Halfway, the ring is some 20 to 25 pixels out from where it was
+        // pressed, and the middle is left alone.
+        let at = 1.0 + RIPPLE_TIME / 2.0;
+        let change = |x: usize, t: f64| apart(pixel(&rippled, t, x, 80), pixel(&plain, t, x, 80));
+        let ring = (104..140).max_by_key(|&x| change(x, at)).unwrap();
+        assert!(change(ring, at) > 12 && (115..=130).contains(&ring), "a ring {} out, {} strong", ring - 100, change(ring, at));
+        assert!(change(100, at) < 10, "not in the middle");
+        assert!(change(ring, 1.7) < 10, "gone once it has run");
     }
 
     #[test]
@@ -732,7 +904,7 @@ mod tests {
         assert!(!part.due(0.3) && part.due(0.6) && part.due(1.1) && !part.due(1.5));
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("hidden.mp4");
-        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], halo: None }), &out).unwrap();
+        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], pointer: None }), &out).unwrap();
         let blocky = |at: f64| {
             let (one, other) = (pixel(&out, at, 154, 54), pixel(&out, at, 186, 86));
             one.iter().zip(other).all(|(a, b)| (a - b).abs() < 14)

@@ -2,6 +2,7 @@ import './style.css';
 import { command, isTauri } from './platform';
 import { fitWindowTo } from './fit';
 import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent, shortcutProblem } from './shortcut';
+import { CLICKS, POINTERS, lookOf, type ClickLook, type PointerLook } from './look';
 
 /** Mark's settings window: each thing applied the moment it changes, with
  *  nothing to save. Appearance, the shortcuts, what follows a capture, AI
@@ -15,11 +16,11 @@ interface Settings {
   shortcuts?: Partial<Record<Exclude<Way, 'region'>, string>>;
   afterCapture?: 'editor' | 'thumbnail';
   mcp?: boolean;
-  /** Whether a recording takes in the microphone, and shows clicks. */
+  /** Whether a recording takes in the microphone, and how it shows the
+   *  pointer and clicks. */
   recordMic?: boolean;
-  recordClicks?: boolean;
-  recordPointer?: boolean;
-  recordHighlight?: boolean;
+  recordingPointer?: PointerLook;
+  recordingClicks?: ClickLook;
 }
 /** One AI tool Mark can be added to, and how -- made by Rust for the copy of
  *  Mark that is running, so what is copied starts this very copy. */
@@ -41,6 +42,8 @@ const WAYS: { way: Way; name: string }[] = [
 ];
 const shortcutOf = (settings: Settings, way: Way) => way === 'region' ? settings.shortcut : settings.shortcuts?.[way] ?? '';
 
+/** The ▾ in a pill that opens a list. */
+const CHEVRON = '<svg class="chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 8.4 10 11.8l3.4-3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const APPEARANCES: { id: Settings['appearance']; name: string }[] = [
   { id: 'dark', name: 'Dark' }, { id: 'light', name: 'Light' }, { id: 'system', name: 'Match System' },
 ];
@@ -75,10 +78,13 @@ root.innerHTML = `
     <div class="pref-control">
       <label class="check"><input class="record-mic" type="checkbox" aria-describedby="record-mic-hint" /> Record the microphone too</label>
       <p class="pref-hint" id="record-mic-hint">macOS asks the first time. The microphone button beside Record turns it on and off too.</p>
-      <label class="check"><input class="record-clicks" type="checkbox" checked /> Show clicks in recordings</label>
-      <label class="check"><input class="record-pointer" type="checkbox" checked /> Show the pointer in recordings</label>
-      <label class="check"><input class="record-highlight" type="checkbox" aria-describedby="record-highlight-hint" /> Highlight the pointer</label>
-      <p class="pref-hint" id="record-highlight-hint">A soft halo follows it, in the editor and in every copy. Each recording can turn it off or on.</p>
+      <div class="look-picks">
+        <label class="look-pick">Pointer <span class="agent-pick"><select class="record-pointer pill-select" aria-describedby="record-look-hint">
+          ${POINTERS.map(choice => `<option value="${choice.id}">${choice.name}</option>`).join('')}</select>${CHEVRON}</span></label>
+        <label class="look-pick">Clicks <span class="agent-pick"><select class="record-clicks pill-select" aria-describedby="record-look-hint">
+          ${CLICKS.map(choice => `<option value="${choice.id}">${choice.name}</option>`).join('')}</select>${CHEVRON}</span></label>
+      </div>
+      <p class="pref-hint" id="record-look-hint">Touch shows a fingertip, for a phone prototype; Halo a soft glow round the arrow. The bar beside Record changes them too, and the editor changes Halo, Touch and Ripple afterwards.</p>
       <p class="pref-note record-note" role="status" hidden></p>
     </div>
   </section>
@@ -90,7 +96,7 @@ root.innerHTML = `
       <span class="add-label" id="agent-label">Add Mark to</span>
       <div class="add-to">
         <span class="agent-pick"><select class="agent" aria-labelledby="agent-label" disabled></select>
-          <svg class="chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 8.4 10 11.8l3.4-3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          ${CHEVRON}</span>
         <button class="add-agent glassy" type="button" disabled>Copy Command</button>
       </div>
       <p class="pref-hint agent-hint" hidden></p>
@@ -128,9 +134,8 @@ const afterNote = root.querySelector<HTMLElement>('.after-note')!;
 const mcp = root.querySelector<HTMLInputElement>('.mcp')!;
 const mcpNote = root.querySelector<HTMLElement>('.mcp-note')!;
 const recordMic = root.querySelector<HTMLInputElement>('.record-mic')!;
-const recordClicks = root.querySelector<HTMLInputElement>('.record-clicks')!;
-const recordPointer = root.querySelector<HTMLInputElement>('.record-pointer')!;
-const recordHighlight = root.querySelector<HTMLInputElement>('.record-highlight')!;
+const recordPointer = root.querySelector<HTMLSelectElement>('.record-pointer')!;
+const recordClicks = root.querySelector<HTMLSelectElement>('.record-clicks')!;
 const recordNote = root.querySelector<HTMLElement>('.record-note')!;
 let current: Settings = { appearance: 'dark', shortcut: DEFAULT_SHORTCUT };
 /** The recorder listening for keys, if one is. */
@@ -157,9 +162,9 @@ function show(settings: Settings) {
   thumbnailAfter.checked = settings.afterCapture === 'thumbnail';
   mcp.checked = settings.mcp !== false;
   recordMic.checked = settings.recordMic === true;
-  recordClicks.checked = settings.recordClicks !== false;
-  recordPointer.checked = settings.recordPointer !== false;
-  recordHighlight.checked = settings.recordHighlight === true;
+  const look = lookOf({ pointer: settings.recordingPointer, clicks: settings.recordingClicks });
+  recordPointer.value = look.pointer;
+  recordClicks.value = look.clicks;
   placeLens();
 }
 
@@ -260,11 +265,12 @@ mcp.addEventListener('change', () => {
     .catch(error => { note(mcpNote, String(error)); mcp.checked = current.mcp !== false; });
 });
 
-const recordOptions = [[recordMic, 'mic'], [recordClicks, 'clicks'], [recordPointer, 'pointer'], [recordHighlight, 'highlight']] as const;
-for (const [box, option] of recordOptions) {
-  box.addEventListener('change', () => {
+const recordOptions = [[recordMic, 'mic'], [recordPointer, 'pointer'], [recordClicks, 'clicks']] as const;
+for (const [control, option] of recordOptions) {
+  control.addEventListener('change', () => {
     note(recordNote, null);
-    void command<Settings>('set_record_options', { [option]: box.checked }).then(show).catch(error => {
+    const value = control instanceof HTMLInputElement ? control.checked : control.value;
+    void command<Settings>('set_record_options', { [option]: value }).then(show).catch(error => {
       note(recordNote, String(error));
       show(current);
     });

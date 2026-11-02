@@ -1,5 +1,6 @@
 import './selector.css';
 import { clampRect, fitRatio, type Rect } from './region';
+import { chosen, lookItems, lookLabel, lookOf, pointerArt, type Look } from './look';
 
 /** A window on screen when the overlay opened, in global points. */
 interface ScreenWindow { id: number; app: string; title: string; x: number; y: number; width: number; height: number }
@@ -22,6 +23,8 @@ declare global {
     __MARK_KIND__?: 'shot' | 'video';
     /** For a recording, whether the microphone was on last time. */
     __MARK_MIC__?: boolean;
+    /** And how the pointer and clicks were shown. */
+    __MARK_LOOK__?: Look | null;
   }
 }
 const display = window.__MARK_DISPLAY__ ?? { x: 0, y: 0, width: innerWidth, height: innerHeight, scale: 1 };
@@ -67,10 +70,16 @@ root.innerHTML = `
   <div class="pick-label" hidden><span class="pick-name"></span><span class="pick-size"></span></div>
   <div class="readout" hidden></div>
   <div class="hint"></div>
-  ${recording ? `<div class="choices" role="radiogroup" aria-label="What to record">${CHOICES.map(choice =>
+  ${recording ? `<div class="choices"><div class="choice-set" role="radiogroup" aria-label="What to record">${CHOICES.map(choice =>
     `<button class="choice" type="button" role="radio" aria-checked="false" data-choice="${choice.id}" title="${choice.tip}">`
     + `<svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${choice.art}</svg>`
-    + `${choice.name}</button>`).join('')}</div>` : ''}
+    + `${choice.name}</button>`).join('')}</div>
+    <span class="divider" aria-hidden="true"></span>
+    <button class="look-button" type="button" aria-haspopup="menu" aria-expanded="false" title="How the pointer and clicks show">
+      <span class="look-art"></span><span class="look-label"></span>
+      <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.6 6 7.6l3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="look-menu" role="menu" aria-label="Pointer and clicks" hidden></div></div>` : ''}
   <div class="panel" hidden>
     <label class="field">Width <input class="w" type="number" min="1" step="1" /></label>
     <label class="field">Height <input class="h" type="number" min="1" step="1" /></label>
@@ -111,6 +120,8 @@ const lock = root.querySelector<HTMLButtonElement>('.lock')!;
 const delayButton = root.querySelector<HTMLButtonElement>('.delay')!;
 const micButton = root.querySelector<HTMLButtonElement>('.mic')!;
 const choices = root.querySelector<HTMLElement>('.choices');
+const lookButton = root.querySelector<HTMLButtonElement>('.look-button');
+const lookMenu = root.querySelector<HTMLElement>('.look-menu');
 document.documentElement.dataset.kind = recording ? 'video' : 'shot';
 
 let rect: Rect | null = null;
@@ -124,6 +135,9 @@ let delay = DELAYS.includes(armed) ? armed : 0;
 let drag: { kind: 'new' | 'move' | 'grip'; grip?: string; ox: number; oy: number; from: Rect } | null = null;
 let sent = false;
 let mic = recording && window.__MARK_MIC__ === true;
+/** How a recording shows the pointer and clicks: as the last one did, until
+ *  the bar's menu changes it. */
+let look = lookOf(window.__MARK_LOOK__);
 let mode: Mode = window.__MARK_MODE__ === 'window' ? 'window' : 'region';
 /** A recording starts by asking what it is of -- a region, a window or the
  *  screen -- with nothing to aim yet: no crosshair, no guides, and a press on
@@ -284,6 +298,13 @@ function point(event: PointerEvent): [number, number] { return [event.clientX, e
 
 root.addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
+  // A press away from an open menu puts it away, and does nothing else: not
+  // a window recorded by a click meant only to close it.
+  if (lookMenu && !lookMenu.hidden && !(event.target as Element).closest('.look-menu, .look-button')) {
+    event.preventDefault();
+    setLookMenu(false);
+    return;
+  }
   // The choices are buttons to press, not somewhere to start a selection; and
   // until one is chosen there is nothing to start.
   if ((event.target as Element).closest('.choices') || choosing) return;
@@ -398,6 +419,38 @@ choices?.addEventListener('click', event => {
   const choice = (event.target as Element).closest<HTMLButtonElement>('.choice')?.dataset.choice as Choice | undefined;
   if (choice) choose(choice);
 });
+
+/** The pointer and clicks, on the bar's button and ticked in its menu. */
+function showLook() {
+  if (!lookButton || !lookMenu) return;
+  lookButton.querySelector('.look-art')!.innerHTML = pointerArt(look.pointer);
+  lookButton.querySelector('.look-label')!.textContent = lookLabel(look);
+  lookMenu.innerHTML = lookItems(look);
+}
+function setLookMenu(open: boolean) {
+  if (!lookButton || !lookMenu) return;
+  lookMenu.hidden = !open;
+  lookButton.setAttribute('aria-expanded', String(open));
+  document.documentElement.classList.toggle('look-open', open);
+  if (open) lookMenu.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+}
+lookButton?.addEventListener('click', () => setLookMenu(lookMenu!.hidden));
+// A choice takes at once and the menu stays, so the other half can be chosen
+// too; every display's bar shows the same, whichever records.
+lookMenu?.addEventListener('click', event => {
+  const half = chosen(event.target);
+  if (!half) return;
+  setLook({ ...look, ...half }, true);
+  lookMenu.querySelector<HTMLElement>(`[data-${half.pointer ? 'pointer' : 'clicks'}="${half.pointer ?? half.clicks}"]`)?.focus();
+});
+function setLook(next: Look, tell: boolean) {
+  look = next;
+  showLook();
+  if (tell && inTauri) {
+    void import('@tauri-apps/api/event').then(({ emit }) => emit('selection-look', look));
+  }
+}
+showLook();
 /** A recording's choice, from its buttons or their keys: picking a window,
  *  all of this display, or part of it, to drag out. */
 function choose(choice: Choice) {
@@ -417,8 +470,9 @@ root.querySelector('.cancel')!.addEventListener('click', () => void cancel());
 root.querySelector('.go')!.addEventListener('click', () => void capture());
 root.querySelector('.copy')!.addEventListener('click', () => void capture(true));
 
-/** What a recording takes with it: that it is one, and the microphone or not. */
-const asRecording = () => (recording ? { record: true, mic } : {});
+/** What a recording takes with it: that it is one, the microphone or not, and
+ *  how it shows the pointer and clicks. */
+const asRecording = () => (recording ? { record: true, mic, pointer: look.pointer, clicks: look.clicks } : {});
 
 /** `copy`: straight to the clipboard, without opening the editor. A recording
  *  is never copied from here: it has not been made yet. */
@@ -453,7 +507,9 @@ document.addEventListener('keydown', event => {
   // Space switches between a region and a window, as in macOS's own -- but not
   // mid-drag, and not on a focused button, which Space presses.
   const pressing = (event.target as HTMLElement)?.tagName === 'BUTTON';
-  if (event.key === 'Escape') { event.preventDefault(); void cancel(); }
+  // An open menu takes Escape for itself, as a popover does.
+  if (event.key === 'Escape' && lookMenu && !lookMenu.hidden) { event.preventDefault(); setLookMenu(false); lookButton?.focus(); }
+  else if (event.key === 'Escape') { event.preventDefault(); void cancel(); }
   else if (event.key === ' ' && !typing && !pressing) {
     event.preventDefault();
     if (!event.repeat && !drag) setMode(mode === 'window' ? 'region' : 'window', true);
@@ -480,6 +536,7 @@ if (inTauri) {
   void import('@tauri-apps/api/event').then(({ listen }) => Promise.all([
     listen('selection-started', () => { if (!drag) { rect = null; show(); } }),
     listen<{ mode: Mode }>('selection-mode', event => setMode(event.payload.mode, false)),
+    listen<Look>('selection-look', event => setLook(lookOf(event.payload), false)),
   ]));
 }
 if (mode === 'window' && pointer) picked = windowAt(...pointer);

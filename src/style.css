@@ -690,13 +690,34 @@ footer > * { flex: none; }
 .speed { flex: none; min-width: 40px; height: 34px; padding: 0 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
   font-variant-numeric: tabular-nums; }
 .speed.on { color: var(--blue); }
-.highlight-pointer { flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
-.trim .highlight-pointer svg { width: 18px; height: 18px; }
-.highlight-pointer[aria-pressed="true"] { color: var(--blue); }
-/* Where the pointer was, as a soft halo over the movie and under the marks:
-   yellow fading out, as movie.rs draws it into every copy. */
-.pointer-halo { position: absolute; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
-  background: radial-gradient(closest-side, rgb(255 214 10 / .42) 35%, rgb(255 214 10 / 0) 100%); }
+/* How the pointer and clicks show, beside Play: the pointer's picture, opening
+   the same menu the overlay's bar has. */
+.pointer-look { flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.trim .pointer-look svg { width: 19px; height: 19px; }
+.pointer-look[aria-expanded="true"] { color: var(--blue); }
+.pointer-menu {
+  position: absolute; z-index: 10; min-width: 300px; padding: 5px; border-radius: 12px; background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: 0 12px 34px var(--shadow), 0 0 0 .5px var(--control-line);
+}
+/* What Mark draws of the pointer over the movie and under the marks, as
+   movie.rs draws it into every copy. A soft yellow halo; */
+.pointer-halo, .pointer-touch, .pointer-ripple {
+  position: absolute; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; }
+.pointer-halo { background: radial-gradient(closest-side, rgb(255 214 10 / .42) 35%, rgb(255 214 10 / 0) 100%); }
+/* a fingertip, grey in a white rim, smaller and more solid while pressed; */
+.pointer-touch {
+  background: radial-gradient(closest-side, rgb(120 120 128 / .3) calc(92.5% - .5px), rgb(255 255 255 / .7) 92.5%,
+                                            rgb(255 255 255 / .7) calc(100% - .5px), rgb(255 255 255 / 0) 100%); }
+.pointer-touch.pressed {
+  transform: translate(-50%, -50%) scale(.88);
+  background: radial-gradient(closest-side, rgb(120 120 128 / .5) calc(92.5% - .5px), rgb(255 255 255 / .9) 92.5%,
+                                            rgb(255 255 255 / .9) calc(100% - .5px), rgb(255 255 255 / 0) 100%); }
+/* and ripples, a grey ring spreading and fading where the button went down. */
+.pointer-ripples { position: absolute; inset: 0; pointer-events: none; }
+.pointer-ripple {
+  background: radial-gradient(closest-side, rgb(120 120 128 / 0) calc(var(--inner, 90%) - .5px), rgb(120 120 128 / .75) var(--inner, 90%),
+                                            rgb(120 120 128 / .75) calc(100% - .5px), rgb(120 120 128 / 0) 100%); }
 .save-menu button:hover kbd, .save-menu button:focus-visible kbd { opacity: .8; }
 
 /* ---- the frame ---------------------------------------------------------- */
@@ -967,15 +988,18 @@ h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -.45px; line-
 .add-label { margin-top: 2px; color: var(--ink); font-size: 13px; }
 .add-to { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
 .agent-pick { position: relative; flex: 1 1 140px; min-width: 0; display: flex; }
-.agent {
+.agent, .pill-select {
   width: 100%; height: 30px; padding: 0 30px 0 14px; border: 1px solid var(--control-line); border-radius: 999px;
   font: inherit; font-size: 13px; color: var(--ink); background: var(--control);
   box-shadow: inset 0 1px 0 var(--rim), 0 1px 2px #00000012; -webkit-appearance: none; appearance: none;
 }
-.agent:hover:not(:disabled) { background: var(--control-hover); }
+.agent:hover:not(:disabled), .pill-select:hover { background: var(--control-hover); }
 .agent:disabled { opacity: .5; }
 .agent-pick .chevron { position: absolute; right: 10px; top: 50%; width: 14px; height: 14px; margin-top: -7px; color: var(--muted); pointer-events: none; }
 .add-agent { flex: none; }
+/* A recording's pointer and clicks: two lists side by side, each named. */
+.look-picks { display: flex; flex-wrap: wrap; gap: 8px 14px; width: 100%; }
+.look-pick { display: flex; align-items: center; gap: 8px; flex: 1 1 150px; color: var(--ink); font-size: 13px; }
 /* The guide is a page on the web, so it reads as a link rather than a button. */
 .guide {
   padding: 0; border: 0; background: none; color: var(--blue); font: inherit; font-size: 12px; cursor: pointer;

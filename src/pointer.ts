@@ -1,6 +1,7 @@
-/** Where the pointer was through a recording, as Mark followed it, for the
- *  halo the editor shows over the movie -- the same reckoning Rust's
- *  movie::pointer_at makes for every copy, so the two agree. */
+/** Where the pointer was through a recording, as Mark followed it, and when
+ *  the button went down and came up, for the halo, fingertip and ripples the
+ *  editor shows over the movie -- the same reckoning Rust's movie.rs makes for
+ *  every copy, so the two agree. */
 
 /** Seconds in, then x and y in the recording's pixels from its top left. */
 export type Track = readonly (readonly [number, number, number])[];
@@ -22,4 +23,32 @@ export function pointerAt(track: Track, time: number): [number, number] | null {
     return [x + (after[1] - x) * share, y + (after[2] - y) * share];
   }
   return time - at <= STALE ? [x, y] : null;
+}
+
+/** Seconds in that the button went down, and came up, for each press. */
+export type Presses = readonly (readonly [number, number])[];
+
+/** A press too quick to see -- a trackpad's tap is over in a hundredth of a
+ *  second -- is shown pressed for this long; and a ripple runs for this long.
+ *  movie.rs times them the same. */
+export const PRESS_SHORTEST = 0.12;
+export const RIPPLE_TIME = 0.45;
+
+/** Whether the button is down `time` seconds in, as the fingertip shows it. */
+export function pressedAt(presses: Presses, time: number): boolean {
+  return presses.some(([down, up]) => down <= time && time < Math.max(up, down + PRESS_SHORTEST));
+}
+
+/** The ripples under way `time` seconds in: when each began, and how far
+ *  through it is, 0 to 1. */
+export function ripplesAt(presses: Presses, time: number): [number, number][] {
+  return presses.filter(([down]) => down <= time && time < down + RIPPLE_TIME)
+    .map(([down]) => [down, (time - down) / RIPPLE_TIME]);
+}
+
+/** How wide a ripple is, as a share of its widest, and how solid, `progress`
+ *  through it: quick to spread, slowing as it fades. */
+export function rippleShape(progress: number): [number, number] {
+  const p = Math.min(1, Math.max(0, progress));
+  return [0.35 + 0.65 * (1 - (1 - p) ** 2), 1 - p];
 }

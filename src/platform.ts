@@ -78,9 +78,9 @@ export interface SavedSettings {
   /** Whether a recording takes in the microphone, and shows clicks. */
   recordMic?: boolean;
   recordClicks?: boolean;
-  /** Whether a recording shows the pointer, and starts with a halo following it. */
-  recordPointer?: boolean;
-  recordHighlight?: boolean;
+  /** How a recording shows the pointer and clicks. */
+  recordingPointer?: 'arrow' | 'halo' | 'touch' | 'hidden';
+  recordingClicks?: 'rings' | 'ripple' | 'none';
   /** Whether Mark looks for updates by itself, and installs them without asking. */
   checkUpdates?: boolean;
   installUpdates?: boolean;

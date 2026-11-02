@@ -2,7 +2,7 @@ use objc2::runtime::{AnyClass, AnyObject, NSObject, NSObjectProtocol, ProtocolOb
 use objc2::{define_class, msg_send, rc::Retained, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly};
 use objc2::rc::Retained as Rc;
 use objc2_app_kit::{NSApplication, NSDragOperation, NSDraggingContext, NSDraggingItem, NSDraggingSession, NSDraggingSource,
-                    NSEvent, NSEventModifierFlags, NSEventType, NSImage, NSPasteboard, NSPasteboardItem, NSPasteboardTypeFileURL, NSRunningApplication,
+                    NSEvent, NSEventMask, NSEventModifierFlags, NSEventType, NSImage, NSPasteboard, NSPasteboardItem, NSPasteboardTypeFileURL, NSRunningApplication,
                     NSApplicationActivationOptions, NSSharingServicePicker, NSTrackingArea, NSTrackingAreaOptions, NSWindow,
                     NSWindowCollectionBehavior, NSWorkspace};
 use objc2_foundation::{NSArray, NSData, NSDictionary, NSNumber, NSPoint, NSRect, NSRectEdge, NSSize, NSString, NSURL};
@@ -38,6 +38,44 @@ pub fn pointer() -> Option<(f64, f64)> {
         let at = CGEventGetLocation(event);
         CFRelease(event);
         Some((at.x, at.y))
+    }
+}
+
+/// Presses of the left button as a recording notes them: the seconds after it
+/// began that each went down, and came up -- None while it is still down.
+pub type Presses = std::sync::Arc<std::sync::Mutex<Vec<(f64, Option<f64>)>>>;
+
+thread_local! {
+    /// What hears presses while a recording runs, for AppKit to be given back.
+    static PRESS_MONITOR: RefCell<Option<Retained<AnyObject>>> = const { RefCell::new(None) };
+}
+
+/// Note each press of the left button outside Mark -- a click, a trackpad's
+/// tap -- from now until `unwatch_presses`, timed from `began`, for a ripple
+/// or a pressed fingertip to be drawn where it happened. Mouse events, unlike
+/// keys, need no permission to be heard. Main thread only.
+pub fn watch_presses(began: std::time::Instant) -> Presses {
+    let presses = Presses::default();
+    let noted = presses.clone();
+    let heard = block2::RcBlock::new(move |event: std::ptr::NonNull<NSEvent>| {
+        // SAFETY: AppKit hands over a live event for the length of the call.
+        let kind = unsafe { event.as_ref() }.r#type();
+        let at = began.elapsed().as_secs_f64();
+        let Ok(mut noted) = noted.lock() else { return };
+        if kind == NSEventType::LeftMouseDown { noted.push((at, None)); }
+        else if let Some(open) = noted.last_mut().filter(|(_, up)| up.is_none()) { open.1 = Some(at); }
+    });
+    unwatch_presses();
+    let monitor = NSEvent::addGlobalMonitorForEventsMatchingMask_handler(NSEventMask::LeftMouseDown | NSEventMask::LeftMouseUp, &heard);
+    PRESS_MONITOR.with(|kept| *kept.borrow_mut() = monitor);
+    presses
+}
+
+/// Stop noting presses. Main thread only.
+pub fn unwatch_presses() {
+    if let Some(monitor) = PRESS_MONITOR.with(|kept| kept.borrow_mut().take()) {
+        // SAFETY: a monitor addGlobalMonitorForEventsMatchingMask gave, given back once.
+        unsafe { NSEvent::removeMonitor(&monitor) };
     }
 }
 

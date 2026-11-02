@@ -57,9 +57,13 @@ pub struct Recorded {
     pub duration: f64, pub pixels: (u32, u32), pub scale: f64,
     pub edited: Option<(Edit, PathBuf)>,
     /// Where the pointer was through it, seconds in and its pixels from the
-    /// top left, for a halo to follow; and whether the halo started on.
+    /// top left, for Mark to draw a halo or a fingertip along; when the button
+    /// went down and came up, for a ripple or a press; and how the pointer and
+    /// clicks were shown as it was made -- which says what macOS put into the
+    /// movie itself, the arrow and the rings, there to stay.
     pub pointer: Vec<(f64, f64, f64)>,
-    pub highlight: bool,
+    pub presses: Vec<(f64, f64)>,
+    pub look: crate::settings::Look,
 }
 
 /// As many recordings as the editor could ask for: Recent's six, and the one open.
@@ -210,7 +214,8 @@ mod tests {
         for _ in 0..9 {
             let id = session.next_video_id();
             dropped.extend(session.keep_video(Recorded { id, folder: format!("/r/{id}").into(), file: format!("/r/{id}/m.mp4").into(),
-                                                         duration: 1.0, pixels: (2, 2), scale: 1.0, edited: None , pointer: vec![], highlight: false }));
+                                                         duration: 1.0, pixels: (2, 2), scale: 1.0, edited: None, pointer: vec![], presses: vec![],
+                                                         look: Default::default() }));
         }
         assert_eq!(session.videos.iter().map(|v| v.id).collect::<Vec<_>>(), [3, 4, 5, 6, 7, 8, 9]);
         assert_eq!(dropped, [PathBuf::from("/r/1"), PathBuf::from("/r/2")]);

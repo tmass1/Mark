@@ -443,13 +443,20 @@ notarization; an Apple Development certificate is only good for this Mac.
     own windows out of it. The menu bar counts too, and Mark's menu offers
     **Stop Recording**; Record Video's shortcut stops it as well, and so does
     macOS's own recording indicator, which keeps what was recorded. A
-    recording stops by itself at five minutes. Clicks show as rings unless
-    **Show clicks in recordings** is off in Settings, and the pointer is in
-    it unless **Show the pointer in recordings** is. Mark follows the pointer
-    as it records, so that a soft yellow halo can follow it too — over the
-    movie in the editor and in every copy — switched on and off for each
-    recording beside Play; **Highlight the pointer** in Settings says whether
-    a new one starts with it.
+    recording stops by itself at five minutes.
+
+    How it shows the pointer and clicks is chosen before it starts, from the
+    button at the end of the Region · Window · Screen bar, or in Settings,
+    and remembered for the next. The pointer can be the Mac's own **Arrow**;
+    the arrow with a soft yellow **Halo** following it; **Touch**, a grey
+    fingertip for a phone prototype, pressed in while the button is down; or
+    **Hidden**. Clicks can be macOS's **Rings**, Mark's **Ripple**, a ring
+    spreading and fading where the button went down, or **None**. The arrow
+    and the rings are macOS's, recorded into the movie, and stay. The halo,
+    the fingertip and the ripple Mark draws over it, from where it followed
+    the pointer and when the button went down and came up, so the button
+    beside Play changes them afterwards — over the movie in the editor and in
+    every copy — with what the recording can't take dimmed.
 
     The editor then plays it, over a strip of its frames: drag the yellow
     handles to keep only part of it, or press **I** and **O** to trim to the
@@ -640,13 +647,20 @@ default anyway.
   moment one appears at, and each frame gets the latest one due laid over it,
   after any redaction due is pixelated from that frame's own pixels. Frames
   are timed in the recording's own seconds, so a trimmed copy keeps each
-  mark's moment. It also asks for the microphone.
+  mark's moment. The pointer is drawn the same way, under the marks: a halo
+  or a fingertip where it was at that moment, and a ripple for each press
+  under way, all from the track `recording.rs` kept. It also asks for the
+  microphone.
 - `src-tauri/src/recording.rs` runs a recording from the overlay to the
   editor: the bar and the outline, two more non-activating panels; the clock
   in the menu bar; the five-minute limit; and the commands that copy, save and
   share all of a recording or the part kept. Recordings live in a folder of
   Mark's in the caches, each in its own, beside its last trim, for as long as
   the editor could still reopen it, and the folder is emptied at launch.
+  While one records it follows the pointer, 30 times a second, and hears
+  each press of the button through an `NSEvent` global monitor in
+  `macos.rs` — mouse events need no permission, unlike keys — so Mark can
+  draw a halo, a fingertip and ripples over the movie afterwards.
   The editor plays them through Tauri's asset protocol, scoped to that folder.
 - `src-tauri/src/macos.rs` contains the small AppKit/Core Graphics bridge for
   permissions, clipboard output, focus restoration, overlay window level,
@@ -882,6 +896,10 @@ or a restart:
    poster, a trim and a GIF to check.
 7. A copied recording pastes into Slack, Messages and Mail as a video, and a
    recording's thumbnail drags into Finder and Slack as the MP4.
+8. Recorded with **Touch** and **Ripple**, a phone prototype shows a
+   fingertip and no arrow, pressed in and rippling at each click and each
+   trackpad tap, in the editor and in a copy; recorded with **Arrow** and
+   **Rings**, macOS's own.
 
 Beyond those, check the shortcut from another app, screen-access grant and
 denial, Copy and Close into Preview, cancellation with an existing editor,

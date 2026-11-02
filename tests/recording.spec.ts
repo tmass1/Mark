@@ -391,13 +391,14 @@ test('no Record where the Mac cannot, or while an ask waits', async ({ page }) =
 });
 
 /** The overlay, opened by Record Video. */
-async function picking(page: Page, mic: boolean, mode: 'region' | 'window' = 'region') {
+async function picking(page: Page, mic: boolean, mode: 'region' | 'window' = 'region', look: object | null = null) {
   await installBridge(page);
-  await page.addInitScript(([mic, mode]) => {
+  await page.addInitScript(([mic, mode, look]) => {
     const w = window as any;
     w.__MARK_KIND__ = 'video'; w.__MARK_MIC__ = mic; w.__MARK_MODE__ = mode; w.__MARK_DELAY__ = 0; w.__MARK_POINTER__ = null;
+    w.__MARK_LOOK__ = look;
     w.__MARK_WINDOWS__ = [{ id: 11, app: 'Safari', title: 'Apple', x: 60, y: 50, width: 400, height: 300 }];
-  }, [mic, mode] as const);
+  }, [mic, mode, look] as const);
   await page.goto('/selector.html');
   await page.waitForSelector('.hint');
 }
@@ -443,7 +444,38 @@ test('a window is recorded by a click, ⌘ or not', async ({ page }) => {
   await page.keyboard.down('Meta');
   await page.mouse.click(200, 150);
   await page.keyboard.up('Meta');
-  expect((await waitFor(page, 'capture_window')).args).toEqual({ id: 11, delay: 0, copy: false, record: true, mic: false });
+  expect((await waitFor(page, 'capture_window')).args)
+    .toEqual({ id: 11, delay: 0, copy: false, record: true, mic: false, pointer: 'arrow', clicks: 'rings' });
+});
+
+test('the bar says how the pointer and clicks will show, and its menu changes them before Record', async ({ page }) => {
+  await picking(page, false, 'window', { pointer: 'touch', clicks: 'ripple' });
+  const button = page.locator('.look-button');
+  await expect(button).toHaveText('Touch · Ripple');
+  await button.click();
+  const menu = page.getByRole('menu', { name: 'Pointer and clicks' });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitemradio', { name: /Touch/ })).toHaveAttribute('aria-checked', 'true');
+  // Nothing is dimmed before recording: every choice can be had.
+  await expect(menu.locator('[aria-disabled="true"]')).toHaveCount(0);
+  // A choice takes at once, and the menu stays for the other half.
+  await menu.getByRole('menuitemradio', { name: /Hidden/ }).click();
+  await expect(button).toHaveText('Hidden · Ripple');
+  await menu.getByRole('menuitemradio', { name: /Rings/ }).click();
+  await expect(button).toHaveText('Hidden · Rings');
+  await expect(menu).toBeVisible();
+  // Escape puts the menu away, not the overlay; a click away from it only
+  // closes it, rather than recording the window under it.
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  expect(await commands(page)).not.toContain('cancel_selection');
+  await button.click();
+  await page.mouse.click(200, 150);
+  await expect(menu).toBeHidden();
+  expect(await commands(page)).not.toContain('capture_window');
+  await page.mouse.click(200, 150);
+  expect((await waitFor(page, 'capture_window')).args)
+    .toEqual({ id: 11, delay: 0, copy: false, record: true, mic: false, pointer: 'hidden', clicks: 'rings' });
 });
 
 test('a recording is of a region, a window or the screen, chosen up front', async ({ page }) => {
@@ -535,67 +567,117 @@ test('the outline is a line and nothing to click', async ({ page }) => {
 });
 
 test('Settings offers Record Video and the recording options on a Mac that can record', async ({ page }) => {
-  const saved = { appearance: 'dark', shortcut: 'Super+Digit4', recordMic: false, recordClicks: true };
+  const saved = { appearance: 'dark', shortcut: 'Super+Digit4', recordMic: false, recordingPointer: 'arrow', recordingClicks: 'rings' };
   await installBridge(page, { returns: { get_settings: saved, login_enabled: false, recording_supported: true,
                                           set_record_options: { ...saved, recordMic: true } } });
   await page.goto('/settings.html');
   await expect(page.locator('.recorder[data-way="record"]')).toBeVisible({ timeout: 15_000 });
-  await expect(page.locator('.record-clicks')).toBeChecked();
+  await expect(page.locator('.record-clicks')).toHaveValue('rings');
   await expect(page.locator('.record-mic')).not.toBeChecked();
   await page.locator('.record-mic').check();
   expect((await waitFor(page, 'set_record_options')).args).toEqual({ mic: true });
   await expect(page.locator('.record-mic')).toBeChecked();
 });
 
-test('Settings can leave the pointer out of recordings, or start each with a halo following it', async ({ page }) => {
-  const saved = { appearance: 'dark', shortcut: 'Super+Digit4' };
+test('Settings chooses how a recording shows the pointer and clicks', async ({ page }) => {
+  const saved = { appearance: 'dark', shortcut: 'Super+Digit4', recordingPointer: 'arrow', recordingClicks: 'none' };
   await installBridge(page, { returns: { get_settings: saved, login_enabled: false, recording_supported: true,
-                                          set_record_options: { ...saved, recordHighlight: true } } });
+                                          set_record_options: { ...saved, recordingPointer: 'touch' } } });
   await page.goto('/settings.html');
-  const shown = page.getByRole('checkbox', { name: 'Show the pointer in recordings' });
-  const highlighted = page.getByRole('checkbox', { name: 'Highlight the pointer' });
-  await expect(shown).toBeChecked({ timeout: 15_000 });
-  await expect(highlighted).not.toBeChecked();
-  await highlighted.check();
-  expect((await waitFor(page, 'set_record_options')).args).toEqual({ highlight: true });
-  await expect(highlighted).toBeChecked();
+  const pointer = page.getByRole('combobox', { name: 'Pointer' });
+  const clicks = page.getByRole('combobox', { name: 'Clicks' });
+  await expect(pointer).toHaveValue('arrow', { timeout: 15_000 });
+  await expect(clicks).toHaveValue('none');
+  await pointer.selectOption('touch');
+  expect((await waitFor(page, 'set_record_options')).args).toEqual({ pointer: 'touch' });
+  await expect(pointer).toHaveValue('touch');
   await clear(page);
-  await shown.uncheck();
-  expect((await waitFor(page, 'set_record_options')).args).toEqual({ pointer: false });
+  await clicks.selectOption('ripple');
+  expect((await waitFor(page, 'set_record_options')).args).toEqual({ clicks: 'ripple' });
 });
 
-test('a halo follows the pointer over the movie, turned on and off per recording, and goes into every copy', async ({ page }) => {
-  // Followed through the whole recording, at the middle of the picture.
-  const track = Array.from({ length: 121 }, (_, i) => [i / 10, 120, 80]);
+/** A recording whose pointer Mark followed through the middle of the picture,
+ *  made as `look` says, with the button down from 0:06 to 0:07. */
+async function followed(page: Page, look: object, track = Array.from({ length: 121 }, (_, i) => [i / 10, 120, 80])) {
   await installBridge(page, { capture: VIDEO, returns: { recording_supported: true, video_frames: [CAPTURE.dataUrl],
-                                                          video_pointer: { track, highlight: false } } });
+                                                          video_pointer: { track, presses: [[6, 7]], look } } });
   await page.goto('/');
   await expect(page.locator('.trim')).toBeVisible({ timeout: 15_000 });
-  const toggle = page.getByRole('button', { name: 'Highlight the pointer' });
-  await expect(toggle).toBeVisible();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.locator('.pointer-halo')).toBeHidden();
-  await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await seek(page, 0.5);
-  const halo = page.locator('.pointer-halo');
-  await expect(halo).toBeVisible();
-  const [box, stage] = [(await halo.boundingBox())!, (await page.locator('.stage').boundingBox())!];
+}
+/** Whether an element sits on the middle of the picture. */
+async function centred(page: Page, selector: string) {
+  const [box, stage] = [(await page.locator(selector).first().boundingBox())!, (await page.locator('.stage').boundingBox())!];
   expect(box.x + box.width / 2).toBeCloseTo(stage.x + stage.width / 2, 0);
   expect(box.y + box.height / 2).toBeCloseTo(stage.y + stage.height / 2, 0);
+}
+
+test('a recording with the Mac’s arrow can take a halo, but not what it was recorded without', async ({ page }) => {
+  await followed(page, { pointer: 'arrow', clicks: 'rings' });
+  const button = page.getByRole('button', { name: 'Pointer and clicks' });
+  await expect(button).toBeVisible();
+  await expect(page.locator('.pointer-halo')).toBeHidden();
+  await button.click();
+  const menu = page.getByRole('menu', { name: 'Pointer and clicks' });
+  const dimmed = menu.locator('[aria-disabled="true"]');
+  await expect(dimmed).toHaveCount(4);
+  await expect(menu.getByRole('menuitemradio', { name: /Touch/ })).toContainText('The arrow is in this one');
+  await expect(menu.getByRole('menuitemradio', { name: /Ripple/ })).toContainText('Rings are in this one');
+  // A dimmed one does nothing.
+  await menu.getByRole('menuitemradio', { name: /Touch/ }).click({ force: true });
+  await expect(menu.getByRole('menuitemradio', { name: /Arrow/ })).toHaveAttribute('aria-checked', 'true');
+  await menu.getByRole('menuitemradio', { name: /Halo/ }).click();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await seek(page, 0.25);
+  await expect(page.locator('.pointer-halo')).toBeVisible();
+  await centred(page, '.pointer-halo');
+  await expect(page.locator('.pointer-touch')).toBeHidden();
   await clear(page);
   await page.keyboard.press('Meta+c');
-  expect((await waitFor(page, 'copy_video')).args).toMatchObject({ highlight: true });
+  expect((await waitFor(page, 'copy_video')).args).toMatchObject({ look: { pointer: 'halo', clicks: 'rings' } });
 });
 
-test('no halo switch for a recording whose pointer wasn\'t followed', async ({ page }) => {
-  await installBridge(page, { capture: VIDEO, returns: { recording_supported: true, video_frames: [CAPTURE.dataUrl],
-                                                          video_pointer: { track: [], highlight: true } } });
-  await page.goto('/');
-  await expect(page.locator('.trim')).toBeVisible({ timeout: 15_000 });
+test('a recording made with Touch shows a fingertip, pressed while the button was down, and a ripple where it went down', async ({ page }) => {
+  await followed(page, { pointer: 'touch', clicks: 'ripple' });
+  const touch = page.locator('.pointer-touch');
+  await seek(page, 0.25);                                   // 0:03
+  await expect(touch).toBeVisible();
+  await centred(page, '.pointer-touch');
+  await expect(touch).not.toHaveClass(/pressed/);
+  await expect(page.locator('.pointer-ripple:visible')).toHaveCount(0);
+  await seek(page, 0.51);                                   // 0:06.1, just pressed
+  await expect(touch).toHaveClass(/pressed/);
+  await expect(page.locator('.pointer-ripple:visible')).toHaveCount(1);
+  await centred(page, '.pointer-ripple');
+  await seek(page, 0.75);                                   // 0:09, let go long since
+  await expect(touch).not.toHaveClass(/pressed/);
+  await expect(page.locator('.pointer-ripple:visible')).toHaveCount(0);
+  // Recorded without the arrow and the rings: those are dimmed, the rest can change.
+  await page.getByRole('button', { name: 'Pointer and clicks' }).click();
+  const menu = page.getByRole('menu', { name: 'Pointer and clicks' });
+  await expect(menu.getByRole('menuitemradio', { name: /Arrow/ })).toContainText('Recorded without it');
+  await expect(menu.getByRole('menuitemradio', { name: /Rings/ })).toContainText('Only while recording');
+  await menu.getByRole('menuitemradio', { name: /Hidden/ }).click();
+  await menu.getByRole('menuitemradio', { name: /None/ }).click();
+  await expect(touch).toBeHidden();
+  await clear(page);
+  await page.keyboard.press('Meta+c');
+  expect((await waitFor(page, 'copy_video')).args).toMatchObject({ look: { pointer: 'hidden', clicks: 'none' } });
+  // Recent keeps it.
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await waitFor(page, 'dismiss_editor');
+  await page.locator('.recent').first().click();
+  await page.getByRole('button', { name: 'Pointer and clicks' }).click();
+  await expect(menu.getByRole('menuitemradio', { name: /Hidden/ })).toHaveAttribute('aria-checked', 'true');
+  await expect(menu.getByRole('menuitemradio', { name: /None/ })).toHaveAttribute('aria-checked', 'true');
+});
+
+test('no pointer menu for a recording whose pointer wasn\'t followed', async ({ page }) => {
+  await followed(page, { pointer: 'touch', clicks: 'ripple' }, []);
   await waitFor(page, 'video_pointer');
-  await expect(page.getByRole('button', { name: 'Highlight the pointer' })).toBeHidden();
-  await expect(page.locator('.pointer-halo')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Pointer and clicks' })).toBeHidden();
+  await expect(page.locator('.pointer-touch')).toBeHidden();
 });
 
 test('…and neither where it cannot', async ({ page }) => {

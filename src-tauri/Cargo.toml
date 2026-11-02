@@ -26,7 +26,7 @@ tempfile = "3"
 # flock, getpeereid and getpwuid for the socket AI tools reach Mark through.
 libc = "0.2"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSPasteboardItem", "NSImage", "NSRunningApplication", "NSWorkspace", "NSApplication", "NSWindow", "NSResponder", "NSView", "NSSharingService", "NSGlassEffectView", "NSGraphics", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSGraphicsContext", "NSTrackingArea"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "block2", "NSPasteboard", "NSPasteboardItem", "NSImage", "NSRunningApplication", "NSWorkspace", "NSApplication", "NSWindow", "NSResponder", "NSView", "NSSharingService", "NSGlassEffectView", "NSGraphics", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSGraphicsContext", "NSTrackingArea"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSString", "NSURL", "NSArray", "NSGeometry", "NSDictionary", "NSValue", "NSBundle"] }
 tauri-plugin-updater = "2"
 # The floating thumbnail is a non-activating panel, so clicking or dragging it

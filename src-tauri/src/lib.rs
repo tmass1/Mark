@@ -273,7 +273,7 @@ fn open_selectors(app: &AppHandle, delay: u32, window: bool, record: bool) -> Re
     // and the pointer, so one is picked under a pointer that has not moved yet.
     let windows = capture::capturable(macos::windows_on_screen(), std::process::id() as i32);
     let pointer = macos::pointer();
-    let mic = record && app.state::<Prefs>().0.lock().unwrap().record_mic;
+    let recording = record.then(|| { let prefs = app.state::<Prefs>(); let prefs = prefs.0.lock().unwrap(); (prefs.record_mic, prefs.look()) });
     for (index, monitor) in monitors.iter().enumerate() {
         let scale = monitor.scale_factor();
         // Points, not pixels: window geometry and screencapture -R share this space.
@@ -289,7 +289,7 @@ fn open_selectors(app: &AppHandle, delay: u32, window: bool, record: bool) -> Re
             .accept_first_mouse(true)
             .initialization_script(selector_globals(
                 capture::Rect { x: origin.x, y: origin.y, width: size.width, height: size.height }, scale,
-                delay, &windows, window, pointer, record.then_some(mic))?)
+                delay, &windows, window, pointer, recording)?)
             .build().map_err(|e| e.to_string())?;
         if let Ok(handle) = window.ns_window() { macos::raise_overlay(handle); }
         window.show().map_err(|e| e.to_string())?;
@@ -302,11 +302,11 @@ fn open_selectors(app: &AppHandle, delay: u32, window: bool, record: bool) -> Re
 /// What an overlay is told before its page runs. It reports a selection in
 /// global points, so it needs to know where on the desktop its display starts;
 /// and to pick a window, where the windows are, in the same points, and where
-/// the pointer is; and for a recording, that it is one, and whether the
-/// microphone was on last time. JSON throughout, so a window's title is only
-/// ever a string.
+/// the pointer is; and for a recording, that it is one, whether the
+/// microphone was on last time, and how the pointer and clicks were shown.
+/// JSON throughout, so a window's title is only ever a string.
 fn selector_globals(display: capture::Rect, scale: f64, delay: u32, windows: &[capture::Window], window: bool,
-                    pointer: Option<(f64, f64)>, record: Option<bool>) -> Result<String, String> {
+                    pointer: Option<(f64, f64)>, record: Option<(bool, settings::Look)>) -> Result<String, String> {
     let json = |value: serde_json::Value| value.to_string();
     let globals = [
         ("__MARK_DISPLAY__", json(serde_json::json!({ "x": display.x, "y": display.y, "width": display.width,
@@ -316,7 +316,8 @@ fn selector_globals(display: capture::Rect, scale: f64, delay: u32, windows: &[c
         ("__MARK_MODE__", json((if window { "window" } else { "region" }).into())),
         ("__MARK_POINTER__", json(pointer.map_or(serde_json::Value::Null, |(x, y)| serde_json::json!({ "x": x, "y": y })))),
         ("__MARK_KIND__", json((if record.is_some() { "video" } else { "shot" }).into())),
-        ("__MARK_MIC__", json(record.unwrap_or(false).into())),
+        ("__MARK_MIC__", json(record.is_some_and(|(mic, _)| mic).into())),
+        ("__MARK_LOOK__", serde_json::to_string(&record.map(|(_, look)| look)).map_err(|e| e.to_string())?),
     ];
     Ok(globals.iter().map(|(name, value)| format!("window.{name}={value};")).collect())
 }
@@ -345,10 +346,13 @@ fn recording_menu(app: &AppHandle, live: bool) {
 
 /// `copy`: straight to the clipboard and Recent, without the editor -- the
 /// overlay's Copy, ⌘C and ⌘-click. `record`: recorded rather than captured,
-/// with the microphone or not, as the overlay last had it.
+/// with the microphone or not, and the pointer and clicks shown as the overlay
+/// last had them.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 fn capture_rect(app: AppHandle, x: f64, y: f64, width: f64, height: f64, delay: u32, copy: Option<bool>,
-                record: Option<bool>, mic: Option<bool>) -> Result<(), String> {
+                record: Option<bool>, mic: Option<bool>, pointer: Option<settings::PointerLook>, clicks: Option<settings::ClickLook>)
+    -> Result<(), String> {
     if ![x, y, width, height].iter().all(|value| value.is_finite()) {
         return Err("That selection isn't a valid region.".into());
     }
@@ -358,7 +362,7 @@ fn capture_rect(app: AppHandle, x: f64, y: f64, width: f64, height: f64, delay: 
     let handle = app.clone();
     let copy = copy.unwrap_or(false);
     let record = record.unwrap_or(false);
-    if record { remember_mic(&app, mic)?; }
+    if record { remember_options(&app, mic, pointer, clicks)?; }
     app.run_on_main_thread(move || take_selection(&handle, capture::Target::Region(rect), delay, copy && !record, record))
         .map_err(|e| e.to_string())
 }
@@ -367,7 +371,9 @@ fn capture_rect(app: AppHandle, x: f64, y: f64, width: f64, height: f64, delay: 
 /// It is looked up again rather than taken on trust: the window has to still be
 /// there, and its size here is what the image's density is worked out from.
 #[tauri::command]
-fn capture_window(app: AppHandle, id: u32, delay: u32, copy: Option<bool>, record: Option<bool>, mic: Option<bool>) -> Result<(), String> {
+#[allow(clippy::too_many_arguments)]
+fn capture_window(app: AppHandle, id: u32, delay: u32, copy: Option<bool>, record: Option<bool>, mic: Option<bool>,
+                  pointer: Option<settings::PointerLook>, clicks: Option<settings::ClickLook>) -> Result<(), String> {
     let listed = macos::windows_on_screen();
     let owner = listed.iter().find(|window| window.id == id).map(|window| window.pid);
     let window = capture::capturable(listed, std::process::id() as i32)
@@ -379,7 +385,7 @@ fn capture_window(app: AppHandle, id: u32, delay: u32, copy: Option<bool>, recor
     let copy = copy.unwrap_or(false);
     let record = record.unwrap_or(false);
     if record {
-        remember_mic(&app, mic)?;
+        remember_options(&app, mic, pointer, clicks)?;
         // A window is recorded to be used while it is, so its app comes
         // forward as the overlay goes, in place of the one that was in front,
         // and is the one gone back to after. A screenshot takes a window
@@ -389,15 +395,18 @@ fn capture_window(app: AppHandle, id: u32, delay: u32, copy: Option<bool>, recor
     app.run_on_main_thread(move || take_selection(&handle, target, delay, copy && !record, record)).map_err(|e| e.to_string())
 }
 
-/// The overlay's microphone switch, kept as the setting it is, so the next
-/// recording starts the same way.
-fn remember_mic(app: &AppHandle, mic: Option<bool>) -> Result<(), String> {
-    let Some(mic) = mic else { return Ok(()) };
+/// The overlay's microphone switch and its pointer and clicks, kept as the
+/// settings they are, so the next recording starts the same way.
+fn remember_options(app: &AppHandle, mic: Option<bool>, pointer: Option<settings::PointerLook>, clicks: Option<settings::ClickLook>)
+    -> Result<(), String> {
     let state = app.state::<Prefs>();
     let updated = {
         let mut prefs = state.0.lock().unwrap();
-        if prefs.record_mic == mic { return Ok(()); }
-        prefs.record_mic = mic; prefs.clone()
+        let before = prefs.clone();
+        if let Some(mic) = mic { prefs.record_mic = mic; }
+        prefs.set_look(pointer, clicks);
+        if *prefs == before { return Ok(()); }
+        prefs.clone()
     };
     settings::save(app, &updated)?;
     let _ = app.emit("settings-changed", &updated);
@@ -1086,18 +1095,16 @@ fn set_mcp(app: AppHandle, enabled: bool) -> Result<settings::Settings, String> 
     Ok(updated)
 }
 
-/// Whether recordings take in the microphone, and whether they show clicks.
-/// Either may be left as it is.
+/// Whether recordings take in the microphone, and how they show the pointer
+/// and clicks. Any may be left as it is.
 #[tauri::command]
-fn set_record_options(app: AppHandle, mic: Option<bool>, clicks: Option<bool>, pointer: Option<bool>, highlight: Option<bool>)
+fn set_record_options(app: AppHandle, mic: Option<bool>, pointer: Option<settings::PointerLook>, clicks: Option<settings::ClickLook>)
     -> Result<settings::Settings, String> {
     let state = app.state::<Prefs>();
     let updated = {
         let mut prefs = state.0.lock().unwrap();
         if let Some(mic) = mic { prefs.record_mic = mic; }
-        if let Some(clicks) = clicks { prefs.record_clicks = clicks; }
-        if let Some(pointer) = pointer { prefs.record_pointer = pointer; }
-        if let Some(highlight) = highlight { prefs.record_highlight = highlight; }
+        prefs.set_look(pointer, clicks);
         prefs.clone()
     };
     settings::save(&app, &updated)?;
@@ -1376,13 +1383,17 @@ mod tests {
              window.__MARK_MODE__=\"window\";\
              window.__MARK_POINTER__={\"x\":1600.25,\"y\":300.0};\
              window.__MARK_KIND__=\"shot\";\
-             window.__MARK_MIC__=false;");
+             window.__MARK_MIC__=false;\
+             window.__MARK_LOOK__=null;");
         let region = selector_globals(display, 1.0, 0, &[], false, None, None).unwrap();
         assert!(region.contains("window.__MARK_WINDOWS__=[];") && region.contains("window.__MARK_MODE__=\"region\";")
                 && region.contains("window.__MARK_POINTER__=null;"));
-        // A recording's overlay is told it is one, and how the microphone was left.
-        let recording = selector_globals(display, 1.0, 0, &[], false, None, Some(true)).unwrap();
-        assert!(recording.ends_with("window.__MARK_KIND__=\"video\";window.__MARK_MIC__=true;"));
+        // A recording's overlay is told it is one, how the microphone was left,
+        // and how the pointer and clicks were shown.
+        let look = settings::Look { pointer: settings::PointerLook::Touch, clicks: settings::ClickLook::Ripple };
+        let recording = selector_globals(display, 1.0, 0, &[], false, None, Some((true, look))).unwrap();
+        assert!(recording.ends_with("window.__MARK_KIND__=\"video\";window.__MARK_MIC__=true;\
+                                     window.__MARK_LOOK__={\"pointer\":\"touch\",\"clicks\":\"ripple\"};"));
     }
 
     /// A command a window may not call fails at runtime with "not allowed by
