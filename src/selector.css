@@ -144,18 +144,14 @@ html[data-kind="video"] .go:hover { background: var(--record-hover) !important; 
 .choice-set { display: contents; }
 /* A recording's bar holds all of it, as macOS's own does: cancel, what to
    record, the microphone, the delay, the pointer and clicks, and Record. */
-.choices .cancel, .choices .mic, .choices .delay, .choices .zoom-toggle {
+.choices .cancel, .choices .mic, .choices .delay {
   display: flex; align-items: center; gap: 6px; padding: 10px 12px; border: none; border-radius: 14px;
   background: transparent; color: var(--muted); font: inherit; cursor: default;
 }
-.choices .cancel svg, .choices .mic svg, .choices .delay svg, .choices .zoom-toggle svg { display: block; width: 22px; height: 22px; }
-.choices .cancel:hover, .choices .mic:hover, .choices .delay:hover, .choices .zoom-toggle:hover { color: var(--ink); background: var(--control); }
-.choices .mic[aria-pressed="true"], .choices .delay.armed, .choices .zoom-toggle[aria-pressed="true"] { color: #fff; background: var(--blue); }
-/* Zoom says what it is in a word, as the choices do: a magnifier alone could
-   be taken for zooming the overlay. */
-.choices .zoom-toggle { gap: 7px; padding-right: 15px; font-weight: 500; white-space: nowrap; }
-.choices .cancel:focus-visible, .choices .mic:focus-visible, .choices .delay:focus-visible, .choices .zoom-toggle:focus-visible {
-  outline: 2.5px solid var(--blue); outline-offset: 1px; }
+.choices .cancel svg, .choices .mic svg, .choices .delay svg { display: block; width: 22px; height: 22px; }
+.choices .cancel:hover, .choices .mic:hover, .choices .delay:hover { color: var(--ink); background: var(--control); }
+.choices .mic[aria-pressed="true"], .choices .delay.armed { color: #fff; background: var(--blue); }
+.choices .cancel:focus-visible, .choices .mic:focus-visible, .choices .delay:focus-visible { outline: 2.5px solid var(--blue); outline-offset: 1px; }
 .choices .go {
   display: flex; align-items: center; gap: 9px; margin-left: 6px; padding: 10px 20px 10px 17px; border: none; border-radius: 14px;
   color: #fff; font: inherit; font-weight: 600; cursor: default; box-shadow: inset 0 1px 0 #ffffff2b;

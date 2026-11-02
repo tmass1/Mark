@@ -617,10 +617,15 @@ test('Settings offers Record Video and the recording options on a Mac that can r
 test('zooming in on clicks is chosen in the bar before recording, off until it is', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await picking(page, false, 'window');
-  const zoom = page.locator('.choices').getByRole('button', { name: 'Zoom in on clicks' });
-  await expect(zoom).toHaveAttribute('aria-pressed', 'false');
-  await zoom.click();
-  await expect(zoom).toHaveAttribute('aria-pressed', 'true');
+  // With the pointer and clicks, since it is about the clicks: off until chosen.
+  const button = page.locator('.look-button');
+  await expect(button).toHaveText('Arrow · Rings');
+  await button.click();
+  const menu = page.getByRole('menu', { name: 'Pointer and clicks' });
+  await expect(menu.getByRole('menuitemradio', { name: /^Off/ })).toHaveAttribute('aria-checked', 'true');
+  await menu.getByRole('menuitemradio', { name: /In on clicks/ }).click();
+  await expect(button).toHaveText('Arrow · Rings · Zoom');
+  await page.keyboard.press('Escape');
   await page.mouse.click(200, 150);
   // Chosen, the bar glides to just under the window, where the eye already is.
   const pick = (await page.locator('.pick').boundingBox())!;

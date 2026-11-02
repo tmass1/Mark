@@ -34,6 +34,15 @@ export const CLICKS: readonly Choice<ClickLook>[] = [
     art: '<circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 2.4" opacity=".55"/>' },
 ];
 
+/** Whether a recording opens with zooms round its clicks: chosen with the
+ *  pointer and clicks before it starts, since it is about the clicks too. */
+const ZOOMS: readonly Choice<'on' | 'off'>[] = [
+  { id: 'on', name: 'In on clicks', hint: 'Moves in gently around each burst',
+    art: '<circle cx="8.6" cy="8.6" r="5.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12.4 12.4 16.4 16.4M8.6 6.4v4.4M6.4 8.6h4.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' },
+  { id: 'off', name: 'Off', hint: 'The whole picture throughout',
+    art: '<circle cx="8.6" cy="8.6" r="5.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 2.4" opacity=".55"/><path d="M12.4 12.4 16.4 16.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".55"/>' },
+];
+
 const isPointer = (value: unknown): value is PointerLook => POINTERS.some(choice => choice.id === value);
 const isClicks = (value: unknown): value is ClickLook => CLICKS.some(choice => choice.id === value);
 
@@ -61,35 +70,40 @@ export function unavailable(made: Look, choice: PointerLook | ClickLook): string
 }
 
 const name = (choices: readonly Choice<string>[], id: string) => choices.find(choice => choice.id === id)?.name ?? id;
-/** "Touch · Ripple", for the button that opens the menu. */
-export const lookLabel = (look: Look) => `${name(POINTERS, look.pointer)} · ${name(CLICKS, look.clicks)}`;
+/** "Touch · Ripple", for the button that opens the menu -- and "· Zoom" after
+ *  it, zooming in on clicks. */
+export const lookLabel = (look: Look, zoom = false) => `${name(POINTERS, look.pointer)} · ${name(CLICKS, look.clicks)}${zoom ? ' · Zoom' : ''}`;
 /** The pointer's picture, for that button. */
 export const pointerArt = (pointer: PointerLook) =>
   `<svg viewBox="0 0 20 20" aria-hidden="true">${POINTERS.find(choice => choice.id === pointer)?.art ?? ARROW}</svg>`;
 
-/** The menu's two groups, each choice ticked if it is the one, and -- for a
- *  recording already made -- dimmed, with why, if it can't be had. */
-export function lookItems(look: Look, made?: Look): string {
-  const group = <T extends string>(label: string, key: 'pointer' | 'clicks', choices: readonly Choice<T>[], current: T) => `
+/** The menu's groups, each choice ticked if it is the one, and -- for a
+ *  recording already made -- dimmed, with why, if it can't be had. Before
+ *  recording, `zoom` adds a third: whether it zooms in on clicks. Afterwards
+ *  the zooms themselves are on the strip. */
+export function lookItems(look: Look, made?: Look, zoom?: boolean): string {
+  const group = <T extends string>(label: string, key: 'pointer' | 'clicks' | 'zoom', choices: readonly Choice<T>[], current: T) => `
     <div class="look-group" role="group" aria-label="${label}">
       <span class="look-head" aria-hidden="true">${label}</span>
       ${choices.map(choice => {
-        const why = made ? unavailable(made, choice.id as PointerLook | ClickLook) : null;
+        const why = made && key !== 'zoom' ? unavailable(made, choice.id as PointerLook | ClickLook) : null;
         return `<button type="button" class="look-item" role="menuitemradio" data-${key}="${choice.id}"
           aria-checked="${choice.id === current}"${why ? ' aria-disabled="true"' : ''}>
           <svg viewBox="0 0 20 20" aria-hidden="true">${choice.art}</svg>
           <span class="look-name">${choice.name}</span><span class="look-hint">${why ?? choice.hint}</span></button>`;
       }).join('')}
     </div>`;
-  return group('Pointer', 'pointer', POINTERS, look.pointer) + group('Clicks', 'clicks', CLICKS, look.clicks);
+  return group('Pointer', 'pointer', POINTERS, look.pointer) + group('Clicks', 'clicks', CLICKS, look.clicks)
+    + (zoom === undefined ? '' : group('Zoom', 'zoom', ZOOMS, zoom ? 'on' : 'off'));
 }
 
-/** What a click on the menu chose: half a look, or nothing -- a dimmed
- *  choice is nothing, as is a click between them. */
-export function chosen(target: EventTarget | null): Partial<Look> | null {
+/** What a click on the menu chose: half a look, or zooming on or off, or
+ *  nothing -- a dimmed choice is nothing, as is a click between them. */
+export function chosen(target: EventTarget | null): (Partial<Look> & { zoom?: boolean }) | null {
   const item = (target as Element | null)?.closest?.<HTMLElement>('.look-item');
   if (!item || item.getAttribute('aria-disabled') === 'true') return null;
   if (isPointer(item.dataset.pointer)) return { pointer: item.dataset.pointer };
   if (isClicks(item.dataset.clicks)) return { clicks: item.dataset.clicks };
+  if (item.dataset.zoom === 'on' || item.dataset.zoom === 'off') return { zoom: item.dataset.zoom === 'on' };
   return null;
 }

@@ -437,8 +437,9 @@ notarization; an Apple Development certificate is only good for this Mac.
     or **Screen**, or Space for a window and ⌘A for the screen — in a bar
     that holds everything a recording is set up with, as macOS's own does:
     **×** to cancel, the three choices, the **microphone** and the **delay**,
-    how the pointer and clicks show, **zoom in on clicks**, all remembered,
-    and **Record**. A region is dragged out as for a screenshot, its size over
+    how the pointer and clicks show and whether it **zooms in on clicks** —
+    one menu, its button saying all three, such as Touch · Ripple · Zoom —
+    all remembered, and **Record**. A region is dragged out as for a screenshot, its size over
     it; a window is chosen with a click and stays chosen, outlined, until
     another is clicked; and Record, or Return, records what is chosen, so
     nothing starts before all of it is set. The bar sits just under what is
@@ -497,8 +498,8 @@ notarization; an Apple Development certificate is only good for this Mac.
     every frame, since what is under it moves; the editor shows a block where
     it will be. Copy, Save, GIF and Share draw the marks into the movie.
     **Zooms** move the picture in around what is clicked, as a walkthrough
-    wants. Recorded with **zoom in on clicks** on — the magnifier in the bar,
-    or Settings; off until chosen — a recording opens with a gentle 1.5× zoom
+    wants. Recorded with **Zoom: In on clicks** — in the bar's pointer and
+    clicks menu, or Settings; off until chosen — a recording opens with a gentle 1.5× zoom
     round each burst of clicks — in just before the first, out a moment after
     the last — following the pointer
     smoothly while it is in, and never past the edge of the picture. Each is a

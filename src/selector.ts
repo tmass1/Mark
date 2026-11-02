@@ -99,11 +99,6 @@ root.innerHTML = `
       <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.6 6 7.6l3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div class="look-menu" role="menu" aria-label="Pointer and clicks" hidden></div>
-    <button class="zoom-toggle icon" type="button" aria-pressed="false" aria-label="Zoom in on clicks" title="Zoom in on clicks">
-      <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="8.6" cy="8.6" r="5.2"/><path d="M12.4 12.4 16.4 16.4M8.6 6.4v4.4M6.4 8.6h4.4"/></svg>
-      <span class="zoom-word">Zoom</span>
-    </button>
     <button class="go" type="button"><span class="dot" aria-hidden="true"></span>Record</button></div>` : ''}
   <div class="panel" hidden>
     <label class="field">Width <input class="w" type="number" min="1" step="1" /></label>
@@ -138,7 +133,6 @@ const lock = root.querySelector<HTMLButtonElement>('.lock')!;
 const delayButton = root.querySelector<HTMLButtonElement>('.delay')!;
 const micButton = root.querySelector<HTMLButtonElement>('.mic');
 const goButton = root.querySelector<HTMLButtonElement>('.go')!;
-const zoomToggle = root.querySelector<HTMLButtonElement>('.zoom-toggle');
 /** Where the bar may go: clear of the menu bar and the Dock. */
 const work = (() => {
   const given = window.__MARK_WORK__;
@@ -510,16 +504,12 @@ root.querySelector('.full')?.addEventListener('click', () => {
   setRect({ x: 0, y: 0, width: display.width, height: display.height });
 });
 
-function showZoom() {
-  if (!zoomToggle) return;
-  zoomToggle.setAttribute('aria-pressed', String(zoom));
-  zoomToggle.title = zoom ? 'Zooming in on clicks: the editor can still change each zoom' : 'Zoom in on clicks';
+/** Zooming in on clicks, on or off, as every display's bar shows it. */
+function setZoom(next: boolean, tell: boolean) {
+  zoom = next;
+  showLook();
+  if (tell && inTauri) void import('@tauri-apps/api/event').then(({ emit }) => emit('selection-zoom', { zoom }));
 }
-zoomToggle?.addEventListener('click', () => {
-  zoom = !zoom; showZoom();
-  if (inTauri) void import('@tauri-apps/api/event').then(({ emit }) => emit('selection-zoom', { zoom }));
-});
-showZoom();
 
 /** A window chosen to record, on every display's overlay, whichever was clicked. */
 function hold(target: ScreenWindow, tell: boolean) {
@@ -537,8 +527,8 @@ choices?.addEventListener('click', event => {
 function showLook() {
   if (!lookButton || !lookMenu) return;
   lookButton.querySelector('.look-art')!.innerHTML = pointerArt(look.pointer);
-  lookButton.querySelector('.look-label')!.textContent = lookLabel(look);
-  lookMenu.innerHTML = lookItems(look);
+  lookButton.querySelector('.look-label')!.textContent = lookLabel(look, zoom);
+  lookMenu.innerHTML = lookItems(look, undefined, zoom);
 }
 function setLookMenu(open: boolean) {
   if (!lookButton || !lookMenu) return;
@@ -553,8 +543,10 @@ lookButton?.addEventListener('click', () => setLookMenu(lookMenu!.hidden));
 lookMenu?.addEventListener('click', event => {
   const half = chosen(event.target);
   if (!half) return;
-  setLook({ ...look, ...half }, true);
-  lookMenu.querySelector<HTMLElement>(`[data-${half.pointer ? 'pointer' : 'clicks'}="${half.pointer ?? half.clicks}"]`)?.focus();
+  if (half.zoom !== undefined) setZoom(half.zoom, true);
+  else setLook({ ...look, ...half }, true);
+  const [key, value] = half.zoom !== undefined ? ['zoom', half.zoom ? 'on' : 'off'] : half.pointer ? ['pointer', half.pointer] : ['clicks', half.clicks];
+  lookMenu.querySelector<HTMLElement>(`[data-${key}="${value}"]`)?.focus();
 });
 function setLook(next: Look, tell: boolean) {
   look = next;
@@ -654,7 +646,7 @@ if (inTauri) {
     listen('selection-started', () => { if (!drag) { rect = null; show(); } }),
     listen<{ mode: Mode }>('selection-mode', event => setMode(event.payload.mode, false)),
     listen<Look>('selection-look', event => setLook(lookOf(event.payload), false)),
-    listen<{ zoom: boolean }>('selection-zoom', event => { zoom = event.payload.zoom === true; showZoom(); }),
+    listen<{ zoom: boolean }>('selection-zoom', event => setZoom(event.payload.zoom === true, false)),
     listen<{ id: number }>('selection-window', event => {
       const chosen = windows.find(w => w.id === event.payload.id);
       if (chosen && mode === 'window') hold(chosen, false);

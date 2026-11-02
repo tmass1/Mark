@@ -32,5 +32,10 @@ describe('a recording’s pointer and clicks', () => {
     expect(menu).toContain('Only while recording');
     // Before recording, everything can be had.
     expect(lookItems({ pointer: 'arrow', clicks: 'rings' })).not.toContain('aria-disabled');
+    // And before recording, whether it zooms in on clicks is chosen with them.
+    const before = lookItems({ pointer: 'touch', clicks: 'ripple' }, undefined, true);
+    expect(before).toMatch(/data-zoom="on"\s+aria-checked="true"/);
+    expect(lookItems({ pointer: 'touch', clicks: 'ripple' }, { pointer: 'touch', clicks: 'ripple' })).not.toContain('data-zoom');
+    expect(lookLabel({ pointer: 'touch', clicks: 'ripple' }, true)).toBe('Touch · Ripple · Zoom');
   });
 });
