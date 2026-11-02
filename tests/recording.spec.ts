@@ -701,6 +701,59 @@ test('a recording can be framed too, in a phone, and every copy is sent the fram
   expect(sizes).toEqual([[geometry.width, geometry.height], [geometry.width, geometry.height]]);
 });
 
+test('a zoom is suggested round the clicks, shown on the strip, and its level changed or taken away', async ({ page }) => {
+  await followed(page, { pointer: 'touch', clicks: 'ripple' });
+  // Pressed from 0:06 to 0:07: in from 0:05.2, out by 0:08.5.
+  const band = page.locator('.zoom-band');
+  await expect(band).toHaveCount(1);
+  await expect(band).toHaveText('2×');
+  const [box, strip] = [(await band.boundingBox())!, (await page.locator('.strip').boundingBox())!];
+  expect((box.x - strip.x) / strip.width).toBeCloseTo(5.2 / 12, 2);
+  expect(box.width / strip.width).toBeCloseTo(3.3 / 12, 2);
+  await band.click();
+  const menu = page.getByRole('menu', { name: 'Zoom' });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitemradio', { name: '2×' })).toHaveAttribute('aria-checked', 'true');
+  await menu.getByRole('menuitemradio', { name: '3×' }).click();
+  await expect(band).toHaveText('3×');
+  await expect(menu).toBeHidden();
+  // Every copy is sent where the camera is through it, from the whole picture in.
+  await clear(page);
+  await page.keyboard.press('Meta+c');
+  const { camera } = (await waitFor(page, 'copy_video')).args.marks as { camera: number[][] };
+  expect(camera[0]).toEqual([5.2, 120, 80, 1]);
+  expect(Math.max(...camera.map(sample => sample[3]))).toBe(3);
+  await band.click();
+  await menu.getByRole('menuitem', { name: 'Remove' }).click();
+  await expect(band).toHaveCount(0);
+  // Taken away, it stays away: Recent keeps none, rather than suggesting it again.
+  await page.keyboard.press('Escape');
+  await waitFor(page, 'dismiss_editor');
+  await page.locator('.recent').first().click();
+  await expect(page.locator('.trim')).toBeVisible();
+  await waitFor(page, 'video_pointer');
+  await expect(page.locator('.zoom-band')).toHaveCount(0);
+});
+
+test('Z zooms in at the playhead, and paused, an outline shows what the camera takes', async ({ page }) => {
+  await followed(page, { pointer: 'arrow', clicks: 'rings' });
+  await expect(page.locator('.zoom-band')).toHaveCount(1);
+  await seek(page, 0.25);                                   // 0:03
+  await page.keyboard.press('z');
+  await expect(page.locator('.zoom-band')).toHaveCount(2);
+  await expect(page.locator('.camera-view')).toBeVisible();
+  // At 2×, with the pointer in the middle of the picture, half of it, centred.
+  const [view, stage] = [(await page.locator('.camera-view').boundingBox())!, (await page.locator('.stage').boundingBox())!];
+  expect(view.width).toBeCloseTo(stage.width / 2, -1);
+  expect(view.x + view.width / 2).toBeCloseTo(stage.x + stage.width / 2, -1);
+  expect(view.y + view.height / 2).toBeCloseTo(stage.y + stage.height / 2, -1);
+  // Nowhere to put one inside another.
+  await page.keyboard.press('z');
+  await expect(page.locator('.zoom-band')).toHaveCount(2);
+  await seek(page, 0.05);                                   // outside them all
+  await expect(page.locator('.camera-view')).toBeHidden();
+});
+
 test('no pointer menu for a recording whose pointer wasn\'t followed', async ({ page }) => {
   await followed(page, { pointer: 'touch', clicks: 'ripple' }, []);
   await waitFor(page, 'video_pointer');

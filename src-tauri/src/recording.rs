@@ -335,13 +335,14 @@ fn find(app: &AppHandle, id: u64) -> Result<Found, String> {
 }
 
 /// What the editor drew on a recording, as it sends it: a PNG of the marks,
-/// base64, for each moment one appears at, the parts to pixelate, and the
-/// frame it is set in, if it is framed.
+/// base64, for each moment one appears at, the parts to pixelate, the frame
+/// it is set in, if it is framed, and where the camera is through each zoom.
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Marks {
     #[serde(default)] overlays: Vec<Overlay>,
     #[serde(default)] redactions: Vec<movie::Hidden>,
     #[serde(default)] frame: Option<Framing>,
+    #[serde(default)] camera: Vec<(f64, f64, f64, f64)>,
 }
 #[derive(Clone, Debug, Deserialize)]
 struct Overlay { at: f64, png: String }
@@ -353,6 +354,10 @@ struct Framing { width: u32, height: u32, x: f64, y: f64, under: String, mask: S
 
 /// No frame is wider or taller than this: a canvas past it is a mistake.
 const LARGEST_CANVAS: u32 = 8192;
+/// The camera is followed a thirtieth of a second at a time, through no more
+/// than five minutes of zooms, and comes no closer than this.
+const MOST_CAMERA: usize = 30 * 600;
+const CLOSEST: f64 = 5.0;
 
 /// Far more moments than anyone marks a short recording at.
 const MOST_MOMENTS: usize = 200;
@@ -363,7 +368,7 @@ const MOST_MOMENTS: usize = 200;
 fn drawn(marks: Option<Marks>, pixels: (u32, u32)) -> Result<Option<(movie::Drawn, u64)>, String> {
     use std::hash::{Hash, Hasher};
     let Some(marks) = marks else { return Ok(None) };
-    if marks.overlays.is_empty() && marks.redactions.is_empty() && marks.frame.is_none() { return Ok(None); }
+    if marks.overlays.is_empty() && marks.redactions.is_empty() && marks.frame.is_none() && marks.camera.is_empty() { return Ok(None); }
     if marks.overlays.len() > MOST_MOMENTS || marks.redactions.len() > MOST_MOMENTS {
         return Err("There's too much drawn on the recording to put into it.".into());
     }
@@ -388,7 +393,20 @@ fn drawn(marks: Option<Marks>, pixels: (u32, u32)) -> Result<Option<(movie::Draw
     }
     let frame = marks.frame.map(|framing| framed(framing, pixels)).transpose()?;
     if let Some(plates) = &frame { (plates.size, plates.at.0.to_bits(), plates.at.1.to_bits(), &plates.under, &plates.mask).hash(&mut print); }
-    Ok(Some((movie::Drawn { overlays, redactions: marks.redactions, pointer: None, frame }, print.finish())))
+    let camera = followed(marks.camera)?;
+    for sample in camera.iter().flatten() { [sample.0, sample.1, sample.2, sample.3].map(f64::to_bits).hash(&mut print); }
+    Ok(Some((movie::Drawn { overlays, redactions: marks.redactions, pointer: None, frame, camera }, print.finish())))
+}
+
+/// The camera's track made ready to follow: numbers, in order of time, no
+/// closer than CLOSEST and no further than the whole picture. None if empty.
+fn followed(track: Vec<(f64, f64, f64, f64)>) -> Result<Option<Vec<(f64, f64, f64, f64)>>, String> {
+    if track.is_empty() { return Ok(None); }
+    if track.len() > MOST_CAMERA { return Err("There's too much zooming to put into the recording.".into()); }
+    let sound = track.iter().all(|&(at, x, y, scale)| [at, x, y, scale].iter().all(|n| n.is_finite()) && (1.0..=CLOSEST).contains(&scale))
+        && track.windows(2).all(|pair| pair[0].0 <= pair[1].0);
+    if !sound { return Err("A zoom isn't one the recording can take.".into()); }
+    Ok(Some(track))
 }
 
 /// The frame made ready to draw: both pictures whole PNGs the canvas's size,
@@ -675,6 +693,18 @@ mod tests {
         // A frame alone is something drawn.
         let marks = Marks { frame: Some(framing(60, 50, 10.0, 5.0)), ..Marks::default() };
         assert!(drawn(Some(marks), (40, 30)).unwrap().is_some_and(|(drawn, _)| drawn.frame.is_some()));
+    }
+
+    #[test]
+    fn a_camera_is_taken_only_in_order_and_within_its_bounds() {
+        assert_eq!(followed(vec![]).unwrap(), None);
+        let fine = vec![(1.0, 10.0, 10.0, 1.0), (1.1, 12.0, 10.0, 2.0)];
+        assert_eq!(followed(fine.clone()).unwrap(), Some(fine));
+        assert!(followed(vec![(1.0, 10.0, 10.0, 6.0)]).is_err(), "closer than it may come");
+        assert!(followed(vec![(1.0, 10.0, 10.0, 0.5)]).is_err(), "further than the whole picture");
+        assert!(followed(vec![(1.1, 10.0, 10.0, 2.0), (1.0, 10.0, 10.0, 2.0)]).is_err(), "out of order");
+        assert!(followed(vec![(1.0, f64::NAN, 10.0, 2.0)]).is_err());
+        assert!(followed(vec![(1.0, 0.0, 0.0, 1.0); MOST_CAMERA + 1]).is_err());
     }
 
     #[test]

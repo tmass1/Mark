@@ -488,6 +488,16 @@ notarization; an Apple Development certificate is only good for this Mac.
     start and end the selected mark at the playhead. A redaction is pixelated afresh in
     every frame, since what is under it moves; the editor shows a block where
     it will be. Copy, Save, GIF and Share draw the marks into the movie.
+    **Zooms** move the picture in around what is clicked, as a walkthrough
+    wants: a recording opens with one round each burst of clicks — in just
+    before the first, out a moment after the last — following the pointer
+    smoothly while it is in, and never past the edge of the picture. Each is a
+    violet band along the foot of the strip: drag its ends, click it for
+    **1.5×**, **2×**, **3×** or **Remove**, and press the magnifier beside ✂︎,
+    or **Z**, to add one at the playhead. Playing shows it as the copy will
+    be; paused, the whole picture shows, so marks land where they should, with
+    a dashed outline of what the zoom takes. With a frame, the zoom moves in
+    on all of it, phone and all.
     **Frame** sets a recording on a background as it does a screenshot, and
     **Around it: Phone** puts a phone round it, for a prototype's walkthrough;
     the copies come out framed, at the framed size, and a movie can't be
@@ -656,7 +666,11 @@ default anyway.
   paints the frame as it paints a framed screenshot, with the window left
   empty, and a mask of where the movie shows, and Core Image lays each frame
   in through the mask, at the canvas's size, fitted to the largest frame
-  H.264 takes. The pointer is drawn the same way as the marks, under them: a halo
+  H.264 takes. A zoom is worked out in `src/camera.ts` alone: the editor
+  plays it from there, and sends Rust where the camera is a thirtieth of a
+  second at a time through each zoom, which Rust only follows, cutting the
+  view from the canvas and bringing it up to fill it, before that last fit.
+  The pointer is drawn the same way as the marks, under them: a halo
   or a fingertip where it was at that moment, and a ripple for each press
   under way, all from the track `recording.rs` kept. It also asks for the
   microphone.

@@ -3,6 +3,7 @@ import { command, isTauri, videoSource, watchCapture, watchCopied, watchMenuCopy
          type CapturePreview, type SavedSettings, type Snapshot } from './platform';
 import { pointerAt, pressedAt, rippleShape, ripplesAt, type Presses, type Track } from './pointer';
 import { PLAIN, chosen, lookItems, lookLabel, lookOf, pointerArt, recordsArrow, type Look as PointerAndClicks } from './look';
+import { LEVELS, addZoom, cameraAt, cameraTrack, moveZoomEdge, suggestZooms, type Zoom } from './camera';
 import { addCut, clock, everything, fitCuts, keptLength, moveCutEdge, moveEdge, playFrom, skip, whole, type Trim } from './trim';
 import { MAX_BASE64, describeMarks, resultText, sendSize } from './send';
 import { suggestedName } from './names';
@@ -123,7 +124,10 @@ function toolCursor(tool: Tool, numbering: boolean, style: ArrowStyle, color: st
 
 /** Captures kept after they leave the editor, newest first. Memory only: this
  *  is an undo for closing, not a library. A recording keeps its trim. */
-interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number; trim?: Trim; cuts?: Trim[]; speed?: number; pointerLook?: PointerAndClicks }
+interface Past {
+  id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number;
+  trim?: Trim; cuts?: Trim[]; speed?: number; pointerLook?: PointerAndClicks; zooms?: Zoom[];
+}
 const KEPT = 6;
 /** How many of them Recent's strip shows side by side; the rest scroll. */
 const STRIP = 4;
@@ -386,10 +390,14 @@ app.innerHTML = `
     <button class="cut-out glassy icon" type="button" aria-label="Cut a part out" title="Cut a part out around the playhead (K)">
       <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="6" cy="14.2" r="2.3" ${STROKE}/><circle cx="14" cy="14.2" r="2.3" ${STROKE}/><path d="M7.6 12.5 14.6 3.8M12.4 12.5 5.4 3.8" ${STROKE}/></svg>
     </button>
+    <button class="zoom-in glassy icon" type="button" aria-label="Zoom in" title="Zoom in around the playhead (Z)">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.6" cy="8.6" r="5.2" ${STROKE}/><path d="M12.4 12.4 16.4 16.4M8.6 6.4v4.4M6.4 8.6h4.4" ${STROKE}/></svg>
+    </button>
     <div class="strip">
       <div class="frames"></div>
       <div class="kept"></div>
       <div class="cuts"></div>
+      <div class="zooms"></div>
       <div class="playhead"></div>
       <span class="mark-at" hidden title="When the selected mark appears: drag to change it"></span>
       <span class="mark-until" hidden title="When the selected mark goes: drag to change it"></span>
@@ -493,6 +501,13 @@ app.innerHTML = `
   <!-- How the pointer and clicks show in a recording: what Mark draws over it
        can change here; what macOS recorded into it is dimmed. -->
   <div class="pointer-menu" role="menu" aria-label="Pointer and clicks" hidden></div>
+  <!-- A zoom picked on the strip: how close it comes, or take it away. -->
+  <div class="zoom-menu" role="menu" aria-label="Zoom" hidden>
+    ${LEVELS.map(level => `<button type="button" role="menuitemradio" aria-checked="false" data-zoom-level="${level}">${level}×</button>`).join('')}
+    <button type="button" role="menuitem" class="zoom-remove" data-zoom-remove>Remove</button>
+  </div>
+  <!-- Paused, where the camera is looking at the playhead. -->
+  <div class="camera-view" aria-hidden="true" hidden></div>
   <aside class="frame-panel" role="dialog" aria-label="Frame" hidden>
     <div class="frame-head">
       <span class="frame-title">Frame</span>
@@ -574,6 +589,10 @@ const cutButton = trimBar.querySelector<HTMLButtonElement>('.cut-out')!;
 const speedButton = trimBar.querySelector<HTMLButtonElement>('.speed')!;
 const pointerButton = trimBar.querySelector<HTMLButtonElement>('.pointer-look')!;
 const pointerMenu = app.querySelector<HTMLElement>('.pointer-menu')!;
+const zoomButton = trimBar.querySelector<HTMLButtonElement>('.zoom-in')!;
+const zoomBands = trimBar.querySelector<HTMLElement>('.zooms')!;
+const zoomMenu = app.querySelector<HTMLElement>('.zoom-menu')!;
+const cameraView = app.querySelector<HTMLElement>('.camera-view')!;
 const halo = stage.querySelector<HTMLElement>('.pointer-halo')!;
 const touch = stage.querySelector<HTMLElement>('.pointer-touch')!;
 const ripples = stage.querySelector<HTMLElement>('.pointer-ripples')!;
@@ -625,6 +644,11 @@ const TOUCH = 20;
 const RIPPLE = 30;
 /** A ripple's ring, as a share of its widest radius. */
 const RIPPLE_STROKE = 0.08;
+/** Where the picture moves in, in order, apart: null until the recording's
+ *  clicks are known, when they suggest some -- and then whatever is made of
+ *  them, none at all included. Which one is picked on the strip, if any. */
+let zooms: Zoom[] | null = null;
+let pickedZoom: number | null = null;
 /** Which GIF the menu makes: full size, or small, for a chat. Remembered, as
  *  the next GIF is likely for the same place. */
 const GIF_SIZE = 'mark.gifSize';
@@ -1396,6 +1420,8 @@ async function loadPointer(id: number, keep?: PointerAndClicks) {
   presses = found.presses ?? [];
   recordedLook = lookOf(found.look);
   pointerLook = keep ?? recordedLook;
+  const video = capture?.video;
+  if (zooms === null && video) zooms = suggestZooms(presses, trim ?? everything(video.duration));
   drawTrim();
 }
 
@@ -1473,7 +1499,8 @@ function closePointerMenu(refocus = false) {
 
 /** Put a recording in the player, kept as `keep` says or all of it -- or, for
  *  anything else, take the player down. */
-function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], keepSpeed = 1, keepLook?: PointerAndClicks) {
+function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], keepSpeed = 1, keepLook?: PointerAndClicks,
+                   keepZooms?: Zoom[]) {
   const video = next?.video ?? null;
   movie.pause();
   // Marks on a recording are shown from the moment they are drawn at, so the
@@ -1489,6 +1516,7 @@ function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], 
     trim = null; cuts = []; speed = 1; framesFor = 0; stripFrames.replaceChildren();
     pointerTrack = []; presses = []; pointerLook = recordedLook = PLAIN; pointerFor = 0;
     halo.hidden = touch.hidden = true; ripples.replaceChildren(); closePointerMenu();
+    zooms = null; pickedZoom = null; closeZoomMenu(); placeCamera();
     return;
   }
   movie.hidden = false;
@@ -1497,6 +1525,7 @@ function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], 
   trim = keep ? { ...keep } : everything(video.duration);
   cuts = keepCuts ? keepCuts.map(cut => ({ ...cut })) : [];
   pointerTrack = []; presses = []; pointerLook = recordedLook = PLAIN; closePointerMenu();
+  zooms = keepZooms ? keepZooms.map(zoom => ({ ...zoom })) : null; pickedZoom = null; closeZoomMenu();
   void loadPointer(video.id, keepLook);
   setSpeed(keepSpeed);
   void loadFrames(video.id);
@@ -1505,7 +1534,9 @@ function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], 
 on(movie, 'loadedmetadata', () => { if (trim) movie.currentTime = trim.start; drawTrim(); });
 // Drawing on a recording that is playing stops it there, so the mark is
 // stamped with the frame it was drawn on, and stays still to be drawn.
-overlay.addEventListener('pointerdown', () => { if (capture?.video && !movie.paused) movie.pause(); },
+// Zoomed in as it played, it goes back to the whole picture at once, so the
+// mark is drawn where it will be.
+overlay.addEventListener('pointerdown', () => { if (capture?.video && !movie.paused) { movie.pause(); placeCamera(); } },
                          { capture: true, signal: abort.signal });
 
 /** A mark is due a frame early rather than a frame late: drawn at a moment,
@@ -1526,6 +1557,8 @@ function drawTrim() {
   if (!video || !trim) return;
   showDueMarks();
   placePointer();
+  drawZooms();
+  placeCamera();
   const one = layer.selection.length === 1 ? layer.selection[0] : null;
   markAt.hidden = markUntil.hidden = !one;
   const share = (seconds: number) => `${Math.min(100, Math.max(0, (seconds / (video.duration || 1)) * 100))}%`;
@@ -1641,15 +1674,129 @@ function cutOut() {
 }
 on(cutButton, 'click', cutOut);
 
+/** Zoom in around the playhead -- or say why not. */
+function zoomIn() {
+  const video = capture?.video;
+  if (!video || !trim) return;
+  const next = addZoom(zooms ?? [], trim, movie.currentTime);
+  if (!next) { flash('There’s no room for a zoom there: move the playhead clear of the others, into what is kept.'); return; }
+  movie.pause();
+  zooms = next;
+  pickedZoom = zooms.findIndex(zoom => zoom.start <= movie.currentTime && movie.currentTime < zoom.end);
+  drawTrim();
+}
+on(zoomButton, 'click', zoomIn);
+
+/** The zooms along the foot of the strip, each saying how close it comes. */
+function drawZooms() {
+  const video = capture?.video;
+  const shown = video ? zooms ?? [] : [];
+  const share = (seconds: number) => `${(seconds / (video?.duration || 1)) * 100}%`;
+  while (zoomBands.children.length > shown.length) zoomBands.lastElementChild!.remove();
+  while (zoomBands.children.length < shown.length) {
+    zoomBands.insertAdjacentHTML('beforeend', `<div class="zoom-band"><span class="zoom-edge" data-zoom-edge="start"></span>
+      <span class="zoom-level"></span><span class="zoom-edge" data-zoom-edge="end"></span></div>`);
+  }
+  shown.forEach((zoom, index) => {
+    const band = zoomBands.children[index] as HTMLElement;
+    band.dataset.zoom = String(index);
+    band.style.left = share(zoom.start);
+    band.style.width = share(zoom.end - zoom.start);
+    band.classList.toggle('picked', index === pickedZoom);
+    band.querySelector('.zoom-level')!.textContent = `${zoom.scale}×`;
+    band.dataset.tip = `Zooms to ${zoom.scale}× here: click to change it, drag its ends to move them`;
+  });
+}
+
+/** The canvas a copy comes out on, in its pixels, and where a point of the
+ *  recording lands on it: the recording itself, or framed, its frame. */
+function cameraCanvas(): { width: number; height: number; place: (point: [number, number]) => [number, number] } {
+  const { width, height, scale } = capture!;
+  if (!frame.on) return { width, height, place: point => point };
+  const geometry = frameGeometry(width, height, scale ?? 1, framing());
+  const left = geometry.pad + geometry.bezel, top = geometry.pad + geometry.bezel + geometry.bar;
+  return { width: geometry.width, height: geometry.height, place: ([x, y]) => [x + left, y + top] };
+}
+
+/** The camera at the playhead. Playing, the picture is seen as the copy will
+ *  be: the view cut out and brought up to fill it. Paused, all of it, so
+ *  drawing lands where it should, with an outline of what the view takes. */
+function placeCamera() {
+  const video = capture?.video;
+  const framed = canvasArea.classList.contains('framed');
+  const target = framed ? backdrop : stage;
+  for (const element of [backdrop, stage]) {
+    element.style.removeProperty('transform'); element.style.removeProperty('transform-origin'); element.style.removeProperty('clip-path');
+  }
+  cameraView.hidden = true;
+  if (!video || !zooms?.length) return;
+  const canvas = cameraCanvas();
+  const camera = cameraAt(movie.currentTime, zooms, pointerTrack, canvas, canvas.place);
+  if (camera.scale <= 1.001) return;
+  const view = { width: canvas.width / camera.scale, height: canvas.height / camera.scale };
+  const left = camera.x - view.width / 2, top = camera.y - view.height / 2;
+  const k = target.offsetWidth / canvas.width;
+  if (!movie.paused) {
+    target.style.transformOrigin = '0 0';
+    target.style.transform = `translate(${-left * camera.scale * k}px, ${-top * camera.scale * k}px) scale(${camera.scale})`;
+    target.style.clipPath = `inset(${top * k}px ${(canvas.width - left - view.width) * k}px ${(canvas.height - top - view.height) * k}px ${left * k}px)`;
+    return;
+  }
+  const box = target.getBoundingClientRect(), frameBox = app.getBoundingClientRect();
+  Object.assign(cameraView.style, {
+    left: `${box.left - frameBox.left + left * k}px`, top: `${box.top - frameBox.top + top * k}px`,
+    width: `${view.width * k}px`, height: `${view.height * k}px`,
+  });
+  cameraView.hidden = false;
+}
+window.addEventListener('resize', () => { if (capture?.video) placeCamera(); }, { signal: abort.signal });
+
+/** A zoom picked on the strip: its menu over it. */
+function openZoomMenu(index: number) {
+  const zoom = zooms?.[index];
+  const band = zoomBands.children[index] as HTMLElement | undefined;
+  if (!zoom || !band) return;
+  pickedZoom = index;
+  for (const item of zoomMenu.querySelectorAll<HTMLButtonElement>('[data-zoom-level]')) {
+    item.setAttribute('aria-checked', String(Number(item.dataset.zoomLevel) === zoom.scale));
+  }
+  zoomMenu.hidden = false;
+  hideTip();
+  const at = band.getBoundingClientRect(), frameBox = app.getBoundingClientRect();
+  const left = at.left - frameBox.left + at.width / 2 - zoomMenu.offsetWidth / 2;
+  zoomMenu.style.left = `${Math.max(8, Math.min(left, frameBox.width - zoomMenu.offsetWidth - 8))}px`;
+  zoomMenu.style.bottom = `${frameBox.bottom - at.top + 10}px`;
+  zoomMenu.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+  drawZooms();
+}
+function closeZoomMenu() {
+  if (zoomMenu.hidden) return;
+  zoomMenu.hidden = true;
+  pickedZoom = null;
+  drawZooms();
+}
+on(zoomMenu, 'click', event => {
+  const item = (event.target as Element).closest<HTMLButtonElement>('button');
+  if (!item || pickedZoom === null || !zooms) return;
+  if (item.dataset.zoomRemove !== undefined) zooms = zooms.filter((_, index) => index !== pickedZoom);
+  else zooms = zooms.map((zoom, index) => (index === pickedZoom ? { ...zoom, scale: Number(item.dataset.zoomLevel) } : zoom));
+  closeZoomMenu();
+  drawTrim();
+});
+document.addEventListener('pointerdown', event => {
+  if (!zoomMenu.hidden && !zoomMenu.contains(event.target as Node) && !(event.target as Element).closest?.('.zoom-band')) closeZoomMenu();
+}, { signal: abort.signal });
+
 /** Where on the strip a pointer is, in seconds into the recording. */
 function stripTime(event: PointerEvent): number {
   const box = strip.getBoundingClientRect();
   return Math.min(1, Math.max(0, (event.clientX - box.left) / Math.max(box.width, 1))) * (capture?.video?.duration ?? 0);
 }
 /** A handle is dragged; anywhere else on the strip moves the playhead there. */
-let dragging: 'start' | 'end' | 'seek' | 'mark' | 'until' | 'cut' | null = null;
-/** Which end of which cut is being dragged. */
+let dragging: 'start' | 'end' | 'seek' | 'mark' | 'until' | 'cut' | 'zoom' | null = null;
+/** Which end of which cut, or of which zoom, is being dragged. */
 let draggingCut: { index: number; edge: 'start' | 'end' } | null = null;
+let draggingZoom: { index: number; edge: 'start' | 'end' } | null = null;
 /** Where the selected mark's start or end is being dragged to, until it is let go. */
 let draggingAt: number | null = null;
 /** A mark lasts at least this long: its end can't be dragged onto its start. */
@@ -1684,6 +1831,19 @@ on(strip, 'pointerdown', event => {
     strip.setPointerCapture(event.pointerId);
     return;
   }
+  const zoomBand = (event.target as Element).closest<HTMLElement>('.zoom-band');
+  if (zoomBand) {
+    const index = Number(zoomBand.dataset.zoom);
+    const zoomEdge = (event.target as Element).closest<HTMLElement>('.zoom-edge')?.dataset.zoomEdge as 'start' | 'end' | undefined;
+    if (zoomEdge) {
+      dragging = 'zoom'; draggingZoom = { index, edge: zoomEdge };
+      closeZoomMenu();
+      movie.pause();
+      strip.setPointerCapture(event.pointerId);
+    } else if (pickedZoom === index && !zoomMenu.hidden) closeZoomMenu();
+    else openZoomMenu(index);
+    return;
+  }
   const edge = (event.target as Element).closest<HTMLElement>('.edge')?.dataset.edge as 'start' | 'end' | undefined;
   dragging = edge ?? 'seek';
   strip.setPointerCapture(event.pointerId);
@@ -1703,6 +1863,10 @@ on(strip, 'pointermove', event => {
     cuts = moveCutEdge(trim, cuts, draggingCut.index, draggingCut.edge, stripTime(event));
     movie.currentTime = cuts[draggingCut.index][draggingCut.edge];
     drawTrim();
+  } else if (dragging === 'zoom' && draggingZoom && trim && zooms) {
+    zooms = moveZoomEdge(zooms, trim, draggingZoom.index, draggingZoom.edge, stripTime(event));
+    movie.currentTime = zooms[draggingZoom.index][draggingZoom.edge];
+    drawTrim();
   } else if (dragging === 'seek') { movie.currentTime = stripTime(event); drawTrim(); }
   else if (dragging === 'start' || dragging === 'end') setEdge(dragging, stripTime(event));
 });
@@ -1714,7 +1878,7 @@ const letGo = (event: PointerEvent) => {
   if (dragging === 'until' && when !== null && one) {
     layer.retime(one.id, { until: when >= (capture?.video?.duration ?? 0) - BRIEFEST ? null : when });
   }
-  dragging = null; draggingAt = null; draggingCut = null;
+  dragging = null; draggingAt = null; draggingCut = null; draggingZoom = null;
   drawTrim();
   if (strip.hasPointerCapture(event.pointerId)) strip.releasePointerCapture(event.pointerId);
 };
@@ -1818,6 +1982,7 @@ function videoKey(event: KeyboardEvent, key: string): boolean {
   if (!commanded && !event.altKey && !event.shiftKey && key === 'i') return done(() => setEdge('start', movie.currentTime));
   if (!commanded && !event.altKey && !event.shiftKey && key === 'o') return done(() => setEdge('end', movie.currentTime));
   if (!commanded && !event.altKey && !event.shiftKey && key === 'k') return done(cutOut);
+  if (!commanded && !event.altKey && !event.shiftKey && key === 'z') return done(zoomIn);
   // [ and ]: the selected mark starts, or goes, at the playhead.
   if (!commanded && !event.altKey && (key === '[' || key === ']')) return done(() => markAtPlayhead(key === '[' ? 'at' : 'until'));
   if (!commanded && key === 'c') return without();
@@ -1851,13 +2016,16 @@ interface VideoMarks {
   overlays: { at: number; png: string }[];
   redactions: { x: number; y: number; width: number; height: number; at: number; until?: number; block: number }[];
   frame?: { width: number; height: number; x: number; y: number; under: string; mask: string };
+  camera?: [number, number, number, number][];
 }
 function videoMarks(): VideoMarks | null {
   if (!capture?.video) return null;
   const drawn = layer.annotations.filter(item => item.kind !== 'redact');
   const hidden = layer.annotations.filter((item): item is Shape => item.kind === 'redact');
   const framed = videoFrame();
-  if (!drawn.length && !hidden.length && !framed) return null;
+  const view = zooms?.length ? cameraCanvas() : null;
+  const camera = view ? cameraTrack(zooms!, pointerTrack, view, view.place) : [];
+  if (!drawn.length && !hidden.length && !framed && !camera.length) return null;
   const { width, height } = capture;
   const changes = drawn.flatMap(item => item.until === undefined ? [item.at ?? 0] : [item.at ?? 0, item.until]);
   const moments = [...new Set(changes)].sort((a, b) => a - b);
@@ -1874,7 +2042,7 @@ function videoMarks(): VideoMarks | null {
     width: Math.abs(shape.width), height: Math.abs(shape.height), at: shape.at ?? 0,
     ...(shape.until === undefined ? {} : { until: shape.until }), block: blockSize(shape.weight),
   }));
-  return { overlays, redactions, ...(framed ? { frame: framed } : {}) };
+  return { overlays, redactions, ...(framed ? { frame: framed } : {}), ...(camera.length ? { camera } : {}) };
 }
 
 /** A framed recording's frame, for Rust to set the movie in: painted as a
@@ -2648,7 +2816,8 @@ function remember(leaving: CapturePreview) {
   if (!image.complete || !image.naturalWidth) return;
   keep({ capture: leaving, thumb: thumbnail(), at: shownAt, annotations: layer.annotations.map(item => ({ ...item })),
          trim: leaving.video && trim ? { ...trim } : undefined, cuts: leaving.video && cuts.length ? cuts.map(cut => ({ ...cut })) : undefined,
-         speed: leaving.video && speed !== 1 ? speed : undefined, pointerLook: leaving.video ? pointerLook : undefined });
+         speed: leaving.video && speed !== 1 ? speed : undefined, pointerLook: leaving.video ? pointerLook : undefined,
+         zooms: leaving.video && zooms ? zooms.map(zoom => ({ ...zoom })) : undefined });
 }
 
 /** Captures copied straight from the overlay, which the editor never showed,
@@ -2690,7 +2859,7 @@ function restore(entry: Past) {
   layer.load(entry.annotations);
   shown = entry.capture; shownAt = entry.at;
   zoom = startingZoom(entry.capture);
-  showMovie(entry.capture, entry.trim, entry.cuts, entry.speed, entry.pointerLook);
+  showMovie(entry.capture, entry.trim, entry.cuts, entry.speed, entry.pointerLook, entry.zooms);
   render();
 }
 
@@ -2833,6 +3002,11 @@ document.addEventListener('keydown', event => {
   if (key === 'escape' && !pointerMenu.hidden) {
     event.preventDefault();
     closePointerMenu(true);
+    return;
+  }
+  if (key === 'escape' && !zoomMenu.hidden) {
+    event.preventDefault();
+    closeZoomMenu();
     return;
   }
   if (key === 'escape' && !looksMenu.hidden) {

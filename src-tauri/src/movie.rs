@@ -54,7 +54,32 @@ pub struct Trim { pub start: f64, pub end: f64 }
 /// the parts to pixelate, each from its own moment. Pixelated afresh in every
 /// frame, since a recording's pixels change under a redaction.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Drawn { pub overlays: Vec<(f64, Vec<u8>)>, pub redactions: Vec<Hidden>, pub pointer: Option<Pointer>, pub frame: Option<Plates> }
+pub struct Drawn {
+    pub overlays: Vec<(f64, Vec<u8>)>, pub redactions: Vec<Hidden>, pub pointer: Option<Pointer>, pub frame: Option<Plates>,
+    /// Where the camera is through each zoom: seconds in, the middle of the
+    /// view on the canvas, and how much closer than the whole. The editor
+    /// works it out; this follows it.
+    pub camera: Option<Vec<(f64, f64, f64, f64)>>,
+}
+
+/// The camera `time` seconds in: between the two samples either side, in
+/// proportion, if they are of one zoom -- the editor sends them a thirtieth
+/// of a second apart -- and None where there is no zoom, which is the whole
+/// picture.
+pub fn camera_at(track: &[(f64, f64, f64, f64)], time: f64) -> Option<(f64, f64, f64)> {
+    const APART: f64 = 0.11;
+    let after = track.partition_point(|sample| sample.0 <= time);
+    let (at, x, y, scale) = *track.get(after.checked_sub(1)?)?;
+    let (x, y, scale) = match track.get(after) {
+        Some(&(next, nx, ny, nscale)) if next - at <= APART => {
+            let share = if next > at { (time - at) / (next - at) } else { 0.0 };
+            (x + (nx - x) * share, y + (ny - y) * share, scale + (nscale - scale) * share)
+        }
+        _ if time == at => (x, y, scale),
+        _ => return None,
+    };
+    (scale > 1.0 + 1e-6).then_some((x, y, scale))
+}
 
 /// The frame round a recording: a canvas `size` pixels across, with the
 /// recording set on it, its top left at `at`, over `under` -- the background,
@@ -469,6 +494,7 @@ fn composition(asset: &AVAsset, drawn: &Drawn, timeline: Option<Timeline>) -> Re
     let plates = drawn.frame.as_ref()
         .map(|plates| Ok::<_, String>((read(&plates.under)?, read(&plates.mask)?, plates.at, plates.size))).transpose()?;
     let out = plates.as_ref().map(|_| output_size(Some(drawn), (0, 0)));
+    let camera = drawn.camera.clone();
     let pixellate = NSString::from_str("CIPixellate");
     let scale = NSString::from_str("inputScale");
     let blend = NSString::from_str("CIBlendWithAlphaMask");
@@ -509,16 +535,28 @@ fn composition(asset: &AVAsset, drawn: &Drawn, timeline: Option<Timeline>) -> Re
         }
         if let Some(index) = overlay_at(&moments, time) { frame = unsafe { overlays[index].1.imageByCompositingOverImage(&frame) }; }
         // Framed: the movie, marks and all, set on the canvas, showing through
-        // the screen over what lies under it -- then fitted to what H.264 takes.
-        if let (Some((under, mask, (x, y), (width, height_out))), Some(out)) = (&plates, out) {
-            let (width, canvas) = (f64::from(*width), f64::from(*height_out));
-            let placed = unsafe { frame.imageByApplyingTransform(CGAffineTransform { a: 1.0, b: 0.0, c: 0.0, d: 1.0, tx: *x, ty: canvas - y - height }) };
+        // the screen over what lies under it.
+        let mut canvas = (unsafe { frame.extent() }.size.width, height);
+        if let Some((under, mask, (x, y), size)) = &plates {
+            canvas = (f64::from(size.0), f64::from(size.1));
+            let placed = unsafe { frame.imageByApplyingTransform(CGAffineTransform { a: 1.0, b: 0.0, c: 0.0, d: 1.0, tx: *x, ty: canvas.1 - y - height }) };
             let settings = NSDictionary::<NSString, AnyObject>::from_slices(&[&*backing, &*masking], &[&**under as &AnyObject, &**mask]);
+            frame = unsafe { placed.imageByApplyingFilter_withInputParameters(&blend, &settings) };
+        }
+        // Seen closer: the view cut from the canvas and brought up to fill it.
+        if let Some((x, y, closer)) = camera.as_deref().and_then(|track| camera_at(track, time)) {
+            let (width, height) = (canvas.0 / closer, canvas.1 / closer);
+            let bottom = canvas.1 - (y - height / 2.0) - height;
             frame = unsafe {
-                placed.imageByApplyingFilter_withInputParameters(&blend, &settings)
-                    .imageByCroppingToRect(CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(width, canvas)))
+                frame.imageByApplyingTransform(CGAffineTransform {
+                    a: closer, b: 0.0, c: 0.0, d: closer, tx: -(x - width / 2.0) * closer, ty: -bottom * closer,
+                })
             };
-            let (kx, ky) = (f64::from(out.0) / width, f64::from(out.1) / canvas);
+        }
+        frame = unsafe { frame.imageByCroppingToRect(CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(canvas.0, canvas.1))) };
+        // Then fitted to what H.264 takes.
+        if let Some(out) = out {
+            let (kx, ky) = (f64::from(out.0) / canvas.0, f64::from(out.1) / canvas.1);
             if (kx - 1.0).abs() > 1e-9 || (ky - 1.0).abs() > 1e-9 {
                 frame = unsafe { frame.imageByApplyingTransform(CGAffineTransform { a: kx, b: 0.0, c: 0.0, d: ky, tx: 0.0, ty: 0.0 }) };
             }
@@ -791,6 +829,39 @@ mod tests {
     }
 
     #[test]
+    fn the_camera_is_between_its_samples_and_the_whole_picture_outside_them() {
+        let track = [(2.0, 500.0, 300.0, 1.0), (2.1, 600.0, 300.0, 1.5), (2.2, 700.0, 300.0, 2.0), (6.0, 500.0, 300.0, 1.0)];
+        let (x, y, scale) = camera_at(&track, 2.15).unwrap();
+        assert!((x - 650.0).abs() < 1e-9 && y == 300.0 && (scale - 1.75).abs() < 1e-9);
+        assert_eq!(camera_at(&track, 2.2), Some((700.0, 300.0, 2.0)));
+        // Between two zooms, and before and after them: the whole picture.
+        assert_eq!(camera_at(&track, 4.0), None);
+        assert_eq!(camera_at(&track, 1.0), None);
+        assert_eq!(camera_at(&track, 6.0), None);
+        assert_eq!(camera_at(&track, 2.0), None, "at its very start it is still the whole");
+        assert_eq!(camera_at(&[], 1.0), None);
+    }
+
+    #[test]
+    fn a_zoom_brings_the_view_up_to_fill_the_picture() {
+        let folder = tempfile::tempdir().unwrap();
+        let (plain, zoomed) = (folder.path().join("plain.mp4"), folder.path().join("zoomed.mp4"));
+        export(&clip(), None, Some(&Drawn::default()), &plain).unwrap();
+        // 2× from 0.5 s to 1.5 s, looking at 100, 60: the view is 0 to 160
+        // across and 0 to 100 down, so 40, 30 in the copy is 20, 15 in the clip.
+        let camera: Vec<_> = (0..=30).map(|i| (0.5 + f64::from(i) / 30.0, 100.0, 60.0, 2.0)).collect();
+        export(&clip(), None, Some(&Drawn { camera: Some(camera), ..Drawn::default() }), &zoomed).unwrap();
+        assert_eq!((info(&zoomed).unwrap().width, info(&zoomed).unwrap().height), (320, 200));
+        // (Inside the clip's colour bars: a zoom softens their edges.)
+        for (x, y) in [(60, 60), (260, 150), (300, 180)] {
+            let (there, was) = (pixel(&zoomed, 1.0, x, y), pixel(&plain, 1.0, x / 2 + 20, y / 2 + 10));
+            assert!(apart(there, was) < 16, "{there:?} at {x}, {y} where the clip has {was:?}");
+        }
+        // Outside the zoom, the whole picture as it was.
+        assert!(apart(pixel(&zoomed, 1.8, 260, 150), pixel(&plain, 1.8, 260, 150)) < 14);
+    }
+
+    #[test]
     fn a_frame_larger_than_h264_takes_is_fitted_in_even_pixels() {
         let big = Drawn { frame: Some(Plates { size: (5001, 3000), at: (0.0, 0.0), under: vec![], mask: vec![] }), ..Drawn::default() };
         let (width, height) = output_size(Some(&big), (320, 200));
@@ -817,7 +888,7 @@ mod tests {
         assert_eq!(overlay_at(&[1.0, 2.5], 2.5 - DUE / 2.0), Some(1), "due a frame early, not late");
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("marked.mp4");
-        let drawn = Drawn { overlays: vec![(1.0, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None, frame: None };
+        let drawn = Drawn { overlays: vec![(1.0, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None, frame: None, camera: None };
         // Kept from 0.5 to 1.5: the mark is drawn at 1.0 into the recording,
         // which is 0.5 into the copy.
         export(&clip(), Some(&Timeline { parts: vec![Trim { start: 0.5, end: 1.5 }], speed: 1.0 }), Some(&drawn), &out).unwrap();
@@ -836,7 +907,7 @@ mod tests {
         // Core Image's blocks are laid from 150, 150 up from the bottom left, so
         // 150 to 190 across and 50 to 90 down from the top is one whole block.
         let part = Hidden { x: 100.0, y: 40.0, width: 120.0, height: 120.0, at: 0.0, until: None, block: 40.0 };
-        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], pointer: None, frame: None }), &out).unwrap();
+        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], pointer: None, frame: None, camera: None }), &out).unwrap();
         for at in [0.3, 1.6] {
             let (one, other) = (pixel(&out, at, 154, 54), pixel(&out, at, 186, 86));
             assert!(one.iter().zip(other).all(|(a, b)| (a - b).abs() < 14), "one block, one colour at {at}s: {one:?} {other:?}");
@@ -864,7 +935,7 @@ mod tests {
         let out = folder.path().join("cut.mp4");
         let timeline = Timeline::new(0.0, 2.0, &[(0.5, 1.0)], 1.0, 2.0).unwrap().unwrap();
         // Drawn 1.2 s into the recording: 0.7 s into the copy.
-        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None, frame: None };
+        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None, frame: None, camera: None };
         export(&clip(), Some(&timeline), Some(&drawn), &out).unwrap();
         let made = info(&out).unwrap();
         assert!((made.duration - 1.5).abs() < 0.1, "{}", made.duration);
@@ -888,7 +959,7 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("fast.mp4");
         // Drawn 1.2 s into the recording: 0.6 s into a copy twice as fast.
-        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None, frame: None };
+        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![], pointer: None, frame: None, camera: None };
         export(&clip(), Some(&timeline), Some(&drawn), &out).unwrap();
         let made = info(&out).unwrap();
         assert!((made.duration - 1.0).abs() < 0.1, "{}", made.duration);
@@ -1008,7 +1079,7 @@ mod tests {
         assert!(!part.due(0.3) && part.due(0.6) && part.due(1.1) && !part.due(1.5));
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("hidden.mp4");
-        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], pointer: None, frame: None }), &out).unwrap();
+        export(&clip(), None, Some(&Drawn { overlays: vec![], redactions: vec![part], pointer: None, frame: None, camera: None }), &out).unwrap();
         let blocky = |at: f64| {
             let (one, other) = (pixel(&out, at, 154, 54), pixel(&out, at, 186, 86));
             one.iter().zip(other).all(|(a, b)| (a - b).abs() < 14)
