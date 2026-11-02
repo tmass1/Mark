@@ -1180,7 +1180,7 @@ pub fn run() {
             send_capture, decline_request, mcp_setup, add_to_agent, open_guide,
             thumbnail::thumbnail_image, thumbnail::open_thumbnail, thumbnail::close_thumbnail, thumbnail::drag_thumbnail,
             recording::recording_supported, recording::recording_status, recording::stop_recording, recording::discard_recording,
-            recording::video_frames, recording::copy_video, recording::save_video, recording::share_video,
+            recording::video_frames, recording::copy_video, recording::copy_gif, recording::save_video, recording::share_video,
             get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, set_record_options, login_enabled, set_login, open_settings, quit_app,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
             updates::set_auto_update, updates::open_updates])

@@ -2,7 +2,7 @@ use objc2::runtime::{AnyClass, AnyObject, NSObject, NSObjectProtocol, ProtocolOb
 use objc2::{define_class, msg_send, rc::Retained, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly};
 use objc2::rc::Retained as Rc;
 use objc2_app_kit::{NSApplication, NSDragOperation, NSDraggingContext, NSDraggingItem, NSDraggingSession, NSDraggingSource,
-                    NSEvent, NSEventModifierFlags, NSEventType, NSImage, NSPasteboard, NSRunningApplication,
+                    NSEvent, NSEventModifierFlags, NSEventType, NSImage, NSPasteboard, NSPasteboardItem, NSPasteboardTypeFileURL, NSRunningApplication,
                     NSApplicationActivationOptions, NSSharingServicePicker, NSTrackingArea, NSTrackingAreaOptions, NSWindow,
                     NSWindowCollectionBehavior, NSWorkspace};
 use objc2_foundation::{NSArray, NSData, NSDictionary, NSNumber, NSPoint, NSRect, NSRectEdge, NSSize, NSString, NSURL};
@@ -152,6 +152,25 @@ pub fn copy_file(file: &std::path::Path) -> Result<(), String> {
     pasteboard.clearContents();
     if !pasteboard.writeObjects(&NSArray::from_retained_slice(&[ProtocolObject::from_retained(url)])) {
         return Err("The recording couldn't be copied. Please try again.".into());
+    }
+    Ok(())
+}
+
+/// A GIF on the clipboard both as a file -- which Slack, Messages and Mail
+/// take as an attachment -- and as the GIF itself, which a page in a browser
+/// takes where it takes an image. One item, so a paste takes whichever it can.
+pub fn copy_gif(file: &std::path::Path) -> Result<(), String> {
+    if MainThreadMarker::new().is_none() { return Err("Clipboard must be accessed on the main thread.".into()); }
+    let bytes = std::fs::read(file).map_err(|e| format!("The GIF couldn't be read ({e})."))?;
+    let path = file.to_str().ok_or("The GIF's path can't be copied.")?;
+    let url = NSURL::fileURLWithPath(&NSString::from_str(path)).absoluteString().ok_or("The GIF's path can't be copied.")?;
+    let item = NSPasteboardItem::new();
+    let written = item.setString_forType(&url, unsafe { NSPasteboardTypeFileURL })
+        && item.setData_forType(&NSData::with_bytes(&bytes), &NSString::from_str("com.compuserve.gif"));
+    let pasteboard = NSPasteboard::generalPasteboard();
+    pasteboard.clearContents();
+    if !written || !pasteboard.writeObjects(&NSArray::from_retained_slice(&[ProtocolObject::from_retained(item)])) {
+        return Err("The GIF couldn't be copied. Please try again.".into());
     }
     Ok(())
 }

@@ -8,7 +8,7 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::Bool;
 use objc2::runtime::AnyObject;
-use objc2_av_foundation::{AVAsset, AVMutableComposition, AVAssetExportPresetHighestQuality, AVAssetExportSession, AVAssetExportSessionStatus,
+use objc2_av_foundation::{AVAsset, AVAudioTimePitchAlgorithmSpectral, AVMutableComposition, AVAssetExportPresetHighestQuality, AVAssetExportSession, AVAssetExportSessionStatus,
                           AVAssetImageGenerator, AVAssetTrack, AVAsynchronousCIImageFilteringRequest, AVAuthorizationStatus,
                           AVCaptureDevice, AVFileTypeMPEG4, AVMediaTypeAudio, AVMediaTypeVideo, AVURLAsset, AVVideoComposition};
 use objc2_core_foundation::{CFDictionary, CFMutableData, CFNumber, CFRetained, CFString, CFType, CFURL, CGPoint, CGRect, CGSize};
@@ -30,9 +30,14 @@ pub const SHORTEST: f64 = 0.5;
 const NEAR: f64 = 0.05;
 /// GIFs play at this many frames a second, at points rather than pixels, and
 /// no larger than this along their long side: past that they grow too large
-/// to send for what they show.
+/// to send for what they show. A small one, for a chat, is fewer and smaller.
 const GIF_RATE: f64 = 15.0;
 const GIF_LONGEST: f64 = 1280.0;
+const SMALL_GIF_RATE: f64 = 10.0;
+const SMALL_GIF_LONGEST: f64 = 640.0;
+/// How much faster than it was recorded a copy may play, and how much slower.
+const FASTEST: f64 = 4.0;
+const SLOWEST: f64 = 0.25;
 /// How long one still may take to come out of the movie.
 const PATIENCE: Duration = Duration::from_secs(10);
 
@@ -72,9 +77,10 @@ impl Hidden {
 pub struct Edit { pub timeline: Option<Timeline>, pub marks: Option<u64> }
 
 /// What a copy keeps of a recording, in order: the part between the handles,
-/// less any parts cut out of its middle. One part is a plain trim.
+/// less any parts cut out of its middle -- and how fast it plays, 2 for
+/// twice as fast. One part at its own speed is a plain trim.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Timeline { pub parts: Vec<Trim> }
+pub struct Timeline { pub parts: Vec<Trim>, pub speed: f64 }
 
 /// Far more parts cut out than anyone cuts from a short recording.
 const MOST_CUTS: usize = 100;
@@ -108,15 +114,19 @@ impl Trim {
 }
 
 impl Timeline {
-    /// All of a recording `duration` long.
-    pub fn whole(duration: f64) -> Timeline { Timeline { parts: vec![Trim { start: 0.0, end: duration }] } }
+    /// All of a recording `duration` long, as it was made.
+    pub fn whole(duration: f64) -> Timeline { Timeline { parts: vec![Trim { start: 0.0, end: duration }], speed: 1.0 } }
 
     /// What is kept between `start` and `end` of a recording `duration` long,
-    /// less `cuts`, which must be in order, apart and inside the handles --
-    /// or None for all of it, as it was made.
-    pub fn new(start: f64, end: f64, cuts: &[(f64, f64)], duration: f64) -> Result<Option<Timeline>, String> {
+    /// less `cuts`, which must be in order, apart and inside the handles, at
+    /// `speed` -- or None for all of it, as it was made.
+    pub fn new(start: f64, end: f64, cuts: &[(f64, f64)], speed: f64, duration: f64) -> Result<Option<Timeline>, String> {
+        if !speed.is_finite() || !(SLOWEST..=FASTEST).contains(&speed) { return Err("That isn't a speed a copy can play at.".into()); }
         let trim = Trim::new(start, end, duration)?;
-        if cuts.is_empty() { return Ok(trim.map(|trim| Timeline { parts: vec![trim] })); }
+        if cuts.is_empty() {
+            let kept = trim.unwrap_or(Trim { start: 0.0, end: duration });
+            return Ok((trim.is_some() || speed != 1.0).then(|| Timeline { parts: vec![kept], speed }));
+        }
         if cuts.len() > MOST_CUTS { return Err("Too many parts are cut out of the recording.".into()); }
         let kept = trim.unwrap_or(Trim { start: 0.0, end: duration });
         let (mut parts, mut from) = (Vec::new(), kept.start);
@@ -128,17 +138,24 @@ impl Timeline {
             from = cut_end;
         }
         if kept.end > from + 1e-3 { parts.push(Trim { start: from, end: kept.end }); }
-        let timeline = Timeline { parts };
-        if timeline.length() < SHORTEST - 1e-9 { return Err("Keep at least half a second of the recording.".into()); }
+        let timeline = Timeline { parts, speed };
+        if timeline.kept() < SHORTEST - 1e-9 { return Err("Keep at least half a second of the recording.".into()); }
         Ok(Some(timeline))
     }
 
+    /// How much of the recording it keeps, in the recording's seconds.
+    fn kept(&self) -> f64 { self.parts.iter().map(|part| part.end - part.start).sum() }
+
     /// How long a copy of it runs.
-    pub fn length(&self) -> f64 { self.parts.iter().map(|part| part.end - part.start).sum() }
+    pub fn length(&self) -> f64 { self.kept() / self.speed }
+
+    /// Whether a copy is a range of the recording as it is, rather than parts
+    /// joined, or played faster or slower.
+    fn plain(&self) -> Option<Trim> { (self.parts.len() == 1 && self.speed == 1.0).then(|| self.parts[0]) }
 
     /// Where the moment `time` seconds into a copy is in the recording.
     pub fn source(&self, time: f64) -> f64 {
-        let mut left = time.max(0.0);
+        let mut left = time.max(0.0) * self.speed;
         for part in &self.parts {
             let length = part.end - part.start;
             if left < length { return part.start + left; }
@@ -153,12 +170,13 @@ impl Timeline {
 #[derive(Clone, Debug, PartialEq)]
 pub struct GifPlan { pub times: Vec<f64>, pub delay: f64, pub size: (f64, f64) }
 
-pub fn gif_plan(timeline: &Timeline, pixels: (u32, u32), scale: f64) -> GifPlan {
-    let delay = 1.0 / GIF_RATE;
+pub fn gif_plan(timeline: &Timeline, pixels: (u32, u32), scale: f64, small: bool) -> GifPlan {
+    let (rate, longest) = if small { (SMALL_GIF_RATE, SMALL_GIF_LONGEST) } else { (GIF_RATE, GIF_LONGEST) };
+    let delay = 1.0 / rate;
     let count = ((timeline.length() / delay).round() as usize).max(1);
     let times = (0..count).map(|index| timeline.source(index as f64 * delay)).collect();
     let (width, height) = (f64::from(pixels.0) / scale.max(1.0), f64::from(pixels.1) / scale.max(1.0));
-    let fit = (GIF_LONGEST / width.max(height)).min(1.0);
+    let fit = (longest / width.max(height)).min(1.0);
     GifPlan { times, delay, size: ((width * fit).round().max(1.0), (height * fit).round().max(1.0)) }
 }
 
@@ -318,7 +336,7 @@ fn composition(asset: &AVAsset, drawn: &Drawn, timeline: Option<Timeline>) -> Re
 }
 
 /// The parts of the recording `timeline` keeps, one after another, as one
-/// movie: its picture and its sound.
+/// movie -- its picture and its sound -- at its speed.
 fn joined(source: &AVAsset, timeline: &Timeline) -> Result<Retained<AVAsset>, String> {
     let mixed = unsafe { AVMutableComposition::composition() };
     for part in &timeline.parts {
@@ -331,6 +349,12 @@ fn joined(source: &AVAsset, timeline: &Timeline) -> Result<Retained<AVAsset>, St
         unsafe { mixed.insertTimeRange_ofAsset_atTime_error(CMTimeRange::new(seconds(part.start), seconds(part.end - part.start)), source, at) }
             .map_err(|error| format!("The parts kept couldn't be joined ({}).", error.localizedDescription()))?;
     }
+    if timeline.speed != 1.0 {
+        unsafe {
+            let all = CMTimeRange::new(seconds(0.0), mixed.duration());
+            mixed.scaleTimeRange_toDuration(all, seconds(timeline.kept() / timeline.speed));
+        }
+    }
     Ok(Retained::into_super(Retained::into_super(mixed)))
 }
 
@@ -340,12 +364,16 @@ fn joined(source: &AVAsset, timeline: &Timeline) -> Result<Retained<AVAsset>, St
 pub fn export(path: &Path, timeline: Option<&Timeline>, drawn: Option<&Drawn>, out: &Path) -> Result<(), String> {
     let _ = std::fs::remove_file(out);
     let (source, url) = (Retained::into_super(asset(path)?), url(out)?);
-    // One part is a range of the movie as it is; more are joined into one.
+    // One part at its own speed is a range of the movie as it is; more, or
+    // faster or slower, are joined into one movie.
     let (asset, trim, joins) = match timeline {
-        Some(timeline) if timeline.parts.len() > 1 => (joined(&source, timeline)?, None, Some(timeline.clone())),
-        Some(timeline) => (source, timeline.parts.first().copied(), None),
+        Some(timeline) => match timeline.plain() {
+            Some(trim) => (source, Some(trim), None),
+            None => (joined(&source, timeline)?, None, Some(timeline.clone())),
+        },
         None => (source, None, None),
     };
+    let length = joins.as_ref().map(Timeline::length);
     let composition = drawn.map(|drawn| composition(&asset, drawn, joins)).transpose()?;
     let session = unsafe { AVAssetExportSession::exportSessionWithAsset_presetName(&asset, AVAssetExportPresetHighestQuality) }
         .ok_or("The recording can't be copied.")?;
@@ -354,7 +382,12 @@ pub fn export(path: &Path, timeline: Option<&Timeline>, drawn: Option<&Drawn>, o
         session.setOutputFileType(AVFileTypeMPEG4);
         session.setShouldOptimizeForNetworkUse(true);
         if let Some(trim) = trim { session.setTimeRange(CMTimeRange::new(seconds(trim.start), seconds(trim.end - trim.start))); }
+        // Played faster, the sound runs a little past the picture; the copy
+        // ends with the picture.
+        if let Some(length) = length { session.setTimeRange(CMTimeRange::new(seconds(0.0), seconds(length))); }
         if let Some(composition) = &composition { session.setVideoComposition(Some(composition)); }
+        // Played faster, a voice keeps its pitch.
+        if let Some(spectral) = AVAudioTimePitchAlgorithmSpectral { session.setAudioTimePitchAlgorithm(spectral); }
     }
     let (sent, received) = mpsc::channel();
     let done = RcBlock::new(move || { let _ = sent.send(()); });
@@ -369,7 +402,7 @@ pub fn export(path: &Path, timeline: Option<&Timeline>, drawn: Option<&Drawn>, o
 
 /// The part of the recording `plan` was made for, as a GIF that loops, with
 /// `drawn` drawn into it.
-pub fn gif(path: &Path, plan: &GifPlan, drawn: Option<&Drawn>, out: &Path) -> Result<(), String> {
+pub fn gif(path: &Path, plan: &GifPlan, drawn: Option<&Drawn>, out: &Path) -> Result<u64, String> {
     let generator = generator(path, Some(plan.size), plan.delay / 2.0)?;
     if let Some(drawn) = drawn {
         let asset = unsafe { generator.asset() };
@@ -391,7 +424,7 @@ pub fn gif(path: &Path, plan: &GifPlan, drawn: Option<&Drawn>, out: &Path) -> Re
         unsafe { destination.add_image(&*still(&generator, *at)?, Some(frame.as_opaque())) };
     }
     if !unsafe { destination.finalize() } { return Err("The GIF couldn't be written.".into()); }
-    Ok(())
+    std::fs::metadata(out).map(|made| made.len()).map_err(|e| format!("The GIF couldn't be written ({e})."))
 }
 
 /// Whether Mark may record the microphone, asking the first time. Waits for
@@ -431,15 +464,15 @@ mod tests {
 
     #[test]
     fn a_gif_is_fifteen_frames_a_second_at_point_size_within_its_limit() {
-        let plan = gif_plan(&Timeline { parts: vec![Trim { start: 1.0, end: 3.0 }] }, (1280, 800), 2.0);
+        let plan = gif_plan(&Timeline { parts: vec![Trim { start: 1.0, end: 3.0 }], speed: 1.0 }, (1280, 800), 2.0, false);
         assert_eq!(plan.times.len(), 30);
         assert_eq!(plan.times[0], 1.0);
         assert!((plan.times[29] - (1.0 + 29.0 / 15.0)).abs() < 1e-9);
         assert_eq!(plan.size, (640.0, 400.0));
         // A whole Retina display: points, then down to the limit.
-        assert_eq!(gif_plan(&Timeline { parts: vec![Trim { start: 0.0, end: 1.0 }] }, (3024, 1964), 2.0).size, (1280.0, 831.0));
+        assert_eq!(gif_plan(&Timeline { parts: vec![Trim { start: 0.0, end: 1.0 }], speed: 1.0 }, (3024, 1964), 2.0, false).size, (1280.0, 831.0));
         // However short, one frame.
-        assert_eq!(gif_plan(&Timeline { parts: vec![Trim { start: 0.0, end: 0.01 }] }, (100, 100), 1.0).times, [0.0]);
+        assert_eq!(gif_plan(&Timeline { parts: vec![Trim { start: 0.0, end: 0.01 }], speed: 1.0 }, (100, 100), 1.0, false).times, [0.0]);
     }
 
     /// A two-second clip, 320 × 200 with a tone, made by ffmpeg: AVFoundation
@@ -467,12 +500,12 @@ mod tests {
     fn a_trim_is_written_as_its_own_mp4_of_that_length() {
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("trimmed.mp4");
-        export(&clip(), Some(&Timeline { parts: vec![Trim { start: 0.5, end: 1.5 }] }), None, &out).unwrap();
+        export(&clip(), Some(&Timeline { parts: vec![Trim { start: 0.5, end: 1.5 }], speed: 1.0 }), None, &out).unwrap();
         let trimmed = info(&out).unwrap();
         assert!((trimmed.duration - 1.0).abs() < 0.1, "{trimmed:?}");
         assert_eq!((trimmed.width, trimmed.height), (320, 200));
         // Trimmed again over the last, as a new trim of the same recording is.
-        export(&clip(), Some(&Timeline { parts: vec![Trim { start: 0.0, end: 0.6 }] }), None, &out).unwrap();
+        export(&clip(), Some(&Timeline { parts: vec![Trim { start: 0.0, end: 0.6 }], speed: 1.0 }), None, &out).unwrap();
         assert!((info(&out).unwrap().duration - 0.6).abs() < 0.1);
     }
 
@@ -480,7 +513,7 @@ mod tests {
     fn a_gif_has_a_frame_for_each_fifteenth_of_a_second_and_loops() {
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("clip.gif");
-        let plan = gif_plan(&Timeline { parts: vec![Trim { start: 0.0, end: 1.0 }] }, (320, 200), 1.0);
+        let plan = gif_plan(&Timeline { parts: vec![Trim { start: 0.0, end: 1.0 }], speed: 1.0 }, (320, 200), 1.0, false);
         gif(&clip(), &plan, None, &out).unwrap();
         let bytes = std::fs::read(&out).unwrap();
         // ImageIO labels its GIFs 87a whatever they hold; every reader plays them.
@@ -525,7 +558,7 @@ mod tests {
         let drawn = Drawn { overlays: vec![(1.0, square([255, 0, 255], 20, 60))], redactions: vec![] };
         // Kept from 0.5 to 1.5: the mark is drawn at 1.0 into the recording,
         // which is 0.5 into the copy.
-        export(&clip(), Some(&Timeline { parts: vec![Trim { start: 0.5, end: 1.5 }] }), Some(&drawn), &out).unwrap();
+        export(&clip(), Some(&Timeline { parts: vec![Trim { start: 0.5, end: 1.5 }], speed: 1.0 }), Some(&drawn), &out).unwrap();
         assert!((info(&out).unwrap().duration - 1.0).abs() < 0.1);
         let magenta = |[r, g, b]: [i32; 3]| r > 200 && g < 90 && b > 200;
         assert!(!magenta(pixel(&out, 0.2, 40, 40)), "not yet: {:?}", pixel(&out, 0.2, 40, 40));
@@ -551,23 +584,23 @@ mod tests {
     #[test]
     fn a_timeline_keeps_the_parts_between_the_handles_and_outside_the_cuts() {
         let parts = |timeline: &Timeline| timeline.parts.iter().map(|part| (part.start, part.end)).collect::<Vec<_>>();
-        let timeline = Timeline::new(0.0, 2.0, &[(0.5, 1.0)], 2.0).unwrap().unwrap();
+        let timeline = Timeline::new(0.0, 2.0, &[(0.5, 1.0)], 1.0, 2.0).unwrap().unwrap();
         assert_eq!(parts(&timeline), [(0.0, 0.5), (1.0, 2.0)]);
         assert!((timeline.length() - 1.5).abs() < 1e-9);
         assert_eq!([0.25, 0.75, 1.4, 9.0].map(|time| timeline.source(time)), [0.25, 1.25, 1.9, 2.0]);
         // A trim and a cut against its start, as one part.
-        assert_eq!(parts(&Timeline::new(0.4, 2.0, &[(0.4, 0.9)], 2.0).unwrap().unwrap()), [(0.9, 2.0)]);
-        assert_eq!(Timeline::new(0.0, 2.0, &[], 2.0), Ok(None), "all of it, as made");
-        assert!(Timeline::new(0.0, 2.0, &[(1.0, 1.5), (1.2, 1.8)], 2.0).is_err(), "cuts that overlap");
-        assert!(Timeline::new(0.0, 2.0, &[(1.5, 2.5)], 2.0).is_err(), "a cut past the end");
-        assert!(Timeline::new(0.0, 2.0, &[(0.2, 1.8)], 2.0).is_err(), "too little left");
+        assert_eq!(parts(&Timeline::new(0.4, 2.0, &[(0.4, 0.9)], 1.0, 2.0).unwrap().unwrap()), [(0.9, 2.0)]);
+        assert_eq!(Timeline::new(0.0, 2.0, &[], 1.0, 2.0), Ok(None), "all of it, as made");
+        assert!(Timeline::new(0.0, 2.0, &[(1.0, 1.5), (1.2, 1.8)], 1.0, 2.0).is_err(), "cuts that overlap");
+        assert!(Timeline::new(0.0, 2.0, &[(1.5, 2.5)], 1.0, 2.0).is_err(), "a cut past the end");
+        assert!(Timeline::new(0.0, 2.0, &[(0.2, 1.8)], 1.0, 2.0).is_err(), "too little left");
     }
 
     #[test]
     fn a_copy_with_a_part_cut_out_is_that_much_shorter_and_its_marks_keep_their_moments() {
         let folder = tempfile::tempdir().unwrap();
         let out = folder.path().join("cut.mp4");
-        let timeline = Timeline::new(0.0, 2.0, &[(0.5, 1.0)], 2.0).unwrap().unwrap();
+        let timeline = Timeline::new(0.0, 2.0, &[(0.5, 1.0)], 1.0, 2.0).unwrap().unwrap();
         // Drawn 1.2 s into the recording: 0.7 s into the copy.
         let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![] };
         export(&clip(), Some(&timeline), Some(&drawn), &out).unwrap();
@@ -578,9 +611,43 @@ mod tests {
         assert!(!magenta(pixel(&out, 0.6, 40, 40)), "not yet: {:?}", pixel(&out, 0.6, 40, 40));
         assert!(magenta(pixel(&out, 0.85, 40, 40)), "drawn by then: {:?}", pixel(&out, 0.85, 40, 40));
         // A GIF of it skips the part cut out.
-        let plan = gif_plan(&timeline, (320, 200), 1.0);
+        let plan = gif_plan(&timeline, (320, 200), 1.0, false);
         assert_eq!(plan.times.len(), 23);
         assert!(plan.times.iter().all(|time| *time < 0.5 || *time >= 1.0));
+    }
+
+    #[test]
+    fn at_twice_the_speed_a_copy_is_half_as_long_and_its_marks_keep_their_moments() {
+        let timeline = Timeline::new(0.0, 2.0, &[], 2.0, 2.0).unwrap().unwrap();
+        assert!((timeline.length() - 1.0).abs() < 1e-9);
+        assert_eq!([0.0, 0.25, 0.5].map(|time| timeline.source(time)), [0.0, 0.5, 1.0]);
+        assert_eq!(Timeline::new(0.0, 2.0, &[], 1.0, 2.0), Ok(None), "all of it at its own speed is the movie as made");
+        assert!(Timeline::new(0.0, 2.0, &[], 9.0, 2.0).is_err());
+        let folder = tempfile::tempdir().unwrap();
+        let out = folder.path().join("fast.mp4");
+        // Drawn 1.2 s into the recording: 0.6 s into a copy twice as fast.
+        let drawn = Drawn { overlays: vec![(1.2, square([255, 0, 255], 20, 60))], redactions: vec![] };
+        export(&clip(), Some(&timeline), Some(&drawn), &out).unwrap();
+        let made = info(&out).unwrap();
+        assert!((made.duration - 1.0).abs() < 0.1, "{}", made.duration);
+        let magenta = |[r, g, b]: [i32; 3]| r > 200 && g < 90 && b > 200;
+        assert!(!magenta(pixel(&out, 0.5, 40, 40)), "not yet: {:?}", pixel(&out, 0.5, 40, 40));
+        assert!(magenta(pixel(&out, 0.75, 40, 40)), "drawn by then: {:?}", pixel(&out, 0.75, 40, 40));
+        // Its GIF has half the frames, each still a fifteenth of a second.
+        assert_eq!(gif_plan(&timeline, (320, 200), 1.0, false).times.len(), 15);
+    }
+
+    #[test]
+    fn a_small_gif_is_fewer_frames_at_no_more_than_640_across() {
+        let plan = gif_plan(&Timeline::whole(2.0), (3024, 1964), 2.0, true);
+        assert_eq!(plan.size, (640.0, 416.0));
+        assert_eq!(plan.times.len(), 20);
+        assert!((plan.delay - 0.1).abs() < 1e-9);
+        let folder = tempfile::tempdir().unwrap();
+        let out = folder.path().join("small.gif");
+        let bytes = gif(&clip(), &gif_plan(&Timeline::whole(1.0), (320, 200), 1.0, true), None, &out).unwrap();
+        assert_eq!(bytes, std::fs::metadata(&out).unwrap().len());
+        assert!(bytes > 0);
     }
 
     #[test]

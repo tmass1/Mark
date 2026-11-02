@@ -121,7 +121,7 @@ function toolCursor(tool: Tool, numbering: boolean, style: ArrowStyle, color: st
 
 /** Captures kept after they leave the editor, newest first. Memory only: this
  *  is an undo for closing, not a library. A recording keeps its trim. */
-interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number; trim?: Trim; cuts?: Trim[] }
+interface Past { id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number; trim?: Trim; cuts?: Trim[]; speed?: number }
 const KEPT = 6;
 /** How many of them Recent's strip shows side by side; the rest scroll. */
 const STRIP = 4;
@@ -376,6 +376,7 @@ app.innerHTML = `
       <svg class="when-paused" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 4.6v10.8L15.4 10z" fill="currentColor"/></svg>
       <svg class="when-playing" viewBox="0 0 20 20" aria-hidden="true" hidden><path d="M6 4.6h2.8v10.8H6zM11.2 4.6H14v10.8h-2.8z" fill="currentColor"/></svg>
     </button>
+    <button class="speed glassy" type="button" aria-label="Speed" title="Play and copy it twice as fast">1×</button>
     <button class="cut-out glassy icon" type="button" aria-label="Cut a part out" title="Cut a part out around the playhead (K)">
       <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="6" cy="14.2" r="2.3" ${STROKE}/><circle cx="14" cy="14.2" r="2.3" ${STROKE}/><path d="M7.6 12.5 14.6 3.8M12.4 12.5 5.4 3.8" ${STROKE}/></svg>
     </button>
@@ -471,10 +472,17 @@ app.innerHTML = `
     <button class="copy-only glassy" type="button" title="Copy the image and keep working">Copy <kbd>⌘C</kbd></button>
     <button class="copy primary" type="button"><span class="copy-label">Copy and Close</span> <kbd>⌥⌘C</kbd></button>
   </footer>
-  <!-- A recording saves as a movie; this is the other way, a GIF that loops. -->
+  <!-- A recording saves as a movie; this is the other way, a GIF that loops,
+       saved or copied -- full size, or small for a chat. -->
   <div class="save-menu" role="menu" aria-label="Save" hidden>
     <button type="button" role="menuitem" data-save="save"><span>Save Video</span><kbd>⌘S</kbd></button>
     <button type="button" role="menuitem" data-save="gif"><span>Save as GIF</span><kbd>⌥⌘S</kbd></button>
+    <button type="button" role="menuitem" data-save="copy-gif"><span>Copy as GIF</span></button>
+    <div class="gif-size" role="group" aria-label="GIF size">
+      <span>GIF size</span>
+      <button type="button" data-gif-size="full" aria-pressed="true" title="15 frames a second, up to 1280 across">Full</button>
+      <button type="button" data-gif-size="small" aria-pressed="false" title="10 frames a second, up to 640 across: for a chat">Small</button>
+    </div>
   </div>
   <aside class="frame-panel" role="dialog" aria-label="Frame" hidden>
     <div class="frame-head">
@@ -549,6 +557,7 @@ const stripFrames = strip.querySelector<HTMLElement>('.frames')!;
 const kept = strip.querySelector<HTMLElement>('.kept')!;
 const cutBands = strip.querySelector<HTMLElement>('.cuts')!;
 const cutButton = trimBar.querySelector<HTMLButtonElement>('.cut-out')!;
+const speedButton = trimBar.querySelector<HTMLButtonElement>('.speed')!;
 const playhead = strip.querySelector<HTMLElement>('.playhead')!;
 const trimTime = trimBar.querySelector<HTMLElement>('.trim-time')!;
 const markAt = strip.querySelector<HTMLElement>('.mark-at')!;
@@ -580,6 +589,12 @@ let capture: CapturePreview | null = null;
 let trim: Trim | null = null;
 /** The parts cut out of the middle of it, in order and apart. */
 let cuts: Trim[] = [];
+/** How fast it plays, and every copy of it: 1, or 2 for twice as fast. */
+let speed = 1;
+/** Which GIF the menu makes: full size, or small, for a chat. Remembered, as
+ *  the next GIF is likely for the same place. */
+const GIF_SIZE = 'mark.gifSize';
+let smallGif = (() => { try { return localStorage.getItem(GIF_SIZE) === 'small'; } catch { return false; } })();
 /** Whether this Mac can record, which Rust says once: macOS 15 or later. */
 let recordable = false;
 /** An AI tool's ask, while one waits for a screenshot. */
@@ -1339,7 +1354,7 @@ async function loadFrames(id: number) {
 
 /** Put a recording in the player, kept as `keep` says or all of it -- or, for
  *  anything else, take the player down. */
-function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[]) {
+function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[], keepSpeed = 1) {
   const video = next?.video ?? null;
   movie.pause();
   // Marks on a recording are shown from the moment they are drawn at, so the
@@ -1352,7 +1367,7 @@ function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[]) 
   if (!video) {
     movie.hidden = true;
     if (movie.hasAttribute('src')) { movie.removeAttribute('src'); movie.removeAttribute('poster'); movie.load(); }
-    trim = null; cuts = []; framesFor = 0; stripFrames.replaceChildren();
+    trim = null; cuts = []; speed = 1; framesFor = 0; stripFrames.replaceChildren();
     return;
   }
   movie.hidden = false;
@@ -1360,6 +1375,7 @@ function showMovie(next: CapturePreview | null, keep?: Trim, keepCuts?: Trim[]) 
   movie.src = videoSource(video.path);
   trim = keep ? { ...keep } : everything(video.duration);
   cuts = keepCuts ? keepCuts.map(cut => ({ ...cut })) : [];
+  setSpeed(keepSpeed);
   void loadFrames(video.id);
   drawTrim();
 }
@@ -1438,8 +1454,9 @@ function drawTrim() {
   playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
   playButton.dataset.tip = playing ? 'Pause (Space)' : 'Play (Space)';
   const edited = !whole(trim, length) || cuts.length > 0;
-  trimTime.textContent = edited ? `${clock(keptLength(trim, cuts))} of ${clock(length)}` : clock(length);
-  trimBar.classList.toggle('trimmed', edited);
+  trimTime.textContent = speed !== 1 ? `${clock(keptLength(trim, cuts) / speed)} at ${speed}×`
+    : edited ? `${clock(keptLength(trim, cuts))} of ${clock(length)}` : clock(length);
+  trimBar.classList.toggle('trimmed', edited || speed !== 1);
 }
 
 /** Playing, the playhead moves every frame, and at the end of the part kept
@@ -1476,6 +1493,17 @@ function setEdge(edge: 'start' | 'end', seconds: number) {
   movie.currentTime = edge === 'start' ? trim.start : trim.end;
   drawTrim();
 }
+
+/** Play it, and copy it, at this speed. */
+function setSpeed(next: number) {
+  speed = next;
+  movie.playbackRate = speed;
+  speedButton.textContent = `${speed}×`;
+  speedButton.classList.toggle('on', speed !== 1);
+  speedButton.dataset.tip = speed === 1 ? 'Play and copy it twice as fast' : 'Twice as fast: click for its own speed';
+  drawTrim();
+}
+on(speedButton, 'click', () => setSpeed(speed === 1 ? 2 : 1));
 
 /** Cut a part out around the playhead -- or say why not. */
 function cutOut() {
@@ -1596,9 +1624,9 @@ async function copyVideo(close: boolean) {
   copyPending = true; render(); showMessage(null);
   const marks = videoMarks();
   const trimming = marks ? working('Drawing the marks into the recording…')
-    : whole(part, video.duration) && !cuts.length ? null : working('Trimming the recording…');
+    : whole(part, video.duration) && !cuts.length && speed === 1 ? null : working('Trimming the recording…');
   try {
-    await command('copy_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), close, marks });
+    await command('copy_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, close, marks });
     if (close) { capture = null; showMessage(null); }
     else flash('Copied the recording. Paste it into a message, a mail or a chat.');
   } catch (error) { report(error); }
@@ -1607,6 +1635,30 @@ async function copyVideo(close: boolean) {
 
 /** The parts cut out, as Rust takes them: start and end, in seconds. */
 function cutPairs(): [number, number][] { return cuts.map(cut => [cut.start, cut.end]); }
+
+/** "820 KB", "3.4 MB": how big a file came out. */
+function size(bytes: number): string {
+  return bytes < 1_000_000 ? `${Math.max(1, Math.round(bytes / 1000))} KB` : `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+/** Copy as GIF: the part kept as a GIF that loops, full size or small, on the
+ *  clipboard both as a file and as the GIF itself. */
+async function copyGif() {
+  const video = capture?.video;
+  if (!video || busy || copyPending || !isTauri) return;
+  const part = trim ?? everything(video.duration);
+  movie.pause();
+  copyPending = true; render(); showMessage(null);
+  const making = working('Making the GIF…');
+  try {
+    const bytes = await command<number>('copy_gif', {
+      id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, small: smallGif, name: videoName('gif'), marks: videoMarks(),
+    });
+    making();
+    flash(`Copied the GIF (${size(bytes)}). Paste it into a message, a chat or a page.`);
+  } catch (error) { making(); report(error); }
+  finally { copyPending = false; render(); }
+}
 
 /** Save, as a movie or as a GIF that loops, or Share: the part kept. */
 async function exportVideo(how: 'save' | 'gif' | 'share') {
@@ -1617,13 +1669,13 @@ async function exportVideo(how: 'save' | 'gif' | 'share') {
   copyPending = true; render();
   const marks = videoMarks();
   try {
-    if (how === 'share') await command('share_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), marks });
+    if (how === 'share') await command('share_video', { id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, marks });
     else {
-      const saved = await command<string | null>('save_video', {
-        id: video.id, start: part.start, end: part.end, cuts: cutPairs(), gif: how === 'gif',
+      const saved = await command<{ name: string; bytes: number } | null>('save_video', {
+        id: video.id, start: part.start, end: part.end, cuts: cutPairs(), speed, gif: how === 'gif', small: how === 'gif' && smallGif,
         name: videoName(how === 'gif' ? 'gif' : 'mp4'), marks,
       });
-      flash(saved ? `Saved as ${saved}.` : 'Not saved.');
+      flash(saved ? `Saved as ${saved.name} (${size(saved.bytes)}).` : 'Not saved.');
     }
   } catch (error) { report(error); }
   finally { copyPending = false; render(); }
@@ -1850,11 +1902,22 @@ on(saveMore, 'click', event => {
   if (saveMenu.hidden) openSaveMenu(); else closeSaveMenu();
 });
 on(saveMenu, 'click', event => {
-  const how = (event.target as Element).closest<HTMLButtonElement>('[data-save]')?.dataset.save as 'save' | 'gif' | undefined;
+  const sized = (event.target as Element).closest<HTMLButtonElement>('[data-gif-size]');
+  if (sized) { setGifSize(sized.dataset.gifSize === 'small'); return; }
+  const how = (event.target as Element).closest<HTMLButtonElement>('[data-save]')?.dataset.save as 'save' | 'gif' | 'copy-gif' | undefined;
   if (!how) return;
   closeSaveMenu();
-  void exportVideo(how);
+  if (how === 'copy-gif') void copyGif(); else void exportVideo(how);
 });
+/** Full or small, for every GIF from now on. */
+function setGifSize(small: boolean) {
+  smallGif = small;
+  try { localStorage.setItem(GIF_SIZE, small ? 'small' : 'full'); } catch { /* remembered for this window only */ }
+  for (const button of saveMenu.querySelectorAll<HTMLButtonElement>('[data-gif-size]')) {
+    button.setAttribute('aria-pressed', String((button.dataset.gifSize === 'small') === small));
+  }
+}
+setGifSize(smallGif);
 document.addEventListener('pointerdown', event => {
   if (!saveMenu.hidden && !saveMenu.contains(event.target as Node) && !saveMore.contains(event.target as Node)) closeSaveMenu();
 }, { signal: abort.signal });
@@ -2421,7 +2484,8 @@ function thumbnail(source = image, annotations = layer.annotations, density = la
 function remember(leaving: CapturePreview) {
   if (!image.complete || !image.naturalWidth) return;
   keep({ capture: leaving, thumb: thumbnail(), at: shownAt, annotations: layer.annotations.map(item => ({ ...item })),
-         trim: leaving.video && trim ? { ...trim } : undefined, cuts: leaving.video && cuts.length ? cuts.map(cut => ({ ...cut })) : undefined });
+         trim: leaving.video && trim ? { ...trim } : undefined, cuts: leaving.video && cuts.length ? cuts.map(cut => ({ ...cut })) : undefined,
+         speed: leaving.video && speed !== 1 ? speed : undefined });
 }
 
 /** Captures copied straight from the overlay, which the editor never showed,
@@ -2463,7 +2527,7 @@ function restore(entry: Past) {
   layer.load(entry.annotations);
   shown = entry.capture; shownAt = entry.at;
   zoom = startingZoom(entry.capture);
-  showMovie(entry.capture, entry.trim, entry.cuts);
+  showMovie(entry.capture, entry.trim, entry.cuts, entry.speed);
   render();
 }
 
@@ -2479,7 +2543,7 @@ function drawRecents() {
   recentList.replaceChildren(...past.map(entry => {
     const size = `${entry.capture.width} × ${entry.capture.height}`;
     const video = entry.capture.video;
-    const length = video ? clock(entry.trim ? keptLength(entry.trim, entry.cuts ?? []) : video.duration) : '';
+    const length = video ? clock((entry.trim ? keptLength(entry.trim, entry.cuts ?? []) : video.duration) / (entry.speed ?? 1)) : '';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'recent';

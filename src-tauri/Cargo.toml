@@ -26,7 +26,7 @@ tempfile = "3"
 # flock, getpeereid and getpwuid for the socket AI tools reach Mark through.
 libc = "0.2"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSImage", "NSRunningApplication", "NSWorkspace", "NSApplication", "NSWindow", "NSResponder", "NSView", "NSSharingService", "NSGlassEffectView", "NSGraphics", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSGraphicsContext", "NSTrackingArea"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSPasteboard", "NSPasteboardItem", "NSImage", "NSRunningApplication", "NSWorkspace", "NSApplication", "NSWindow", "NSResponder", "NSView", "NSSharingService", "NSGlassEffectView", "NSGraphics", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSEvent", "NSGraphicsContext", "NSTrackingArea"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSString", "NSURL", "NSArray", "NSGeometry", "NSDictionary", "NSValue", "NSBundle"] }
 tauri-plugin-updater = "2"
 # The floating thumbnail is a non-activating panel, so clicking or dragging it
@@ -40,7 +40,7 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
 # Screen recordings: ScreenCaptureKit writes the movie, AVFoundation reads it
 # back for its poster, trim and frames, and ImageIO writes GIFs and stills.
 objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "SCShareableContent", "SCStream", "SCRecordingOutput", "SCError", "block2", "libc", "objc2-core-foundation", "objc2-core-graphics", "objc2-core-media", "objc2-av-foundation"] }
-objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "AVAsset", "AVAssetTrack", "AVAssetImageGenerator", "AVAssetExportSession", "AVCaptureDevice", "AVComposition", "AVMediaFormat", "AVVideoSettings", "AVVideoComposition", "AVVideoCompositing", "block2", "objc2-core-foundation", "objc2-core-graphics", "objc2-core-media", "objc2-core-image"] }
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "AVAsset", "AVAssetTrack", "AVAssetImageGenerator", "AVAssetExportSession", "AVAudioProcessingSettings", "AVCaptureDevice", "AVComposition", "AVMediaFormat", "AVVideoSettings", "AVVideoComposition", "AVVideoCompositing", "block2", "objc2-core-foundation", "objc2-core-graphics", "objc2-core-media", "objc2-core-image"] }
 # Marks and redactions drawn into a recording's frames as it is exported.
 objc2-core-image = { version = "0.3", default-features = false, features = ["std", "CIImage", "CIContext", "objc2-core-foundation", "objc2-core-graphics"] }
 objc2-image-io = { version = "0.3", default-features = false, features = ["std", "CGImageDestination", "CGImageProperties", "objc2-core-graphics"] }

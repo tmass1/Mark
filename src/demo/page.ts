@@ -490,7 +490,7 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         state.settings = { ...state.settings, recordMic: Boolean(args.mic ?? state.settings.recordMic),
                            recordClicks: Boolean(args.clicks ?? state.settings.recordClicks ?? true) };
         return state.settings;
-      case 'video_frames': case 'copy_video': case 'save_video': case 'share_video':
+      case 'video_frames': case 'copy_video': case 'copy_gif': case 'save_video': case 'share_video':
         throw 'Recording the screen is in the Mac app.';
       case 'recognize_text': throw 'Copy Text reads the image with the Mac\'s own text recognition, so it works in the Mac app.';
       case 'scan_image': throw 'Hide Sensitive reads the image with the Mac\'s own text and face recognition, so it works in the Mac app.';

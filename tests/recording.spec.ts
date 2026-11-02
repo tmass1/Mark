@@ -13,7 +13,7 @@ async function editing(page: Page, options: { request?: boolean } = {}) {
   await installBridge(page, {
     capture: VIDEO,
     request: options.request ? { id: 3, client: 'Claude Code', prompt: 'the chart', mode: 'region' } : null,
-    returns: { recording_supported: true, video_frames: [CAPTURE.dataUrl, CAPTURE.dataUrl], save_video: 'Mark 2026-10-29 at 09.41.07.mp4' },
+    returns: { recording_supported: true, video_frames: [CAPTURE.dataUrl, CAPTURE.dataUrl], save_video: { name: 'Mark 2026-10-29 at 09.41.07.mp4', bytes: 3_400_000 }, copy_gif: 820_000 },
   });
   await page.goto('/');
   await expect(page.locator('.trim')).toBeVisible({ timeout: 15_000 });
@@ -75,10 +75,10 @@ test('the handles keep part of it, and Copy, Save and Share take that part', asy
 
   await page.locator('.save').click();
   expect((await waitFor(page, 'save_video')).args).toMatchObject({ id: 7, gif: false, name: 'Mark 2026-10-29 at 09.41.07.mp4' });
-  await expect(page.locator('.message')).toContainText('Saved as Mark 2026-10-29 at 09.41.07.mp4');
+  await expect(page.locator('.message')).toContainText('Saved as Mark 2026-10-29 at 09.41.07.mp4 (3.4 MB).');
   await clear(page);
   await page.locator('.save-more').click();
-  await expect(page.getByRole('menuitem')).toHaveText([/Save Video\s*⌘S/, /Save as GIF\s*⌥⌘S/]);
+  await expect(page.getByRole('menuitem')).toHaveText([/Save Video\s*⌘S/, /Save as GIF\s*⌥⌘S/, /Copy as GIF/]);
   await page.getByRole('menuitem', { name: /Save as GIF/ }).click();
   expect((await waitFor(page, 'save_video')).args).toMatchObject({ id: 7, gif: true, name: 'Mark 2026-10-29 at 09.41.07.gif' });
   await expect(page.locator('.save-menu')).toBeHidden();
@@ -94,6 +94,41 @@ test('the handles keep part of it, and Copy, Save and Share take that part', asy
   await page.keyboard.press('Alt+Meta+c');
   expect((await waitFor(page, 'copy_video')).args).toMatchObject({ id: 7, close: true });
   expect(await commands(page)).not.toContain('copy_capture');
+});
+
+test('a GIF can be copied, full size or small, and says how big it came out', async ({ page }) => {
+  await editing(page);
+  await page.evaluate(() => { try { localStorage.removeItem('mark.gifSize'); } catch { /* none */ } });
+  await page.locator('.save-more').click();
+  await expect(page.getByRole('button', { name: 'Full' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Small' }).click();
+  await expect(page.locator('.save-menu')).toBeVisible();          // choosing a size keeps the menu open
+  await expect(page.getByRole('button', { name: 'Small' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('menuitem', { name: 'Copy as GIF' }).click();
+  expect((await waitFor(page, 'copy_gif')).args).toMatchObject({ id: 7, small: true, speed: 1, name: 'Mark 2026-10-29 at 09.41.07.gif' });
+  await expect(page.locator('.message')).toContainText('Copied the GIF (820 KB).');
+  // Remembered: the next GIF saved is small too.
+  await clear(page);
+  await page.keyboard.press('Meta+Alt+s');
+  expect((await waitFor(page, 'save_video')).args).toMatchObject({ gif: true, small: true });
+});
+
+test('2× plays it, and every copy of it, twice as fast, and Recent keeps that', async ({ page }) => {
+  await editing(page);
+  await page.locator('.speed').click();
+  await expect(page.locator('.speed')).toHaveText('2×');
+  await expect(page.locator('.trim-time')).toHaveText('0:06 at 2×');
+  expect(await page.locator('.movie').evaluate(video => (video as HTMLVideoElement).playbackRate)).toBe(2);
+  await clear(page);
+  await page.keyboard.press('Meta+c');
+  expect((await waitFor(page, 'copy_video')).args).toMatchObject({ speed: 2 });
+  await page.keyboard.press('Escape');
+  await waitFor(page, 'dismiss_editor');
+  await expect(page.locator('.recent').first().locator('.recent-length')).toHaveText('0:06');
+  await page.locator('.recent').first().click();
+  await expect(page.locator('.speed')).toHaveText('2×');
+  await page.locator('.speed').click();
+  await expect(page.locator('.trim-time')).toHaveText('0:12');
 });
 
 test('a handle moves with the arrow keys, and I and O trim to the playhead', async ({ page }) => {

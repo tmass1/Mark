@@ -456,8 +456,13 @@ notarization; an Apple Development certificate is only good for this Mac.
     **Copy** puts the movie on the clipboard as a file, which Slack, Messages
     and Mail take as an attachment. **Save Video** writes an MP4, **Save as
     GIF** in the menu beside it a GIF that loops (15 frames a second, at most
-    1280 pixels across), and **Share** hands
-    it to the share sheet. Each takes only the part kept, trimmed to the frame.
+    1280 pixels across), **Copy as GIF** puts one on the clipboard both as a
+    file and as the GIF itself, for a page that takes an image, and **Share**
+    hands it to the share sheet. **GIF size** at the foot of that menu makes
+    every GIF small instead — 10 frames a second, at most 640 across, for a
+    chat — and is remembered. A GIF saved or copied says how big it came out.
+    Each takes only the part kept, trimmed to the frame. **2×** beside Play
+    plays it twice as fast, and every copy with it, a voice keeping its pitch.
 
     Mark it up as you would a screenshot: arrows, boxes, numbered steps, text,
     the pen, the highlighter and redaction. A mark appears from the moment it
