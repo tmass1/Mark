@@ -78,6 +78,9 @@ export interface SavedSettings {
   /** Whether a recording takes in the microphone, and shows clicks. */
   recordMic?: boolean;
   recordClicks?: boolean;
+  /** Whether Mark looks for updates by itself, and installs them without asking. */
+  checkUpdates?: boolean;
+  installUpdates?: boolean;
 }
 
 /** Settings change in their own window; the editor shows the shortcuts, so it listens. */

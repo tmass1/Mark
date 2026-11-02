@@ -4,10 +4,11 @@ import { notesHtml } from './notes';
 import { fitWindowTo } from './fit';
 import markIcon from './mark-icon.png';
 
-/** Software Update, in the shape Mac apps have long given it: what is new, and
- *  three ways to answer -- install it now, be reminded later, or skip this
- *  version. Rust does the looking, downloading and installing; this window
- *  only says what is happening and passes the answer back. */
+/** Software Update, in the shape Mac apps have long given it: what is new, the
+ *  choice to have updates install themselves from now on, and three ways to
+ *  answer -- install it now, be reminded later, or skip this version. Rust does
+ *  the looking, downloading and installing; this window only says what is
+ *  happening and passes the answer back. */
 
 interface Offer { version: string; current: string; notes: string }
 
@@ -22,12 +23,15 @@ type View =
 const root = document.querySelector<HTMLDivElement>('#update')!;
 root.className = 'update';
 let view: View = { kind: 'checking' };
+/** Whether updates download and install themselves, as Settings has it. */
+let automatic = false;
 
 function render(next: View) {
   view = next;
-  // What the window says, beside the icon, and the buttons, in a row of their
-  // own underneath, the full width of the window.
-  const [body, actions = ''] = ((): [string, string?] => {
+  // What the window says, beside the icon; what is new and the choice to
+  // install by itself, the full width under them; and the buttons, in a row
+  // of their own underneath.
+  const [body, actions = '', below = ''] = ((): [string, string?, string?] => {
     switch (next.kind) {
       // Cancel, as Mac apps give it, also gives checking the height of what
       // follows it -- up to date, or an update without notes -- so the window
@@ -37,13 +41,16 @@ function render(next: View) {
         <div class="update-bar" role="progressbar" aria-label="Checking"><span class="indeterminate"></span></div>`, `
         <span class="push"></span><button class="cancel glassy" type="button">Cancel</button>`];
       case 'offer': return [`
-        <h1 class="update-title">A new version of Mark is available</h1>
-        <p class="update-sub">Mark ${escape(next.offer.version)} is ready to install. You have ${escape(next.offer.current)}.</p>
-        ${next.offer.notes.trim() ? `<div class="update-notes" tabindex="0" aria-label="What's new">${notesHtml(next.offer.notes)}</div>` : ''}`, `
+        <h1 class="update-title">A new version of Mark is available!</h1>
+        <p class="update-sub">Mark ${escape(next.offer.version)} is now available—you have ${escape(next.offer.current)}.
+          Would you like to install it now?</p>`, `
         <button class="skip glassy" type="button">Skip This Version</button>
         <span class="push"></span>
         <button class="later glassy" type="button">Remind Me Later</button>
-        <button class="install primary" type="button">Install and Relaunch</button>`];
+        <button class="install primary" type="button">Install Update</button>`, `
+        ${notes(next.offer.notes) ? `<div class="update-notes" tabindex="0" aria-label="What's new">${notesHtml(notes(next.offer.notes))}</div>` : ''}
+        <label class="check update-auto"><input class="auto-install" type="checkbox" ${automatic ? 'checked' : ''} />
+          Automatically download and install updates in the future</label>`];
       case 'downloading': return [`
         <h1 class="update-title">Downloading Mark ${escape(next.offer.version)}…</h1>
         <div class="update-bar" role="progressbar" aria-label="Download"
@@ -69,6 +76,7 @@ function render(next: View) {
     }
   })();
   root.innerHTML = `<img class="update-icon" src="${markIcon}" alt="" /><div class="update-body">${body}</div>`
+    + (below ? `<div class="update-below">${below}</div>` : '')
     + (actions ? `<div class="update-actions">${actions}</div>` : '');
   // Return answers with the main action: install, try again, or OK.
   (['.install', '.retry', '.done', '.cancel'].map(name => root.querySelector<HTMLButtonElement>(name)).find(Boolean))?.focus();
@@ -92,6 +100,11 @@ async function appear() {
   } catch {
     // Mark shows the window itself a moment later.
   }
+}
+
+/** The release notes, less the "What's new" they open with: the title says it. */
+function notes(markdown: string): string {
+  return markdown.trim().replace(/^#{1,6}\s+what[’']s new\s*\n+/i, '').trim();
 }
 
 /** Plainly, what a failure means; the updater's own words go underneath. */
@@ -149,6 +162,16 @@ root.addEventListener('click', event => {
   else if (button.classList.contains('later') || button.classList.contains('done') || button.classList.contains('cancel')) void closeWindow();
 });
 
+// From now on, updates install themselves -- or are offered, as this one is.
+root.addEventListener('change', event => {
+  const box = event.target as HTMLInputElement;
+  if (!box.classList.contains('auto-install')) return;
+  automatic = box.checked;
+  void command<{ installUpdates?: boolean }>('set_install_updates', { enabled: box.checked })
+    .then(settings => { automatic = settings.installUpdates === true; box.checked = automatic; })
+    .catch(() => { automatic = !box.checked; box.checked = automatic; });
+});
+
 window.addEventListener('keydown', event => {
   // ⌘W and Escape put it away, as Remind Me Later would -- except mid-install,
   // where there is nothing to put off.
@@ -167,6 +190,7 @@ async function init() {
     render({ kind: 'offer', offer: { version: '0.5.0', current: '0.4.5', notes: "## What's new\n\n- **An example.** This is how release notes appear here." } });
     return;
   }
+  automatic = await command<{ installUpdates?: boolean }>('get_settings').then(settings => settings.installUpdates === true).catch(() => false);
   const { listen } = await import('@tauri-apps/api/event');
   await listen<{ done: number; total: number | null }>('update-progress', event => {
     if (view.kind === 'downloading') render({ ...view, done: event.payload.done, total: event.payload.total });

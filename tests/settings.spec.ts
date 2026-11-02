@@ -108,6 +108,25 @@ test('updates: the automatic check shows what Rust saved, and Check Now asks for
   await waitFor(page, 'open_updates');
 });
 
+test('updates can install themselves: turning it on turns on looking, and turning looking off turns it off', async ({ page }) => {
+  await installBridge(page, { returns: {
+    get_settings: { ...SAVED, checkUpdates: false, installUpdates: false }, login_enabled: false,
+    set_install_updates: { ...SAVED, checkUpdates: true, installUpdates: true },
+    set_auto_update: { ...SAVED, checkUpdates: false, installUpdates: false },
+  } });
+  await page.goto('/settings.html');
+  const install = page.getByRole('checkbox', { name: 'Download and install updates automatically' });
+  const look = page.getByRole('checkbox', { name: 'Check for updates automatically' });
+  await expect(install).not.toBeChecked();
+  await install.click();
+  expect((await waitFor(page, 'set_install_updates')).args).toEqual({ enabled: true });
+  await expect(install).toBeChecked();
+  await expect(look).toBeChecked();
+  await look.click();
+  expect((await waitFor(page, 'set_auto_update')).args).toEqual({ enabled: false });
+  await expect(install).not.toBeChecked();
+});
+
 test('a settings file from before updates shows them switched on', async ({ page }) => {
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false } });
   await page.goto('/settings.html');

@@ -84,11 +84,23 @@ pub fn skip_update(app: AppHandle, version: String) -> Result<(), String> {
     settings::save(&app, &updated)
 }
 
+/// Whether Mark looks for updates by itself. Not looking, it installs none.
 #[tauri::command]
 pub fn set_auto_update(app: AppHandle, enabled: bool) -> Result<settings::Settings, String> {
+    change(&app, |prefs| { prefs.check_updates = enabled; if !enabled { prefs.install_updates = false; } })
+}
+
+/// "Automatically download and install updates in the future". Installing
+/// them, Mark looks for them too.
+#[tauri::command]
+pub fn set_install_updates(app: AppHandle, enabled: bool) -> Result<settings::Settings, String> {
+    change(&app, |prefs| { prefs.install_updates = enabled; if enabled { prefs.check_updates = true; } })
+}
+
+fn change(app: &AppHandle, how: impl FnOnce(&mut settings::Settings)) -> Result<settings::Settings, String> {
     let state = app.state::<Prefs>();
-    let updated = { let mut prefs = state.0.lock().unwrap(); prefs.check_updates = enabled; prefs.clone() };
-    settings::save(&app, &updated)?;
+    let updated = { let mut prefs = state.0.lock().unwrap(); how(&mut prefs); prefs.clone() };
+    settings::save(app, &updated)?;
     let _ = app.emit("settings-changed", &updated);
     Ok(updated)
 }
@@ -143,15 +155,65 @@ async fn look(app: &AppHandle) {
     let Ok(Some(update)) = updater.check().await else { return };
     if passed_over(&app.state::<Prefs>().0.lock().unwrap(), &update.version) { return; }
     *app.state::<Pending>().0.lock().unwrap() = Some(update.clone());
-    // Only a build made to test updating end to end installs without asking.
+    // A build made to test updating end to end installs at once.
     if cfg!(feature = "update-selftest") {
         if let Err(error) = install(app, update).await { eprintln!("[Mark] {error}"); }
+        return;
+    }
+    if app.state::<Prefs>().0.lock().unwrap().install_updates {
+        install_quietly(app, update).await;
         return;
     }
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
         if let Err(error) = show(&handle, false) { eprintln!("[Mark] {error}"); }
     });
+}
+
+/// How long an update found to install by itself waits for Mark to be out of
+/// the way, looking this often, before leaving it to the next day's check.
+const WAIT_FOR_QUIET: Duration = Duration::from_secs(6 * 60 * 60);
+const QUIET_EVERY: Duration = Duration::from_secs(60);
+
+/// Installed without asking: once nothing is being captured, recorded or
+/// asked for and none of Mark's windows is open, so it reopens unnoticed --
+/// in the background, as at login, rather than with its window up.
+async fn install_quietly(app: &AppHandle, update: Update) {
+    let since = std::time::Instant::now();
+    while !crate::idle(app) {
+        if since.elapsed() >= WAIT_FOR_QUIET { return; }
+        std::thread::sleep(QUIET_EVERY);
+    }
+    // Turned off while it waited, it is offered after all, next time.
+    if !app.state::<Prefs>().0.lock().unwrap().install_updates { return; }
+    if let Err(error) = reopen_quietly(app, true) { eprintln!("[Mark] {error}"); }
+    if let Err(error) = install(app, update).await {
+        let _ = reopen_quietly(app, false);
+        eprintln!("[Mark] {error}");
+    }
+}
+
+/// A note, beside the settings, that the next launch is Mark reopening after
+/// installing an update by itself, and so should show nothing.
+fn quiet_note(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path().app_config_dir().map(|dir| dir.join("reopen-quietly")).map_err(|e| e.to_string())
+}
+
+fn reopen_quietly(app: &AppHandle, quietly: bool) -> Result<(), String> {
+    let note = quiet_note(app)?;
+    if quietly {
+        std::fs::create_dir_all(note.parent().ok_or("No folder for the note.")?).map_err(|e| e.to_string())?;
+        std::fs::write(&note, b"").map_err(|e| e.to_string())
+    } else {
+        let _ = std::fs::remove_file(&note);
+        Ok(())
+    }
+}
+
+/// Whether this launch is Mark reopening after an update it installed by
+/// itself -- which it says once, clearing the note.
+pub fn reopened_quietly(app: &AppHandle) -> bool {
+    quiet_note(app).is_ok_and(|note| std::fs::remove_file(note).is_ok())
 }
 
 /// A version the user said to skip is passed over by the checks Mark makes itself.

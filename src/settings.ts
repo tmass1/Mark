@@ -10,7 +10,7 @@ import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent, shortcutProblem } 
 
 type Way = 'region' | 'window' | 'display' | 'timed' | 'record';
 interface Settings {
-  appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates?: boolean;
+  appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates?: boolean; installUpdates?: boolean;
   /** The other ways in; each has one only once it is chosen. */
   shortcuts?: Partial<Record<Exclude<Way, 'region'>, string>>;
   afterCapture?: 'editor' | 'thumbnail';
@@ -104,6 +104,8 @@ root.innerHTML = `
     <h2 class="pref-label">Updates</h2>
     <div class="pref-control">
       <label class="check"><input class="auto-update" type="checkbox" checked /> Check for updates automatically</label>
+      <label class="check"><input class="auto-install" type="checkbox" aria-describedby="auto-install-hint" /> Download and install updates automatically</label>
+      <p class="pref-hint" id="auto-install-hint">Mark installs one while you're not using it, then reopens in the background.</p>
       <button class="check-now glassy" type="button">Check Now</button>
     </div>
   </section>
@@ -115,6 +117,7 @@ const shortcutNote = root.querySelector<HTMLElement>('.shortcut-note')!;
 const login = root.querySelector<HTMLInputElement>('.login')!;
 const loginNote = root.querySelector<HTMLElement>('.login-note')!;
 const autoUpdate = root.querySelector<HTMLInputElement>('.auto-update')!;
+const autoInstall = root.querySelector<HTMLInputElement>('.auto-install')!;
 const thumbnailAfter = root.querySelector<HTMLInputElement>('.thumbnail-after')!;
 const afterNote = root.querySelector<HTMLElement>('.after-note')!;
 const mcp = root.querySelector<HTMLInputElement>('.mcp')!;
@@ -143,6 +146,7 @@ function show(settings: Settings) {
   }
   for (const recorder of recorders) if (recorder !== recording) label(recorder);
   autoUpdate.checked = settings.checkUpdates !== false;
+  autoInstall.checked = settings.installUpdates === true;
   thumbnailAfter.checked = settings.afterCapture === 'thumbnail';
   mcp.checked = settings.mcp !== false;
   recordMic.checked = settings.recordMic === true;
@@ -322,6 +326,12 @@ root.querySelector<HTMLButtonElement>('.guide')!.addEventListener('click', () =>
 autoUpdate.addEventListener('change', () => {
   void command<Settings>('set_auto_update', { enabled: autoUpdate.checked }).then(show)
     .catch(() => { autoUpdate.checked = current.checkUpdates !== false; });
+});
+// Installing by itself means looking by itself, and not looking means not
+// installing: Rust keeps the two in step, and show() reflects both.
+autoInstall.addEventListener('change', () => {
+  void command<Settings>('set_install_updates', { enabled: autoInstall.checked }).then(show)
+    .catch(() => { autoInstall.checked = current.installUpdates === true; });
 });
 root.querySelector<HTMLButtonElement>('.check-now')!.addEventListener('click', () => {
   void command('open_updates').catch(() => {});

@@ -197,6 +197,18 @@ fn recordable(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether Mark is out of the way, for an update to install and reopen it
+/// unnoticed: nothing being captured or recorded, no AI tool waiting, and
+/// none of its windows -- editor, thumbnail, Settings -- open.
+pub fn idle(app: &AppHandle) -> bool {
+    let engaged = {
+        let state = app.state::<State>();
+        let session = state.lock().unwrap();
+        session.busy || session.capturing || session.recording.is_some() || session.request.is_some()
+    };
+    !engaged && !app.webview_windows().values().any(|window| window.is_visible().unwrap_or(false))
+}
+
 /// The whole display the pointer is on, with no overlay in between. The rest of
 /// the path is the same as a region: one rectangle handed to screencapture.
 #[tauri::command]
@@ -1183,7 +1195,7 @@ pub fn run() {
             recording::video_frames, recording::copy_video, recording::save_video, recording::share_video,
             get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, set_record_options, login_enabled, set_login, open_settings, quit_app,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
-            updates::set_auto_update, updates::open_updates])
+            updates::set_auto_update, updates::set_install_updates, updates::open_updates])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -1278,7 +1290,9 @@ pub fn run() {
                 && macos::seconds_since_boot() < 300.0;
             // Opened by an AI tool's bridge, the ask it brings is what to show.
             let for_request = std::env::args().any(|arg| arg == "--for-request");
-            if !at_login && !for_request { present(app.handle()); }
+            // Reopened by an update it installed by itself, it stays out of the way.
+            let updated = updates::reopened_quietly(app.handle());
+            if !at_login && !for_request && !updated { present(app.handle()); }
             Ok(())
         })
         .build(tauri::generate_context!())
