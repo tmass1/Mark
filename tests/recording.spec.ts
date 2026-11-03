@@ -40,7 +40,7 @@ test('a recording opens in a player with its trim, and the tools to mark it up',
   await expect(page.locator('.overlay')).toBeVisible();
   // What a recording goes without: cropping, reading its text, zoom. It can be framed.
   await expect(page.locator('.tool[data-slot="9"]')).toBeHidden();
-  await expect(page.locator('.frame-button')).toBeVisible();
+  await expect(page.locator('.frame-panel')).toBeVisible();
   await expect(page.locator('.copy-text')).toBeHidden();
   await expect(page.locator('.zoom')).toBeHidden();
   // Save says it saves the video; a GIF is the other way, in the menu beside it.
@@ -745,15 +745,17 @@ test('a recording made with Touch shows a fingertip, pressed while the button wa
 
 test('a recording can be framed too, in a phone, and every copy is sent the frame to set it in', async ({ page }) => {
   await editing(page);
-  await page.getByRole('button', { name: 'Frame', exact: true }).click();
+  // Beside a recording, its style is in view without asking.
   const panel = page.locator('.frame-panel');
+  await expect(panel).toBeVisible();
+  await expect(panel).toHaveClass(/docked/);
+  await expect(page.getByRole('button', { name: 'Frame', exact: true })).toBeHidden();
   // A movie can't be see-through.
   await expect(panel.getByRole('radio', { name: 'No background', exact: true })).toBeDisabled();
   await panel.getByRole('radio', { name: 'Lagoon', exact: true }).click();
-  await panel.locator('.around').getByRole('radio', { name: 'Phone', exact: true }).click();
-  await page.keyboard.press('Escape');
+  await panel.locator('.devices').getByRole('radio', { name: 'Phone', exact: true }).click();
   await expect(page.locator('.canvas')).toHaveClass(/framed/);
-  const geometry = frameGeometry(VIDEO.width, VIDEO.height, 1, { ...DEFAULT_FRAME, on: true, background: 'lagoon', phone: true });
+  const geometry = frameGeometry(VIDEO.width, VIDEO.height, 1, { ...DEFAULT_FRAME, on: true, background: 'lagoon', device: 'phone' });
   await expect(page.locator('.dimensions')).toHaveText(`${geometry.width} × ${geometry.height} px, framed · 0:12`);
   await clear(page);
   await page.keyboard.press('Meta+c');

@@ -147,7 +147,8 @@ pub struct Shortcuts {
 }
 
 /// A background, room around the capture, rounded corners, a shadow, and a
-/// title bar or a phone round it, as the editor's Frame panel sets them. The editor owns what the
+/// device round it -- a window's title bar, a browser's, a phone or a tablet,
+/// in a colour, a phone with its island or not -- as the editor sets them. The editor owns what the
 /// numbers mean -- each is 0 to 1 here -- and which backgrounds exist; this
 /// only keeps what it is given within those bounds.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -158,30 +159,46 @@ pub struct Frame {
     pub padding: f64,
     pub radius: f64,
     pub shadow: f64,
+    /// A window's title bar: what Marks before 0.9 read, kept in step with `device`.
     pub chrome: bool,
-    /// A phone's body round it, in place of a title bar.
-    pub phone: bool,
+    /// "none", "window", "browser", "phone" or "tablet".
+    pub device: String,
+    /// A phone's or tablet's: "black", "silver", "titanium" or "blue".
+    pub color: String,
+    /// A phone's Dynamic Island.
+    pub island: bool,
 }
 
 impl Default for Frame {
     fn default() -> Self {
-        Frame { on: false, background: "sky".into(), padding: 0.5, radius: 0.4, shadow: 0.5, chrome: false, phone: false }
+        Frame { on: false, background: "sky".into(), padding: 0.5, radius: 0.4, shadow: 0.5, chrome: false,
+                device: "none".into(), color: "black".into(), island: false }
     }
 }
 
 impl Frame {
-    /// Numbers held to 0 to 1, and a background name that could be one: the
-    /// editor falls back on its own default for a name it does not know.
+    /// Numbers held to 0 to 1, a background name that could be one -- the
+    /// editor falls back on its own default for a name it does not know -- and
+    /// a device and colour that are. A frame from before devices had a title
+    /// bar or none; the older setting is kept in step for a Mark from then.
     pub fn sanitized(self) -> Frame {
         let defaults = Frame::default();
         let share = |value: f64, fallback: f64| if value.is_finite() { value.clamp(0.0, 1.0) } else { fallback };
         let named = !self.background.is_empty() && self.background.len() <= 32
             && self.background.chars().all(|c| c.is_ascii_lowercase() || c == '-');
+        let device = match self.device.as_str() {
+            "window" | "browser" | "phone" | "tablet" => self.device,
+            _ if self.chrome => "window".into(),
+            _ => defaults.device.clone(),
+        };
+        let color = if matches!(self.color.as_str(), "black" | "silver" | "titanium" | "blue") { self.color } else { defaults.color };
         Frame {
             background: if named { self.background } else { defaults.background },
             padding: share(self.padding, defaults.padding),
             radius: share(self.radius, defaults.radius),
             shadow: share(self.shadow, defaults.shadow),
+            chrome: device == "window",
+            device, color,
             ..self
         }
     }
@@ -245,7 +262,8 @@ mod tests {
             shortcuts: Shortcuts { window: Some("Alt+Super+Digit5".into()), display: None, timed: Some("Shift+Super+KeyT".into()),
                                    record: Some("Shift+Super+Digit5".into()) },
             check_updates: false, install_updates: false, skipped_version: Some("0.5.0".into()),
-            frame: Frame { on: true, background: "midnight".into(), padding: 0.25, radius: 0.75, shadow: 0.0, chrome: true, phone: true },
+            frame: Frame { on: true, background: "midnight".into(), padding: 0.25, radius: 0.75, shadow: 0.0, chrome: false,
+                           device: "phone".into(), color: "titanium".into(), island: true },
             after_capture: "thumbnail".into(), mcp: false, record_mic: true, record_clicks: false,
             recording_pointer: PointerLook::Touch, recording_clicks: ClickLook::Ripple, record_zoom: true, show_in_dock: false,
         };
@@ -286,11 +304,24 @@ mod tests {
     }
 
     #[test]
+    fn a_frame_from_before_devices_keeps_its_title_bar_and_a_mark_from_then_still_sees_it() {
+        assert_eq!(parse(br#"{"frame":{"on":true,"chrome":true}}"#).unwrap().frame.device, "window");
+        assert_eq!(parse(br#"{"frame":{"on":true}}"#).unwrap().frame.device, "none");
+        let phone = parse(br#"{"frame":{"device":"phone","color":"blue","island":true}}"#).unwrap().frame;
+        assert_eq!((phone.device.as_str(), phone.color.as_str(), phone.island, phone.chrome), ("phone", "blue", true, false));
+        // A browser is not a title bar to a Mark from before; a window is.
+        assert!(parse(br#"{"frame":{"device":"window"}}"#).unwrap().frame.chrome);
+        // Names this Mark doesn't know are its defaults.
+        let odd = parse(br#"{"frame":{"device":"watch","color":"gold"}}"#).unwrap().frame;
+        assert_eq!((odd.device.as_str(), odd.color.as_str()), ("none", "black"));
+    }
+
+    #[test]
     fn a_hand_edited_frame_is_kept_within_bounds() {
         let settings = parse(br#"{"frame":{"on":true,"background":"<script>","padding":7,"radius":-2,"shadow":0.3}}"#).unwrap();
         assert_eq!(settings.frame, Frame { on: true, padding: 1.0, radius: 0.0, shadow: 0.3, ..Frame::default() });
         // Half a frame keeps what it says and takes the defaults for the rest.
-        assert_eq!(parse(br#"{"frame":{"chrome":true}}"#).unwrap().frame, Frame { chrome: true, ..Frame::default() });
+        assert_eq!(parse(br#"{"frame":{"chrome":true}}"#).unwrap().frame, Frame { chrome: true, device: "window".into(), ..Frame::default() });
     }
 
     #[test]

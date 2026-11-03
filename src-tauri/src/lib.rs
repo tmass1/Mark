@@ -486,7 +486,8 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bo
                         } else {
                             // A recording has its trim strip under it as well.
                             let shown = (f64::from(capture.width) / capture.scale, f64::from(capture.height) / capture.scale);
-                            wanted = Some(if capture.video.is_some() { (shown.0, shown.1 + recording::STRIP) } else { (width, height) });
+                            // and its style panel beside it.
+                            wanted = Some(if capture.video.is_some() { (shown.0 + recording::STYLE, shown.1 + recording::STRIP) } else { (width, height) });
                             // Taken from another app with the thumbnail chosen, and no AI
                             // tool waiting on it: the corner, not the editor.
                             if thumbnail_wanted && session.request.is_none() && !session.editor_was_visible {

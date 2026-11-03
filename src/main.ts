@@ -15,8 +15,8 @@ import markIcon from './mark-icon.png';
 import { copyThenDismiss } from './model';
 import { readingOrder, within, type Area, type TextLine } from './text';
 import { describeHidden, findSensitive } from './sensitive';
-import { BACKGROUNDS, BAR_COLOURS, DEFAULT_FRAME, LIGHTS_SVG, PHONE_COLOURS, backgroundOf, cssBackground, darkTop, frameGeometry, framePlates,
-         paintFrame, sanitizeFrame, type FrameStyle } from './frame';
+import { BACKGROUNDS, BODY_COLOURS, DEFAULT_FRAME, DEVICES, backgroundOf, cssBackground, darkTop, frameGeometry, framePlates, handheld,
+         paintFrame, sanitizeFrame, type BodyColour, type Device, type FrameStyle } from './frame';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, LOOKS, hexColour, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
          FONT, arrowPaint, badgeAt, blockSize, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isShape, numbered,
@@ -342,7 +342,7 @@ app.innerHTML = `
       <div class="tool-menu" role="menu" hidden></div>
     </nav>
   <main class="canvas" aria-label="Screenshot editor">
-    <div class="backdrop"><div class="card">
+    <div class="backdrop"><canvas class="frame-under" aria-hidden="true"></canvas><div class="card">
       <div class="chrome" aria-hidden="true" hidden></div>
       <div class="stage" hidden>
         <img class="capture" alt="Captured screenshot" draggable="false" />
@@ -352,7 +352,7 @@ app.innerHTML = `
         <div class="pointer-touch" aria-hidden="true" hidden></div>
         <svg class="overlay" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Arrow annotations"></svg>
       </div>
-    </div></div>
+    </div><canvas class="frame-over" aria-hidden="true" hidden></canvas></div>
     <section class="empty" hidden>
       <!-- The icon itself, so what greets you on launch is exactly what sits in
            the Dock. It used to be redrawn from paths, which is how the two came
@@ -518,20 +518,30 @@ app.innerHTML = `
         data-background="${background.id}" title="${background.name}" aria-label="${background.name}"
         style="--background: ${cssBackground(background)}"></button>`).join('')}
     </div>
-    ${([['padding', 'Padding'], ['radius', 'Corners'], ['shadow', 'Shadow']] as const).map(([key, name]) =>
-      `<label class="frame-slider"><span>${name}</span><input type="range" min="0" max="1" step="0.01" data-frame="${key}" /></label>`).join('')}
-    <div class="frame-around"><span id="around-label">Around it</span>
-      <div class="around" role="radiogroup" aria-labelledby="around-label">
-        ${(['none', 'window', 'phone'] as const).map(id => `<button type="button" role="radio" aria-checked="false" data-around="${id}"
-          title="${{ none: 'Nothing round it', window: 'A window’s title bar', phone: 'A phone round it' }[id]}">${{ none: 'None', window: 'Window', phone: 'Phone' }[id]}</button>`).join('')}
+    <div class="frame-section"><span class="frame-label" id="device-label">Device</span>
+      <div class="devices" role="radiogroup" aria-labelledby="device-label">
+        ${DEVICES.map(device => `<button class="device" type="button" role="radio" aria-checked="false" data-device="${device.id}">
+          <svg viewBox="0 0 32 32" aria-hidden="true">${device.art}</svg><span>${device.name}</span></button>`).join('')}
       </div>
     </div>
+    <div class="frame-section body-colours" hidden><span class="frame-label" id="colour-label">Colour</span>
+      <div class="colours" role="radiogroup" aria-labelledby="colour-label">
+        ${BODY_COLOURS.map(colour => `<button class="body-colour" type="button" role="radio" aria-checked="false" data-color="${colour.id}"
+          aria-label="${colour.name}" title="${colour.name}" style="--band: ${colour.band}; --edge: ${colour.edge}"></button>`).join('')}
+      </div>
+    </div>
+    <label class="frame-check island-check" hidden><input type="checkbox" data-island /><span>Dynamic Island</span></label>
+    ${([['padding', 'Padding'], ['radius', 'Corners'], ['shadow', 'Shadow']] as const).map(([key, name]) =>
+      `<label class="frame-slider"><span>${name}</span><input type="range" min="0" max="1" step="0.01" data-frame="${key}" /></label>`).join('')}
   </aside>
   <input class="file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
 `;
 const image = app.querySelector<HTMLImageElement>('.capture')!;
 const stage = app.querySelector<HTMLElement>('.stage')!;
 const backdrop = app.querySelector<HTMLElement>('.backdrop')!;
+const frameUnder = app.querySelector<HTMLCanvasElement>('.frame-under')!;
+const workspace = app.querySelector<HTMLElement>('.workspace')!;
+const frameOver = app.querySelector<HTMLCanvasElement>('.frame-over')!;
 const card = app.querySelector<HTMLElement>('.card')!;
 const chrome = app.querySelector<HTMLElement>('.chrome')!;
 const frameButton = app.querySelector<HTMLButtonElement>('.frame-button')!;
@@ -1275,6 +1285,7 @@ function render() {
   saveButton.dataset.tip = video ? 'Save the video, as an MP4 (⌘S)' : 'Save to a file (⌘S)';
   saveButton.setAttribute('aria-label', video ? 'Save Video' : 'Save to a file');
   if (!video) closeSaveMenu();
+  dockFramePanel(!!video);
   syncFramePanel();
   copyOnly.dataset.tip = video ? 'Copy the recording and keep working' : 'Copy the image and keep working';
   zoomSelect.parentElement!.hidden = !capture || !!video;
@@ -2018,7 +2029,7 @@ function markAtPlayhead(end: 'at' | 'until') {
 interface VideoMarks {
   overlays: { at: number; png: string }[];
   redactions: { x: number; y: number; width: number; height: number; at: number; until?: number; block: number }[];
-  frame?: { width: number; height: number; x: number; y: number; under: string; mask: string };
+  frame?: { width: number; height: number; x: number; y: number; under: string; mask: string; over?: string };
   camera?: [number, number, number, number][];
 }
 function videoMarks(): VideoMarks | null {
@@ -2058,7 +2069,8 @@ function videoFrame(): VideoMarks['frame'] | null {
   const geometry = frameGeometry(width, height, capture.scale ?? 1, style);
   const plates = framePlates(geometry, style, { width, height, dark: barDark });
   const png = (canvas: HTMLCanvasElement) => canvas.toDataURL('image/png').split(',')[1];
-  return { width: geometry.width, height: geometry.height, x: plates.x, y: plates.y, under: png(plates.under), mask: png(plates.mask) };
+  return { width: geometry.width, height: geometry.height, x: plates.x, y: plates.y, under: png(plates.under), mask: png(plates.mask),
+           ...(plates.over ? { over: png(plates.over) } : {}) };
 }
 
 /** A box, ellipse or highlight on its own in the selection: Copy Text then
@@ -2652,35 +2664,33 @@ function layoutFrame(): boolean {
   const px = (value: number) => `${value * k}px`;
   const corner = px(geometry.radius);
   backdrop.style.width = px(geometry.width); backdrop.style.height = px(geometry.height);
-  backdrop.style.background = cssBackground(backgroundOf(style.background));
-  // The card is the window -- or the phone, its body round the screen, with
-  // the hairline and rim the export draws.
-  const { bezel } = geometry;
-  const line = Math.max(1, Math.round(bezel / 12));
-  const shadows = [
-    geometry.shadow.alpha ? `0 ${px(geometry.shadow.y)} ${px(geometry.shadow.blur)} rgba(0, 0, 0, ${geometry.shadow.alpha.toFixed(3)})` : '',
-    bezel ? `inset 0 0 0 ${px(line)} ${PHONE_COLOURS.edge}, inset 0 0 0 ${px(line * 2.5)} ${PHONE_COLOURS.rim}` : '',
-  ].filter(Boolean);
-  Object.assign(card.style, {
-    left: px(geometry.pad), top: px(geometry.pad), width: px(width + 2 * bezel), height: px(height + geometry.bar + 2 * bezel),
-    borderRadius: px(geometry.radius + bezel), background: bezel ? PHONE_COLOURS.body : '',
-    boxShadow: shadows.length ? shadows.join(', ') : 'none',
-  });
-  chrome.hidden = !geometry.bar;
-  if (geometry.bar) {
-    const colours = barDark ? BAR_COLOURS.dark : BAR_COLOURS.light;
-    const line = Math.max(1, Math.round(geometry.bar / 28));
-    Object.assign(chrome.style, {
-      height: px(geometry.bar), borderRadius: `${corner} ${corner} 0 0`,
-      background: `${LIGHTS_SVG} left center / auto 100% no-repeat, ${colours.fill}`,
-      boxShadow: `inset 0 -${px(line)} 0 ${colours.line}`,
-    });
-  }
+  // The frame itself is painted, as every copy paints it, at the screen's own
+  // pixels; the card is only where the stage sits.
+  paintFrameOnScreen(geometry, style, k * (window.devicePixelRatio || 1));
+  chrome.hidden = true;
+  const { bezel, pad, bar } = geometry;
   Object.assign(stage.style, {
-    left: px(bezel), top: px(bezel + geometry.bar), width: px(width), height: px(height),
-    borderRadius: geometry.bar ? `0 0 ${corner} ${corner}` : corner,
+    left: px(pad + bezel), top: px(pad + bezel + bar), width: px(width), height: px(height),
+    borderRadius: bar ? `0 0 ${corner} ${corner}` : corner,
   });
   return true;
+}
+
+/** What the frame was last painted for, so a resize or a playhead moving
+ *  doesn't paint it again. */
+let paintedFrame = '';
+function paintFrameOnScreen(geometry: ReturnType<typeof frameGeometry>, style: FrameStyle, ratio: number) {
+  const key = JSON.stringify([style, capture?.width, capture?.height, barDark, Math.round(ratio * 1000)]);
+  if (key === paintedFrame) return;
+  paintedFrame = key;
+  const plates = framePlates(geometry, style, { width: capture!.width, height: capture!.height, dark: barDark }, ratio);
+  const copy = (from: HTMLCanvasElement, to: HTMLCanvasElement) => {
+    to.width = from.width; to.height = from.height;
+    to.getContext('2d')!.drawImage(from, 0, 0);
+  };
+  copy(plates.under, frameUnder);
+  frameOver.hidden = !plates.over;
+  if (plates.over) copy(plates.over, frameOver);
 }
 
 /** The frame as this capture takes it. A movie can't be see-through, so a
@@ -2709,14 +2719,21 @@ function syncFramePanel() {
   }
   for (const input of framePanel.querySelectorAll<HTMLInputElement>('input[data-frame]')) {
     input.value = String(frame[input.dataset.frame as 'padding' | 'radius' | 'shadow']);
-    // A phone's corners are its own.
-    input.disabled = input.dataset.frame === 'radius' && frame.phone;
+    // A phone's or tablet's corners are its own.
+    input.disabled = input.dataset.frame === 'radius' && handheld(frame.device);
     input.closest('.frame-slider')!.classList.toggle('dimmed', input.disabled);
   }
-  const around = frame.phone ? 'phone' : frame.chrome ? 'window' : 'none';
-  for (const button of framePanel.querySelectorAll<HTMLButtonElement>('[data-around]')) {
-    button.setAttribute('aria-checked', String(button.dataset.around === around));
+  for (const button of framePanel.querySelectorAll<HTMLButtonElement>('[data-device]')) {
+    button.setAttribute('aria-checked', String(button.dataset.device === frame.device));
   }
+  // Its colour for a phone or tablet, and its island for a phone.
+  framePanel.querySelector<HTMLElement>('.body-colours')!.hidden = !handheld(frame.device);
+  for (const swatch of framePanel.querySelectorAll<HTMLButtonElement>('[data-color]')) {
+    swatch.setAttribute('aria-checked', String(swatch.dataset.color === frame.color));
+  }
+  const island = framePanel.querySelector<HTMLInputElement>('[data-island]')!;
+  island.closest<HTMLElement>('.island-check')!.hidden = frame.device !== 'phone';
+  island.checked = frame.island;
 }
 
 /** Change the frame, show it, and -- unless a slider is still moving -- keep it
@@ -2726,6 +2743,23 @@ function setFrame(change: Partial<FrameStyle>, keep = true) {
   syncFramePanel();
   render();
   if (keep && isTauri) void command('set_frame', { frame }).catch(report);
+}
+
+/** A recording's frame is set beside it, in the panel always in view; a
+ *  screenshot's in the same panel, opened from Frame in the footer. */
+function dockFramePanel(docked: boolean) {
+  if (docked === framePanel.classList.contains('docked')) return;
+  framePanel.classList.toggle('docked', docked);
+  if (docked) {
+    workspace.append(framePanel);
+    framePanel.removeAttribute('style');
+    framePanel.hidden = false;
+  } else {
+    app.append(framePanel);
+    framePanel.hidden = true;
+  }
+  frameButton.hidden = docked;
+  frameButton.setAttribute('aria-expanded', 'false');
 }
 
 function placeFramePanel() {
@@ -2739,7 +2773,7 @@ function openFramePanel() {
   placeFramePanel();
 }
 function closeFramePanel(refocus = false) {
-  if (framePanel.hidden) return;
+  if (framePanel.hidden || framePanel.classList.contains('docked')) return;
   framePanel.hidden = true;
   frameButton.setAttribute('aria-expanded', 'false');
   if (refocus) frameButton.focus();
@@ -2756,8 +2790,13 @@ on(frameSwitch, 'click', () => setFrame({ on: !frame.on }));
 on(framePanel, 'click', event => {
   const swatch = (event.target as Element).closest<HTMLButtonElement>('.background');
   if (swatch?.dataset.background && !swatch.disabled) setFrame({ background: swatch.dataset.background, on: true });
-  const around = (event.target as Element).closest<HTMLButtonElement>('[data-around]')?.dataset.around;
-  if (around) setFrame({ chrome: around === 'window', phone: around === 'phone', on: true });
+  const device = (event.target as Element).closest<HTMLButtonElement>('[data-device]')?.dataset.device as Device | undefined;
+  if (device) setFrame({ device, on: true });
+  const color = (event.target as Element).closest<HTMLButtonElement>('[data-color]')?.dataset.color as BodyColour | undefined;
+  if (color) setFrame({ color, on: true });
+});
+on(framePanel.querySelector<HTMLInputElement>('[data-island]')!, 'change', event => {
+  setFrame({ island: (event.target as HTMLInputElement).checked, on: true });
 });
 for (const input of framePanel.querySelectorAll<HTMLInputElement>('input[data-frame]')) {
   const key = input.dataset.frame as 'padding' | 'radius' | 'shadow';
@@ -3027,7 +3066,7 @@ document.addEventListener('keydown', event => {
     closeLooksMenu(true);
     return;
   }
-  if (key === 'escape' && !framePanel.hidden) {
+  if (key === 'escape' && !framePanel.hidden && !framePanel.classList.contains('docked')) {
     event.preventDefault();
     closeFramePanel(true);
     return;

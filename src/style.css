@@ -275,12 +275,36 @@ footer > * { flex: none; }
 .frame-slider input { width: 100%; margin: 0; accent-color: var(--blue); }
 .frame-slider.dimmed { opacity: .45; }
 .background:disabled { opacity: .35; }
-/* What goes round it: nothing, a window's title bar, or a phone. */
-.frame-around { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
-.around { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--sunken); box-shadow: inset 0 0 0 .5px var(--control-line); }
-.around button { flex: 1; padding: 4px 6px; border: none; border-radius: 6px; background: transparent; color: var(--ink); font-size: 12px; }
-.around button[aria-checked="true"] { background: var(--lens); box-shadow: 0 0 0 .5px var(--control-line), 0 1px 2px #0000001a; }
-.around button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+/* What goes round it: a device, each a tile with a little picture of itself;
+   a phone's or tablet's colour; and a phone's island. */
+.frame-section { display: flex; flex-direction: column; gap: 7px; }
+.frame-label { color: var(--muted); font-size: 12px; }
+.devices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.device {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 7px 4px 6px; border: none;
+  border-radius: 9px; background: var(--sunken); color: var(--muted); font-size: 11px;
+  box-shadow: inset 0 0 0 .5px var(--control-line);
+}
+.device svg { width: 28px; height: 28px; }
+.device span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device:hover { color: var(--ink); }
+.device[aria-checked="true"] { color: var(--ink); background: var(--lens); box-shadow: 0 0 0 1.5px var(--blue); }
+.device:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.colours { display: flex; gap: 10px; }
+.body-colour {
+  width: 26px; height: 26px; padding: 0; border: none; border-radius: 50%;
+  background: linear-gradient(135deg, var(--edge), var(--band) 60%); box-shadow: inset 0 0 0 .5px #00000040;
+}
+.body-colour[aria-checked="true"] { box-shadow: inset 0 0 0 .5px #00000040, 0 0 0 2px var(--glass), 0 0 0 3.5px var(--blue); }
+.body-colour:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.frame-check { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; }
+.frame-check input { margin: 0; accent-color: var(--blue); }
+/* Beside a recording, the panel is a column of its own, always in view, as
+   wide as STYLE in recording.rs, less the gap; change both. */
+.frame-panel.docked {
+  position: relative; z-index: auto; flex: none; width: 260px; align-self: stretch; overflow-y: auto; margin-bottom: 4px;
+  box-shadow: 0 0 0 .5px var(--control-line);
+}
 @media (prefers-reduced-motion: reduce) { .frame-switch, .frame-switch::after { transition: none; } }
 
 /* Share and Save are one pair of related actions, so they read as one control
@@ -764,7 +788,12 @@ footer > * { flex: none; }
 .backdrop, .card { display: contents; }
 .chrome { display: none; }
 .canvas.framed .backdrop { display: block; position: relative; flex: none; }
-.canvas.framed .card { display: block; position: absolute; }
+.canvas.framed .card { display: block; position: absolute; inset: 0; }
+/* The frame, painted as every copy paints it: under the stage, and a phone's
+   island over it, which pointing goes straight through. */
+.frame-under, .frame-over { display: none; }
+.canvas.framed .frame-under { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
+.canvas.framed .frame-over:not([hidden]) { display: block; position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .canvas.framed .chrome:not([hidden]) { display: block; position: absolute; left: 0; top: 0; width: 100%; }
 .canvas.framed .stage { position: absolute; left: 0; aspect-ratio: auto; max-width: none; max-height: none; box-shadow: none; }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }

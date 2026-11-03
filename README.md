@@ -382,9 +382,11 @@ notarization; an Apple Development certificate is only good for this Mac.
    **Frame**, the button before Share and Save, sets the capture on a
    background for showing to someone: six gradients and six solids, or none,
    for a PNG with clear corners. Padding, rounded corners and a shadow have a
-   slider each, and **Around it** adds a window's title bar, its three lights
-   and all, dark over a dark screenshot, or puts a phone round it: a black
-   bezel, with the screen's corners the phone's own. The canvas shows the frame as it will be
+   slider each, and **Device** puts something round it: a window's title bar,
+   its three lights and all, dark over a dark screenshot; a browser's, with
+   its address field; or a phone or tablet in Black, Silver, Natural Titanium
+   or Deep Blue, its buttons, metal edge and black bezel drawn, the screen's
+   corners its own, and a phone's Dynamic Island if wanted. The canvas paints the frame as it will be
    copied, saved and shared, and the footer gives the framed size. Padding,
    corners and shadow are shares of the capture's own size, so a small one
    and a large one come out alike; the title bar is a real one's height in the
@@ -511,10 +513,11 @@ notarization; an Apple Development certificate is only good for this Mac.
     be; paused, the whole picture shows, so marks land where they should, with
     a dashed outline of what the zoom takes. With a frame, the zoom moves in
     on all of it, phone and all.
-    **Frame** sets a recording on a background as it does a screenshot, and
-    **Around it: Phone** puts a phone round it, for a prototype's walkthrough;
-    the copies come out framed, at the framed size, and a movie can't be
-    see-through, so it can't go on no background.
+    Beside a recording, its frame is set in a panel always in view: the same
+    backgrounds, devices and sliders as a screenshot's Frame, so a prototype's
+    walkthrough can go out in a phone on a gradient; the copies come out
+    framed, at the framed size, and a movie can't be see-through, so it can't
+    go on no background.
     Cropping, Copy Text and Hide Sensitive are a screenshot's.
     With the thumbnail on, a recording is
     copied at once and its thumbnail drags out the MP4. Recordings are kept

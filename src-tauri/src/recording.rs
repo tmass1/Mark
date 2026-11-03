@@ -27,6 +27,9 @@ pub const LONGEST: Duration = Duration::from_secs(300);
 /// The trim strip under a recording in the editor and the gap above it, kept
 /// clear when the window is fitted to it. Mirrors .trim in style.css.
 pub const STRIP: f64 = 12.0 + 52.0;
+/// The style panel beside a recording in the editor, and the gap before it.
+/// Mirrors .frame-panel.docked in style.css.
+pub const STYLE: f64 = 260.0 + 10.0;
 /// The bar's window, its shadow's room included. Mirrors recording.css.
 const BAR_SIZE: (f64, f64) = (256.0, 88.0);
 /// Between what is recorded and the bar.
@@ -384,10 +387,11 @@ pub struct Marks {
 #[derive(Clone, Debug, Deserialize)]
 struct Overlay { at: f64, png: String }
 /// The frame as the editor paints it: a canvas `width` × `height` pixels, the
-/// recording's top left at `x`, `y` on it, what lies under it, and the
-/// screen's shape -- both PNGs, base64, the canvas's size.
+/// recording's top left at `x`, `y` on it, what lies under it, the screen's
+/// shape, and what goes over it, if anything does -- a phone's island -- all
+/// PNGs, base64, the canvas's size.
 #[derive(Clone, Debug, Deserialize)]
-struct Framing { width: u32, height: u32, x: f64, y: f64, under: String, mask: String }
+struct Framing { width: u32, height: u32, x: f64, y: f64, under: String, mask: String, #[serde(default)] over: Option<String> }
 
 /// No frame is wider or taller than this: a canvas past it is a mistake.
 const LARGEST_CANVAS: u32 = 8192;
@@ -429,7 +433,9 @@ fn drawn(marks: Option<Marks>, pixels: (u32, u32)) -> Result<Option<(movie::Draw
         part.until.map(f64::to_bits).hash(&mut print);
     }
     let frame = marks.frame.map(|framing| framed(framing, pixels)).transpose()?;
-    if let Some(plates) = &frame { (plates.size, plates.at.0.to_bits(), plates.at.1.to_bits(), &plates.under, &plates.mask).hash(&mut print); }
+    if let Some(plates) = &frame {
+        (plates.size, plates.at.0.to_bits(), plates.at.1.to_bits(), &plates.under, &plates.mask, &plates.over).hash(&mut print);
+    }
     let camera = followed(marks.camera)?;
     for sample in camera.iter().flatten() { [sample.0, sample.1, sample.2, sample.3].map(f64::to_bits).hash(&mut print); }
     Ok(Some((movie::Drawn { overlays, redactions: marks.redactions, pointer: None, frame, camera }, print.finish())))
@@ -455,10 +461,11 @@ fn framed(framing: Framing, pixels: (u32, u32)) -> Result<movie::Plates, String>
         && framing.x + f64::from(pixels.0) <= f64::from(size.0) && framing.y + f64::from(pixels.1) <= f64::from(size.1);
     if !fits { return Err("The recording isn't inside its frame.".into()); }
     let (under, mask) = (crate::decode_png(&framing.under)?, crate::decode_png(&framing.mask)?);
-    for png in [&under, &mask] {
+    let over = framing.over.as_deref().map(crate::decode_png).transpose()?;
+    for png in [Some(&under), Some(&mask), over.as_ref()].into_iter().flatten() {
         if capture::validate_png(png)? != size { return Err("The frame isn't the size it says.".into()); }
     }
-    Ok(movie::Plates { size, at: (framing.x, framing.y), under, mask })
+    Ok(movie::Plates { size, at: (framing.x, framing.y), under, mask, over })
 }
 
 /// The movie to hand on for recording `id`: all of it as it was made, or the
@@ -715,7 +722,7 @@ mod tests {
 
     #[test]
     fn a_frame_is_taken_only_whole_and_round_the_recording() {
-        let framing = |width, height, x, y| Framing { width, height, x, y, under: plate(width, height), mask: plate(width, height) };
+        let framing = |width, height, x, y| Framing { width, height, x, y, under: plate(width, height), mask: plate(width, height), over: None };
         let plates = framed(framing(60, 50, 10.0, 5.0), (40, 30)).unwrap();
         assert_eq!((plates.size, plates.at), ((60, 50), (10.0, 5.0)));
         // The recording has to be wholly on the canvas.
@@ -726,8 +733,14 @@ mod tests {
         let mut wrong = framing(60, 50, 10.0, 5.0);
         wrong.mask = plate(61, 50);
         assert!(framed(wrong, (40, 30)).is_err());
+        // What goes over it, too.
+        let mut over = framing(60, 50, 10.0, 5.0);
+        over.over = Some(plate(60, 50));
+        assert!(framed(over.clone(), (40, 30)).unwrap().over.is_some());
+        over.over = Some(plate(20, 50));
+        assert!(framed(over, (40, 30)).is_err());
         // And a canvas can't be enormous.
-        assert!(framed(Framing { width: 9000, height: 50, x: 0.0, y: 0.0, under: String::new(), mask: String::new() }, (40, 30)).is_err());
+        assert!(framed(Framing { width: 9000, height: 50, x: 0.0, y: 0.0, under: String::new(), mask: String::new(), over: None }, (40, 30)).is_err());
         // A frame alone is something drawn.
         let marks = Marks { frame: Some(framing(60, 50, 10.0, 5.0)), ..Marks::default() };
         assert!(drawn(Some(marks), (40, 30)).unwrap().is_some_and(|(drawn, _)| drawn.frame.is_some()));

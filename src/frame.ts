@@ -1,7 +1,7 @@
 /** Frame: the capture set on a background, with room around it, rounded
- *  corners, a shadow and, if wanted, a window's title bar or a phone's body
- *  round it -- the way a screenshot or a recording is dressed to be shown to
- *  someone rather than pasted into a bug.
+ *  corners, a shadow and, if wanted, a device round it -- a window's title
+ *  bar, a browser's, a phone or a tablet -- the way a screenshot or a
+ *  recording is dressed to be shown to someone rather than pasted into a bug.
  *
  *  Everything here is shared by the two places a frame appears: the canvas,
  *  which previews it, and the export, which draws it into the image. One set of
@@ -17,13 +17,46 @@ export interface FrameStyle {
   padding: number;
   radius: number;
   shadow: number;
-  /** A title bar with the three lights across the top of the image. */
-  chrome: boolean;
-  /** A phone's black body round it instead, its screen's corners the phone's. */
-  phone: boolean;
+  /** What goes round it: nothing, a window's title bar, a browser's, or a
+   *  phone or tablet, whose screen's corners are its own. */
+  device: Device;
+  /** A phone's or tablet's colour. */
+  color: BodyColour;
+  /** A phone's Dynamic Island, drawn over the top of its screen. */
+  island: boolean;
 }
 
-export const DEFAULT_FRAME: FrameStyle = { on: false, background: 'sky', padding: 0.5, radius: 0.4, shadow: 0.5, chrome: false, phone: false };
+export type Device = 'none' | 'window' | 'browser' | 'phone' | 'tablet';
+export type BodyColour = 'black' | 'silver' | 'titanium' | 'blue';
+
+export const DEFAULT_FRAME: FrameStyle = {
+  on: false, background: 'sky', padding: 0.5, radius: 0.4, shadow: 0.5, device: 'none', color: 'black', island: false,
+};
+
+/** The devices, each with a small picture of itself for the panel. */
+export const DEVICES: { id: Device; name: string; art: string }[] = [
+  { id: 'none', name: 'None', art: '<rect x="5" y="7" width="22" height="16" rx="2.5" fill="currentColor" opacity=".18"/>' },
+  { id: 'window', name: 'Window',
+    art: '<rect x="4" y="6" width="24" height="19" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4 11h24" stroke="currentColor" stroke-width="1.4"/><circle cx="7.5" cy="8.6" r="1" fill="currentColor"/><circle cx="10.5" cy="8.6" r="1" fill="currentColor"/><circle cx="13.5" cy="8.6" r="1" fill="currentColor"/>' },
+  { id: 'browser', name: 'Browser',
+    art: '<rect x="4" y="6" width="24" height="19" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4 12.5h24" stroke="currentColor" stroke-width="1.4"/><rect x="11" y="8" width="12" height="3" rx="1.5" fill="currentColor" opacity=".55"/><circle cx="7.3" cy="9.4" r=".9" fill="currentColor"/>' },
+  { id: 'phone', name: 'Phone',
+    art: '<rect x="10.5" y="3.5" width="11" height="25" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="5.6" width="4" height="1.4" rx=".7" fill="currentColor"/>' },
+  { id: 'tablet', name: 'Tablet',
+    art: '<rect x="6.5" y="4.5" width="19" height="23" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="16" cy="6.6" r=".8" fill="currentColor"/>' },
+];
+
+/** A phone's or tablet's metal: its band, the lighter edge that catches the
+ *  light, and a name. The bezel round the screen is black whatever it is. */
+export const BODY_COLOURS: { id: BodyColour; name: string; band: string; edge: string }[] = [
+  { id: 'black', name: 'Black', band: '#2b2b2e', edge: '#4a4a4f' },
+  { id: 'silver', name: 'Silver', band: '#d5d7da', edge: '#f2f3f5' },
+  { id: 'titanium', name: 'Natural Titanium', band: '#b8b1a6', edge: '#d9d3c9' },
+  { id: 'blue', name: 'Deep Blue', band: '#3c4a5f', edge: '#5b6b82' },
+];
+
+/** Whether it is held: a phone or a tablet, with a body and its own corners. */
+export const handheld = (device: Device) => device === 'phone' || device === 'tablet';
 
 export interface Background {
   id: string;
@@ -69,8 +102,11 @@ export function sanitizeFrame(value: unknown): FrameStyle {
     padding: share(given.padding, DEFAULT_FRAME.padding),
     radius: share(given.radius, DEFAULT_FRAME.radius),
     shadow: share(given.shadow, DEFAULT_FRAME.shadow),
-    chrome: flag(given.chrome, DEFAULT_FRAME.chrome),
-    phone: flag(given.phone, DEFAULT_FRAME.phone),
+    // A frame from before devices had a title bar or none (and, unreleased, a phone).
+    device: DEVICES.some(device => device.id === given.device) ? given.device as Device
+      : (given as { phone?: unknown }).phone === true ? 'phone' : (given as { chrome?: unknown }).chrome === true ? 'window' : DEFAULT_FRAME.device,
+    color: BODY_COLOURS.some(colour => colour.id === given.color) ? given.color as BodyColour : DEFAULT_FRAME.color,
+    island: flag(given.island, DEFAULT_FRAME.island),
   };
 }
 
@@ -88,13 +124,18 @@ export const BAR_COLOURS = {
   dark: { fill: '#2d2d2f', line: '#00000066' },
 };
 
-/** A phone: its bezel and its screen's corners as shares of the screen's
- *  shorter side, about a current phone's; a body near black, with a lighter
- *  rim to catch the light, and a hairline round it to keep it off a dark
- *  background. */
-const BEZEL = 0.045;
-const SCREEN_CORNER = 0.12;
-export const PHONE_COLOURS = { body: '#0e0e10', rim: '#3a3a3e', edge: '#00000099' };
+/** A browser's bar is taller than a window's, for its address field. */
+const BROWSER_BAR = 52;
+/** A phone's and a tablet's bezel, and their screens' corners, as shares of
+ *  the screen's shorter side, about a current one's. */
+const BEZEL = { phone: 0.045, tablet: 0.055 };
+const SCREEN_CORNER = { phone: 0.12, tablet: 0.03 };
+/** The metal band round the bezel, as a share of it, and how far a button
+ *  stands out from the side. */
+const BAND = 0.34;
+const KNOB = 0.2;
+/** A phone's Dynamic Island, in shares of the screen's shorter side. */
+const ISLAND = { width: 0.32, height: 0.094, top: 0.028 };
 
 /** Where everything goes, in image pixels. */
 export interface FrameGeometry {
@@ -104,9 +145,10 @@ export interface FrameGeometry {
   pad: number;
   /** The title bar's height; 0 without one. */
   bar: number;
-  /** A phone's bezel, round the image on every side; 0 without one. */
+  /** A phone's or tablet's bezel, band included, round the image on every
+   *  side; 0 without one. */
   bezel: number;
-  /** The window's corner radius -- for a phone, its screen's. */
+  /** The window's corner radius -- for a phone or tablet, its screen's. */
   radius: number;
   shadow: { blur: number; y: number; alpha: number };
 }
@@ -117,12 +159,15 @@ export interface FrameGeometry {
  *  on the grid and stays sharp. */
 export function frameGeometry(width: number, height: number, density: number, style: FrameStyle): FrameGeometry {
   const unit = Math.sqrt(width * height);
-  const pad = Math.round(style.padding * 0.16 * unit);
-  // A phone has no title bar, and its own corners rather than the slider's.
+  // A phone or tablet has no title bar, and its own corners rather than the
+  // slider's -- and room enough for its buttons, however little padding.
   const short = Math.min(width, height);
-  const bezel = style.phone ? Math.max(2, Math.round(BEZEL * short)) : 0;
-  const bar = style.chrome && !style.phone ? Math.round(BAR * Math.max(1, density)) : 0;
-  const radius = style.phone ? Math.round(SCREEN_CORNER * short)
+  const held = style.device === 'phone' || style.device === 'tablet' ? style.device : null;
+  const bezel = held ? Math.max(2, Math.round(BEZEL[held] * short)) : 0;
+  const pad = Math.max(Math.round(style.padding * 0.16 * unit), held ? Math.ceil(bezel * KNOB) + 1 : 0);
+  const bar = style.device === 'window' ? Math.round(BAR * Math.max(1, density))
+    : style.device === 'browser' ? Math.round(BROWSER_BAR * Math.max(1, density)) : 0;
+  const radius = held ? Math.round(SCREEN_CORNER[held] * short)
     : Math.min(Math.round(style.radius * 0.035 * unit), Math.floor(Math.min(width, height + bar) / 2));
   const shadow = style.shadow > 0
     ? { blur: Math.round(style.shadow * 0.07 * unit), y: Math.round(style.shadow * 0.025 * unit), alpha: 0.22 + 0.28 * style.shadow }
@@ -207,10 +252,11 @@ function windowOf(geometry: FrameGeometry, image: { width: number; height: numbe
   };
 }
 
-/** The framed image: background, the shadow, a phone's body if it has one,
- *  then the window itself -- title bar and image -- clipped to its rounded
- *  corners. `draw` puts the image and its marks down with the origin at the
- *  image's top left. */
+/** The framed image: background, the shadow, a phone's or tablet's body if
+ *  it has one, then the window itself -- title bar and image -- clipped to its
+ *  rounded corners, and a phone's island over it. `draw` puts the image and
+ *  its marks down with the origin at the image's top left. The context may be
+ *  scaled, as the editor's preview is; the shadow is scaled with it. */
 export function paintFrame(context: CanvasRenderingContext2D, geometry: FrameGeometry, style: FrameStyle,
                            image: { width: number; height: number; dark: boolean }, draw: () => void) {
   const { bar, bezel, shadow } = geometry;
@@ -219,69 +265,161 @@ export function paintFrame(context: CanvasRenderingContext2D, geometry: FrameGeo
   if (shadow.alpha > 0 && (shadow.blur > 0 || shadow.y > 0)) {
     // Cast by a shape drawn wholly off the canvas, its shadow offset back on:
     // so the shadow lands and the shape never does, and a window's transparent
-    // corners show the background rather than a fill behind them.
+    // corners show the background rather than a fill behind them. A shadow is
+    // in the canvas's own pixels, whatever the scale, so it is scaled here.
+    const transform = context.getTransform();
+    const scale = Math.hypot(transform.a, transform.b) || 1;
     const away = geometry.width + geometry.height + shadow.blur * 4;
     context.save();
     context.shadowColor = `rgba(0, 0, 0, ${shadow.alpha.toFixed(3)})`;
-    context.shadowBlur = shadow.blur;
-    context.shadowOffsetX = away;
-    context.shadowOffsetY = shadow.y;
+    context.shadowBlur = shadow.blur * scale;
+    context.shadowOffsetX = away * scale;
+    context.shadowOffsetY = shadow.y * scale;
     context.fillStyle = '#000';
     roundedRect(context, body.x - away, body.y, body.width, body.height, body.radius);
     context.fill();
     context.restore();
   }
-  if (bezel) {
-    // The body, a hairline round it, and a rim just inside its edge.
-    const line = Math.max(1, Math.round(bezel / 12));
-    roundedRect(context, body.x, body.y, body.width, body.height, body.radius);
-    context.fillStyle = PHONE_COLOURS.body;
-    context.fill();
-    context.lineWidth = line;
-    context.strokeStyle = PHONE_COLOURS.edge;
-    context.stroke();
-    roundedRect(context, body.x + line * 1.5, body.y + line * 1.5, body.width - line * 3, body.height - line * 3, body.radius - line * 1.5);
-    context.strokeStyle = PHONE_COLOURS.rim;
-    context.stroke();
-  }
+  if (bezel) paintBody(context, body, bezel, style);
   context.save();
   roundedRect(context, x, y, width, height, radius);
   context.clip();
-  if (bar) {
-    const colours = image.dark ? BAR_COLOURS.dark : BAR_COLOURS.light;
-    context.fillStyle = colours.fill;
-    context.fillRect(x, y, width, bar);
-    const scale = bar / BAR;
-    context.fillStyle = colours.line;
-    context.fillRect(x, y + bar - Math.max(1, Math.round(scale)), width, Math.max(1, Math.round(scale)));
-    for (const light of LIGHTS) {
-      context.beginPath();
-      context.arc(x + light.x * scale, y + bar / 2, (LIGHT_RADIUS - 0.25) * scale, 0, Math.PI * 2);
-      context.fillStyle = light.fill;
-      context.fill();
-      context.lineWidth = 0.5 * scale;
-      context.strokeStyle = light.edge;
-      context.stroke();
-    }
-  }
+  if (bar) paintBar(context, { x, y, width, bar }, style.device === 'browser', image.dark);
   context.translate(x, y + bar);
   draw();
   context.restore();
+  if (style.device === 'phone' && style.island) paintIsland(context, { x, y, width, height });
+}
+
+/** A window's title bar, its three lights, and -- a browser's -- the arrows
+ *  and the address field in the middle of a taller bar. */
+function paintBar(context: CanvasRenderingContext2D, { x, y, width, bar }: { x: number; y: number; width: number; bar: number },
+                  browser: boolean, dark: boolean) {
+  const colours = dark ? BAR_COLOURS.dark : BAR_COLOURS.light;
+  const scale = bar / (browser ? BROWSER_BAR : BAR);
+  context.fillStyle = colours.fill;
+  context.fillRect(x, y, width, bar);
+  context.fillStyle = colours.line;
+  context.fillRect(x, y + bar - Math.max(1, Math.round(scale)), width, Math.max(1, Math.round(scale)));
+  // The lights are a real one's size whatever the bar's height.
+  const centre = y + bar / 2;
+  for (const light of LIGHTS) {
+    context.beginPath();
+    context.arc(x + light.x * scale, centre, (LIGHT_RADIUS - 0.25) * scale, 0, Math.PI * 2);
+    context.fillStyle = light.fill;
+    context.fill();
+    context.lineWidth = 0.5 * scale;
+    context.strokeStyle = light.edge;
+    context.stroke();
+  }
+  if (!browser) return;
+  // Back and forward, then the address field, centred in what is left.
+  context.strokeStyle = dark ? '#ffffff59' : '#0000004d';
+  context.lineWidth = 1.6 * scale;
+  context.lineCap = 'round'; context.lineJoin = 'round';
+  for (const [at, way] of [[90, -1], [112, 1]] as const) {
+    context.beginPath();
+    context.moveTo(x + (at - way * 3) * scale, centre - 5.5 * scale);
+    context.lineTo(x + (at + way * 3) * scale, centre);
+    context.lineTo(x + (at - way * 3) * scale, centre + 5.5 * scale);
+    context.stroke();
+  }
+  const field = { width: Math.min(width * 0.56, 620 * scale), height: 30 * scale };
+  const left = x + Math.max(136 * scale, (width - field.width) / 2);
+  roundedRect(context, left, centre - field.height / 2, Math.min(field.width, x + width - left - 16 * scale), field.height, 8 * scale);
+  context.fillStyle = dark ? '#ffffff1f' : '#0000000f';
+  context.fill();
+  // A lock at the start of it.
+  const lock = { x: left + 14 * scale, y: centre };
+  context.fillStyle = dark ? '#ffffff73' : '#00000059';
+  roundedRect(context, lock.x - 4 * scale, lock.y - 1 * scale, 8 * scale, 6.5 * scale, 1.5 * scale);
+  context.fill();
+  context.beginPath();
+  context.arc(lock.x, lock.y - 1 * scale, 2.6 * scale, Math.PI, 0);
+  context.strokeStyle = context.fillStyle; context.lineWidth = 1.3 * scale;
+  context.stroke();
+}
+
+/** A phone's or tablet's body: its buttons standing out of the sides, the
+ *  metal band in its colour with a lighter edge and a faint sheen, and the
+ *  black bezel inside it, which the screen sits in. */
+function paintBody(context: CanvasRenderingContext2D, body: { x: number; y: number; width: number; height: number; radius: number },
+                   bezel: number, style: FrameStyle) {
+  const colour = BODY_COLOURS.find(each => each.id === style.color) ?? BODY_COLOURS[0];
+  const band = Math.max(1, Math.round(bezel * BAND));
+  const knob = Math.max(1, Math.ceil(bezel * KNOB));
+  // Buttons first, so the body sits over their inner ends: a phone's action
+  // button and volume on the left, power on the right; a tablet's top button.
+  const buttons = style.device === 'phone'
+    ? [[-1, 0.17, 0.035], [-1, 0.23, 0.065], [-1, 0.31, 0.065], [1, 0.25, 0.1]] as const
+    : [] as const;
+  context.fillStyle = colour.band;
+  for (const [side, at, length] of buttons) {
+    const left = side < 0 ? body.x - knob : body.x + body.width - band;
+    roundedRect(context, left, body.y + body.height * at, knob + band, body.height * length, knob);
+    context.fill();
+  }
+  if (style.device === 'tablet') {
+    roundedRect(context, body.x + body.width * 0.74, body.y - knob, body.width * 0.07, knob + band, knob);
+    context.fill();
+  }
+  // The band, its edge catching the light, and a sheen across it.
+  roundedRect(context, body.x, body.y, body.width, body.height, body.radius);
+  context.fillStyle = colour.band;
+  context.fill();
+  const sheen = context.createLinearGradient(body.x, body.y, body.x + body.width, body.y + body.height);
+  sheen.addColorStop(0, '#ffffff38'); sheen.addColorStop(0.45, '#ffffff00'); sheen.addColorStop(1, '#ffffff14');
+  context.fillStyle = sheen;
+  context.fill();
+  context.lineWidth = Math.max(1, band * 0.35);
+  context.strokeStyle = colour.edge;
+  roundedRect(context, body.x + context.lineWidth / 2, body.y + context.lineWidth / 2, body.width - context.lineWidth,
+              body.height - context.lineWidth, body.radius - context.lineWidth / 2);
+  context.stroke();
+  // The bezel, black, inside the band.
+  roundedRect(context, body.x + band, body.y + band, body.width - 2 * band, body.height - 2 * band, body.radius - band);
+  context.fillStyle = '#060607';
+  context.fill();
+  if (style.device === 'tablet') {
+    // Its front camera, in the middle of the top bezel.
+    context.beginPath();
+    context.arc(body.x + body.width / 2, body.y + band + (bezel - band) / 2, Math.max(1, (bezel - band) * 0.14), 0, Math.PI * 2);
+    context.fillStyle = '#1c1d22';
+    context.fill();
+  }
+}
+
+/** A phone's Dynamic Island: a black pill over the top of the screen. */
+function paintIsland(context: CanvasRenderingContext2D, screen: { x: number; y: number; width: number; height: number }) {
+  const short = Math.min(screen.width, screen.height);
+  const width = ISLAND.width * short, height = ISLAND.height * short;
+  roundedRect(context, screen.x + (screen.width - width) / 2, screen.y + ISLAND.top * short, width, height, height / 2);
+  context.fillStyle = '#000';
+  context.fill();
 }
 
 /** What a framed recording is put together from, the movie being the one
- *  thing that moves: `under`, the frame painted with nothing in the window,
- *  and `mask`, solid where the movie shows -- the window below its title bar,
- *  within its rounded corners -- with where the movie's top left goes. */
-export function framePlates(geometry: FrameGeometry, style: FrameStyle, image: { width: number; height: number; dark: boolean }) {
-  const canvas = () => Object.assign(document.createElement('canvas'), { width: geometry.width, height: geometry.height });
+ *  thing that moves: `under`, the frame painted with nothing in the window;
+ *  `mask`, solid where the movie shows -- the window below its title bar,
+ *  within its rounded corners; and `over`, what goes over the movie, a
+ *  phone's island, if anything does -- with where the movie's top left goes.
+ *  `scale` paints them smaller, as the editor's preview does. */
+export function framePlates(geometry: FrameGeometry, style: FrameStyle, image: { width: number; height: number; dark: boolean }, scale = 1) {
+  const canvas = () => Object.assign(document.createElement('canvas'),
+    { width: Math.max(1, Math.round(geometry.width * scale)), height: Math.max(1, Math.round(geometry.height * scale)) });
+  const scaled = (target: HTMLCanvasElement) => { const context = target.getContext('2d')!; context.scale(scale, scale); return context; };
   const under = canvas(), mask = canvas();
-  paintFrame(under.getContext('2d')!, geometry, style, image, () => {});
+  paintFrame(scaled(under), geometry, { ...style, island: false }, image, () => {});
   const window = windowOf(geometry, image);
-  const context = mask.getContext('2d')!;
+  const context = scaled(mask);
   roundedRect(context, window.x, window.y, window.width, window.height, window.radius);
   context.clip();
   context.fillStyle = '#fff';
   context.fillRect(window.x, window.y + geometry.bar, image.width, image.height);
-  return { under, mask, x: window.x, y: window.y + geometry.bar };
+  let over: HTMLCanvasElement | undefined;
+  if (style.device === 'phone' && style.island) {
+    over = canvas();
+    paintIsland(scaled(over), { x: window.x, y: window.y, width: window.width, height: window.height });
+  }
+  return { under, mask, over, x: window.x, y: window.y + geometry.bar };
 }

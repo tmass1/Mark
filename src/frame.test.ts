@@ -13,13 +13,13 @@ describe('frame geometry', () => {
   });
 
   it('is whole pixels, so the image lands on the grid', () => {
-    const g = frameGeometry(1437, 911, 2, { ...DEFAULT_FRAME, chrome: true, padding: 0.37, radius: 0.61, shadow: 0.29 });
+    const g = frameGeometry(1437, 911, 2, { ...DEFAULT_FRAME, device: 'window', padding: 0.37, radius: 0.61, shadow: 0.29 });
     for (const value of [g.width, g.height, g.pad, g.bar, g.radius, g.shadow.blur, g.shadow.y]) expect(Number.isInteger(value)).toBe(true);
   });
 
   it('gives a title bar a real one\'s 28 points, at the capture\'s density, on top of the padding', () => {
-    expect(frameGeometry(800, 500, 1, { ...DEFAULT_FRAME, chrome: true }).bar).toBe(28);
-    const retina = frameGeometry(1600, 1000, 2, { ...DEFAULT_FRAME, chrome: true });
+    expect(frameGeometry(800, 500, 1, { ...DEFAULT_FRAME, device: 'window' }).bar).toBe(28);
+    const retina = frameGeometry(1600, 1000, 2, { ...DEFAULT_FRAME, device: 'window' });
     expect(retina.bar).toBe(56);
     expect(retina.height).toBe(1000 + 56 + 2 * retina.pad);
     expect(frameGeometry(800, 500, 2, DEFAULT_FRAME).bar).toBe(0);
@@ -30,16 +30,31 @@ describe('frame geometry', () => {
     expect(g).toEqual({ width: 800, height: 500, pad: 0, bar: 0, bezel: 0, radius: 0, shadow: { blur: 0, y: 0, alpha: 0 } });
   });
 
+  it('gives a browser a taller bar, for its address field', () => {
+    expect(frameGeometry(800, 500, 1, { ...DEFAULT_FRAME, device: 'browser' }).bar).toBe(52);
+    expect(frameGeometry(1600, 1000, 2, { ...DEFAULT_FRAME, device: 'browser' }).bar).toBe(104);
+  });
+
   it('puts a phone round it: a bezel on every side, its own screen corners, and no title bar', () => {
-    const phone = frameGeometry(780, 1688, 2, { ...DEFAULT_FRAME, phone: true, chrome: true, radius: 0 });
+    const phone = frameGeometry(780, 1688, 2, { ...DEFAULT_FRAME, device: 'phone', radius: 0 });
     expect(phone.bar).toBe(0);
     expect(phone.bezel).toBe(Math.round(0.045 * 780));
     expect(phone.radius).toBe(Math.round(0.12 * 780));
     expect(phone.width).toBe(780 + 2 * (phone.pad + phone.bezel));
     expect(phone.height).toBe(1688 + 2 * (phone.pad + phone.bezel));
     // Corners are the phone's, whatever the slider says.
-    expect(frameGeometry(780, 1688, 2, { ...DEFAULT_FRAME, phone: true, radius: 1 }).radius).toBe(phone.radius);
+    expect(frameGeometry(780, 1688, 2, { ...DEFAULT_FRAME, device: 'phone', radius: 1 }).radius).toBe(phone.radius);
     for (const value of [phone.width, phone.height, phone.bezel, phone.radius]) expect(Number.isInteger(value)).toBe(true);
+    // Its buttons stand out of its sides, so there is always room for them.
+    const tight = frameGeometry(780, 1688, 2, { ...DEFAULT_FRAME, device: 'phone', padding: 0 });
+    expect(tight.pad).toBeGreaterThanOrEqual(Math.ceil(tight.bezel * 0.2));
+  });
+
+  it('puts a tablet round it with a wider bezel and gentler corners', () => {
+    const tablet = frameGeometry(1640, 2360, 2, { ...DEFAULT_FRAME, device: 'tablet' });
+    expect(tablet.bezel).toBe(Math.round(0.055 * 1640));
+    expect(tablet.radius).toBe(Math.round(0.03 * 1640));
+    expect(tablet.bar).toBe(0);
   });
 
   it('never rounds a corner past half the window', () => {
@@ -84,7 +99,11 @@ describe('a stored frame', () => {
     // Out of range, not a number, or a background that does not exist.
     expect(sanitizeFrame({ padding: 7, radius: -1, shadow: Number.NaN, background: 'plaid', chrome: 'yes' }))
       .toEqual({ ...DEFAULT_FRAME, padding: 1, radius: 0 });
-    expect(sanitizeFrame({ phone: true }).phone).toBe(true);
-    expect(sanitizeFrame({ phone: 'yes' }).phone).toBe(false);
+    // A frame from before devices: a title bar is a window.
+    expect(sanitizeFrame({ chrome: true }).device).toBe('window');
+    expect(sanitizeFrame({ phone: true }).device).toBe('phone');
+    expect(sanitizeFrame({ device: 'tablet', color: 'blue', island: true }))
+      .toEqual({ ...DEFAULT_FRAME, device: 'tablet', color: 'blue', island: true });
+    expect(sanitizeFrame({ device: 'watch', color: 'gold' })).toEqual(DEFAULT_FRAME);
   });
 });

@@ -83,11 +83,12 @@ pub fn camera_at(track: &[(f64, f64, f64, f64)], time: f64) -> Option<(f64, f64,
 
 /// The frame round a recording: a canvas `size` pixels across, with the
 /// recording set on it, its top left at `at`, over `under` -- the background,
-/// the shadow, and a title bar or a phone -- and showing through `mask`, the
-/// screen's rounded shape. Both are PNGs the canvas's size, which the editor
-/// paints as it paints a framed screenshot.
+/// the shadow, and a title bar or a phone -- showing through `mask`, the
+/// screen's rounded shape, and under `over`, if anything goes over it: a
+/// phone's island. All PNGs the canvas's size, which the editor paints as it
+/// paints a framed screenshot.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Plates { pub size: (u32, u32), pub at: (f64, f64), pub under: Vec<u8>, pub mask: Vec<u8> }
+pub struct Plates { pub size: (u32, u32), pub at: (f64, f64), pub under: Vec<u8>, pub mask: Vec<u8>, pub over: Option<Vec<u8>> }
 
 /// The largest frame H.264 takes on every Mac, as sck.rs records at most: a
 /// framed copy larger than this is scaled down to fit.
@@ -492,7 +493,8 @@ fn composition(asset: &AVAsset, drawn: &Drawn, timeline: Option<Timeline>) -> Re
     // The frame's two pictures, read once, and the size the copy comes out at.
     let read = |png: &[u8]| unsafe { CIImage::imageWithData(&NSData::with_bytes(png)) }.ok_or("The frame couldn't be read.".to_string());
     let plates = drawn.frame.as_ref()
-        .map(|plates| Ok::<_, String>((read(&plates.under)?, read(&plates.mask)?, plates.at, plates.size))).transpose()?;
+        .map(|plates| Ok::<_, String>((read(&plates.under)?, read(&plates.mask)?, plates.over.as_deref().map(read).transpose()?, plates.at, plates.size)))
+        .transpose()?;
     let out = plates.as_ref().map(|_| output_size(Some(drawn), (0, 0)));
     let camera = drawn.camera.clone();
     let pixellate = NSString::from_str("CIPixellate");
@@ -537,11 +539,12 @@ fn composition(asset: &AVAsset, drawn: &Drawn, timeline: Option<Timeline>) -> Re
         // Framed: the movie, marks and all, set on the canvas, showing through
         // the screen over what lies under it.
         let mut canvas = (unsafe { frame.extent() }.size.width, height);
-        if let Some((under, mask, (x, y), size)) = &plates {
+        if let Some((under, mask, over, (x, y), size)) = &plates {
             canvas = (f64::from(size.0), f64::from(size.1));
             let placed = unsafe { frame.imageByApplyingTransform(CGAffineTransform { a: 1.0, b: 0.0, c: 0.0, d: 1.0, tx: *x, ty: canvas.1 - y - height }) };
             let settings = NSDictionary::<NSString, AnyObject>::from_slices(&[&*backing, &*masking], &[&**under as &AnyObject, &**mask]);
             frame = unsafe { placed.imageByApplyingFilter_withInputParameters(&blend, &settings) };
+            if let Some(over) = over { frame = unsafe { over.imageByCompositingOverImage(&frame) }; }
         }
         // Seen closer: the view cut from the canvas and brought up to fill it.
         if let Some((x, y, closer)) = camera.as_deref().and_then(|track| camera_at(track, time)) {
@@ -804,6 +807,7 @@ mod tests {
             size: (size.0 as u32, size.1 as u32), at: (at.0 as f64, at.1 as f64),
             under: picture(size.0, size.1, |_, _| [20, 200, 60, 255]),
             mask: picture(size.0, size.1, |x, y| if inside(x, y) { [255, 255, 255, 255] } else { [0, 0, 0, 0] }),
+            over: None,
         }
     }
 
@@ -862,8 +866,24 @@ mod tests {
     }
 
     #[test]
+    fn what_goes_over_a_framed_recording_is_over_it_and_nowhere_else() {
+        let folder = tempfile::tempdir().unwrap();
+        let out = folder.path().join("island.mp4");
+        // A black pill over the top middle of the screen, as a phone's island is.
+        let mut plates = plates((400, 280), (40, 40));
+        plates.over = Some(picture(400, 280, |x, y| if (170..230).contains(&x) && (48..62).contains(&y) { [0, 0, 0, 255] } else { [0, 0, 0, 0] }));
+        export(&clip(), None, Some(&Drawn { frame: Some(plates), ..Drawn::default() }), &out).unwrap();
+        let island = pixel(&out, 1.0, 200, 55);
+        assert!(island.iter().all(|value| *value < 30), "black where it goes: {island:?}");
+        // Elsewhere, the movie as it was set.
+        let plain = folder.path().join("plain.mp4");
+        export(&clip(), None, Some(&Drawn::default()), &plain).unwrap();
+        assert!(apart(pixel(&out, 1.0, 100, 70), pixel(&plain, 1.0, 60, 30)) < 14);
+    }
+
+    #[test]
     fn a_frame_larger_than_h264_takes_is_fitted_in_even_pixels() {
-        let big = Drawn { frame: Some(Plates { size: (5001, 3000), at: (0.0, 0.0), under: vec![], mask: vec![] }), ..Drawn::default() };
+        let big = Drawn { frame: Some(Plates { size: (5001, 3000), at: (0.0, 0.0), under: vec![], mask: vec![], over: None }), ..Drawn::default() };
         let (width, height) = output_size(Some(&big), (320, 200));
         assert!(width <= 3840 && height <= 2160 && width % 2 == 0 && height % 2 == 0, "{width} × {height}");
         assert!(((width as f64 / height as f64) - 5001.0 / 3000.0).abs() < 0.01);

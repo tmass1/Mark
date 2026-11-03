@@ -11,8 +11,8 @@ const frameButton = (page: Page) => page.getByRole('button', { name: 'Frame', ex
 const frameSwitch = (page: Page) => page.getByRole('switch', { name: 'Frame the image' });
 /** A background, from the panel: the toolbar has a White too, for drawing in. */
 const background = (page: Page, name: string) => page.locator('.frame-panel').getByRole('radio', { name, exact: true });
-/** What goes round it: None, Window or Phone. */
-const around = (page: Page, name: string) => page.locator('.frame-panel .around').getByRole('radio', { name, exact: true });
+/** What goes round it: None, Window, Browser, Phone or Tablet. */
+const device = (page: Page, name: string) => page.locator('.frame-panel .devices').getByRole('radio', { name, exact: true });
 
 /** A slider moved, as a hand does it: input while it moves, change when let go. */
 async function slide(page: Page, key: 'padding' | 'radius' | 'shadow', value: number, letGo = true) {
@@ -110,12 +110,11 @@ test('no background leaves the corners clear, and a title bar sits on top with i
   await page.locator('.capture').waitFor();
   await frameButton(page).click();
   await background(page, 'No background').click();
-  await around(page, 'Window').click();
+  await device(page, 'Window').click();
   await slide(page, 'shadow', 0);
-  await expect(page.locator('.chrome')).toBeVisible();
   await page.keyboard.press('Escape');
 
-  const style: FrameStyle = { ...DEFAULT_FRAME, on: true, background: 'clear', shadow: 0, chrome: true };
+  const style: FrameStyle = { ...DEFAULT_FRAME, on: true, background: 'clear', shadow: 0, device: 'window' };
   const geometry = frameGeometry(CAPTURE.width, CAPTURE.height, 1, style);
   expect(geometry.bar).toBe(28);
   const seen = await sample(page, await copied(page), [
@@ -143,18 +142,18 @@ test('framed, even an untouched capture is drawn anew rather than copied as it c
 });
 
 test('the frame is kept for next time, and the next capture opens in it', async ({ page }) => {
-  const kept = { on: true, background: 'dusk', padding: 0.2, radius: 0, shadow: 0, chrome: true, phone: false };
+  const kept = { on: true, background: 'dusk', padding: 0.2, radius: 0, shadow: 0, device: 'window', color: 'black', island: false };
   await installBridge(page, { returns: { get_settings: { shortcut: 'Super+Digit4', frame: kept } } });
   await page.goto('/');
   await page.locator('.capture').waitFor();
   // Framed from the start, as it was left.
   await expect(page.locator('.canvas')).toHaveClass(/framed/);
-  await expect(page.locator('.chrome')).toBeVisible();
+  await expect(page.locator('.frame-under')).toBeVisible();
   await expect(frameButton(page)).toHaveClass(/\bon\b/);
 
   await frameButton(page).click();
   await expect(background(page, 'Dusk')).toHaveAttribute('aria-checked', 'true');
-  await expect(around(page, 'Window')).toHaveAttribute('aria-checked', 'true');
+  await expect(device(page, 'Window')).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('input[data-frame="padding"]')).toHaveValue('0.2');
 
   await clear(page);
@@ -195,17 +194,19 @@ test('a phone goes round it: a black body on every side, its own rounded screen,
   await page.locator('.capture').waitFor();
   await frameButton(page).click();
   await background(page, 'White').click();
-  await around(page, 'Phone').click();
-  await expect(around(page, 'Phone')).toHaveAttribute('aria-checked', 'true');
-  // The phone's corners are its own.
+  await device(page, 'Phone').click();
+  await expect(device(page, 'Phone')).toHaveAttribute('aria-checked', 'true');
+  // The phone's corners are its own; its colour and island are offered.
   await expect(page.locator('input[data-frame="radius"]')).toBeDisabled();
+  await expect(page.locator('.frame-panel .colours')).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Dynamic Island' })).not.toBeChecked();
   await page.keyboard.press('Escape');
 
-  const style: FrameStyle = { ...DEFAULT_FRAME, on: true, background: 'white', phone: true };
+  const style: FrameStyle = { ...DEFAULT_FRAME, on: true, background: 'white', device: 'phone' };
   const geometry = frameGeometry(CAPTURE.width, CAPTURE.height, 1, style);
   const edge = geometry.pad + geometry.bezel;
   const seen = await sample(page, await copied(page), [
-    [1, 1], [geometry.pad + Math.round(geometry.bezel / 2), edge + Math.round(CAPTURE.height / 2)], [edge + 120, edge + 80],
+    [1, 1], [geometry.pad + Math.round(geometry.bezel * 0.75), edge + Math.round(CAPTURE.height / 2)], [edge + 120, edge + 80],
   ]);
   const original = await sample(page, CAPTURE.dataUrl, [[120, 80]]);
   expect(seen.size).toEqual([geometry.width, geometry.height]);
@@ -213,4 +214,38 @@ test('a phone goes round it: a black body on every side, its own rounded screen,
   expect(seen.at[1].slice(0, 3).every(value => value < 40)).toBe(true);   // the bezel, near black
   expect(seen.at[2]).toEqual(original.at[0]);                       // the capture, untouched inside
   await expect(page.locator('.dimensions')).toHaveText(`${geometry.width} × ${geometry.height} px, framed`);
+});
+
+test('a phone comes in four colours and can have its island; a tablet and a browser are offered too', async ({ page }) => {
+  await installBridge(page);
+  await page.goto('/');
+  await page.locator('.capture').waitFor();
+  await frameButton(page).click();
+  await expect(page.locator('.frame-panel .devices').getByRole('radio')).toHaveText(['None', 'Window', 'Browser', 'Phone', 'Tablet']);
+  // Colour and island belong to a phone; a window has neither.
+  await device(page, 'Window').click();
+  await expect(page.locator('.frame-panel .colours')).toBeHidden();
+  await expect(page.getByRole('checkbox', { name: 'Dynamic Island' })).toBeHidden();
+  await clear(page);
+  await device(page, 'Phone').click();
+  expect((await waitFor(page, 'set_frame')).args).toMatchObject({ frame: { device: 'phone' } });
+  await clear(page);
+  await page.locator('.frame-panel').getByRole('radio', { name: 'Deep Blue' }).click();
+  expect((await waitFor(page, 'set_frame')).args).toMatchObject({ frame: { device: 'phone', color: 'blue' } });
+  await clear(page);
+  await page.getByRole('checkbox', { name: 'Dynamic Island' }).check();
+  expect((await waitFor(page, 'set_frame')).args).toMatchObject({ frame: { device: 'phone', island: true } });
+  // A tablet keeps its colour, and has no island.
+  await device(page, 'Tablet').click();
+  await expect(page.locator('.frame-panel .colours')).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Dynamic Island' })).toBeHidden();
+  // The island is drawn over the screen: black in the middle of its top.
+  await device(page, 'Phone').click();
+  await page.keyboard.press('Escape');
+  const style: FrameStyle = { ...DEFAULT_FRAME, on: true, device: 'phone', color: 'blue', island: true };
+  const geometry = frameGeometry(CAPTURE.width, CAPTURE.height, 1, style);
+  const edge = geometry.pad + geometry.bezel;
+  const top = Math.round(edge + Math.min(CAPTURE.width, CAPTURE.height) * (0.028 + 0.047));
+  const seen = await sample(page, await copied(page), [[edge + CAPTURE.width / 2, top]]);
+  expect(seen.at[0].slice(0, 3).every(value => value < 10)).toBe(true);
 });
