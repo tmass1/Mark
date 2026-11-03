@@ -1,0 +1,39 @@
+<!doctype html>
+<html><head><meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 390px; height: 844px; overflow: hidden; font: 15px/1.35 -apple-system, sans-serif; color: #17181c; background: #f5f5f8; display: flex; flex-direction: column; }
+  .hero { padding: 66px 22px 22px; color: #fff; background: linear-gradient(165deg, #6d5ef6, #8f6bf2 55%, #e58fb8); }
+  .back { font-size: 14px; font-weight: 600; opacity: .85; }
+  h1 { margin: 14px 0 2px; font-size: 32px; line-height: 1.1; letter-spacing: -.025em; }
+  .when { font-size: 15px; opacity: .85; }
+  .total { margin-top: 16px; display: flex; justify-content: space-between; align-items: baseline; padding: 11px 14px; border-radius: 14px; background: #ffffff2e; font-weight: 600; }
+  .total b { font-size: 20px; letter-spacing: -.02em; }
+  .days { display: flex; gap: 8px; padding: 16px 22px 6px; }
+  .days span { padding: 7px 14px; border-radius: 999px; background: #e9e9f0; font-size: 14px; font-weight: 600; color: #5a5b66; }
+  .days .on { background: #17181c; color: #fff; }
+  ol { list-style: none; margin: 0; padding: 8px 22px 0; flex: 1; }
+  li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; padding: 11px 13px; margin-top: 10px; border-radius: 16px; background: #fff; box-shadow: 0 1px 2px #0000000f; align-items: center; }
+  .pic { width: 52px; height: 52px; border-radius: 12px; }
+  li h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+  li p { margin: 2px 0 0; color: #72737f; font-size: 13px; }
+  nav { display: flex; justify-content: space-around; padding: 12px 0 30px; background: #fff; border-top: .5px solid #d9d9e2; font-size: 11px; font-weight: 600; color: #8b8c98; text-align: center; }
+  nav i { display: block; width: 24px; height: 24px; margin: 0 auto 3px; border-radius: 7px; background: #d7d7e0; }
+  nav .on { color: #6d5ef6; } nav .on i { background: #6d5ef6; }
+</style></head>
+<body>
+  <div class="hero">
+    <span class="back">‹ Trips</span>
+    <h1>Lisbon</h1>
+    <div class="when">Nov 12 – 16 · 3 travellers</div>
+    <div class="total"><span>Trip budget</span><b>$2,480</b></div>
+  </div>
+  <div class="days"><span class="on">Day 1</span><span>Day 2</span><span>Day 3</span><span>Day 4</span></div>
+  <ol>
+    <li><div class="pic" style="background:linear-gradient(140deg,#fbbf77,#f0725c)"></div><div><h2>Coffee at Fábrica</h2><p>9:00 · 12 min walk</p></div></li>
+    <li><div class="pic" style="background:linear-gradient(140deg,#7dd3fc,#3b82f6)"></div><div><h2>Tram 28 to Alfama</h2><p>10:15 · $3 each</p></div></li>
+    <li><div class="pic" style="background:linear-gradient(140deg,#86efac,#16a34a)"></div><div><h2>Miradouro da Graça</h2><p>11:30 · 8 min walk</p></div></li>
+    <li><div class="pic" style="background:linear-gradient(140deg,#fda4af,#db2777)"></div><div><h2>Lunch at Taberna</h2><p>13:00 · Table for 3</p></div></li>
+  </ol>
+  <nav><span class="on"><i></i>Trips</span><span><i></i>Map</span><span><i></i>Budget</span><span><i></i>You</span></nav>
+</body></html>

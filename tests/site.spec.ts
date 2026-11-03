@@ -16,14 +16,54 @@ test('the site takes its version, shortcut and download from the app', async ({ 
     await expect(link).toHaveAttribute('href', `./${dmg}`);
     await expect(link).toHaveAttribute('download', dmg);
   }
-  // The three arrow styles are drawn by the editor's geometry, one path each.
-  await expect(page.locator('.arrows svg path')).toHaveCount(3);
-  await expect(page.locator('.arrows figcaption')).toHaveText(['Tapered', 'Solid', 'Thin']);
+  // The arrow styles are drawn by the editor's geometry, one path each.
+  await expect(page.locator('.arrows svg path')).toHaveCount(4);
+  await expect(page.locator('.arrows figcaption')).toHaveText(['Mark', 'Tapered', 'Solid', 'Thin']);
+  // And the pointers by the Record bar's own art.
+  await expect(page.locator('.pointers figcaption')).toHaveText(['Arrow', 'Halo', 'Touch', 'Ripple']);
+  for (const art of await page.locator('.pointers svg').all()) expect(await art.locator('path, circle').count()).toBeGreaterThan(0);
   // Every picture shown is a real file. (The hero's picture is a phone's, below.)
   for (const img of await page.locator('img').all()) {
     if (!await img.isVisible()) continue;
     await img.scrollIntoViewIfNeeded();
     expect(await img.evaluate(el => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0)).toBe(true);
+  }
+});
+
+test('the site shows each device Frame puts round a capture, the phone as tall as the rest', async ({ page }) => {
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.goto('/site.html');
+  await expect(page.getByRole('heading', { name: 'A phone prototype belongs in a phone.' })).toBeVisible();
+  await expect(page.locator('.device figcaption')).toHaveText(['Phone, with its Dynamic Island', 'Browser', 'Tablet', 'Window']);
+  const box = async (name: string) => (await page.locator(`.device.${name}`).boundingBox())!;
+  const [phone, browser, tablet] = [await box('phone'), await box('browser'), await box('tablet')];
+  expect(Math.abs(phone.y + phone.height - (tablet.y + tablet.height))).toBeLessThanOrEqual(1);
+  expect(browser.y).toBeCloseTo(phone.y, 0);
+  // A picture filling its place shows only a little less of itself: its background, not its device.
+  for (const img of await page.locator('.device img').all()) {
+    await img.scrollIntoViewIfNeeded();
+    const { shown, own } = await img.evaluate(el => {
+      const i = el as HTMLImageElement;
+      return { shown: i.clientWidth / i.clientHeight, own: i.naturalWidth / i.naturalHeight };
+    });
+    expect(Math.abs(shown / own - 1)).toBeLessThan(0.06);
+  }
+});
+
+test('the bar keeps its links on one line, then gives them up, with Download at its end', async ({ page }) => {
+  await page.goto('/site.html');
+  for (const width of [1360, 847, 801]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const link of await page.locator('.links a').all()) expect((await link.boundingBox())!.height).toBeLessThan(44);
+    const [bar, links, download] = [await page.locator('.bar').boundingBox(), await page.locator('.links').boundingBox(), await page.locator('.bar .primary').boundingBox()];
+    expect(links!.x + links!.width).toBeLessThanOrEqual(download!.x);
+    expect(download!.x + download!.width).toBeLessThanOrEqual(bar!.x + bar!.width);
+  }
+  for (const width of [800, 400]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(page.locator('.links')).toBeHidden();
+    const [bar, download] = [(await page.locator('.bar').boundingBox())!, (await page.locator('.bar .primary').boundingBox())!];
+    expect(bar.x + bar.width - (download.x + download.width)).toBeLessThanOrEqual(14);
   }
 });
 
@@ -75,6 +115,23 @@ test('“Let an agent ask” has the demo play an agent asking, for the visitor 
   await expect(editor.locator('.request-bar')).toContainText('Claude asks to see “the chart’s peak”');
   await expect(page.locator('.demo')).toBeInViewport();
   await expect(page.locator('.try-me')).toHaveClass(/used/);
+});
+
+test('⌘4 on the page reaches the demo while it is in view, as the demo says it will', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/site.html');
+  const demo = page.locator('iframe.demo');
+  const inside = demo.contentFrame();
+  await inside.locator('.win.editor iframe').contentFrame().getByRole('heading', { name: 'Capture your screen' }).waitFor();
+  await page.evaluate(() => document.documentElement.scrollTo({ top: 0, behavior: 'instant' }));
+  // Out of view, the key is the browser's.
+  await page.keyboard.press('Meta+4');
+  await page.waitForTimeout(200);
+  await expect(inside.locator('iframe.overlay')).toHaveCount(0);
+  await demo.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Meta+4');
+  await expect(inside.locator('iframe.overlay')).toHaveCount(1);
 });
 
 test('the setup line copies as it reads', async ({ page }) => {

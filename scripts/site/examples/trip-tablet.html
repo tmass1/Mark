@@ -1,0 +1,53 @@
+<!doctype html>
+<html><head><meta charset="utf-8" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 1100px; height: 780px; overflow: hidden; display: grid; grid-template-columns: 330px 1fr; font: 15px/1.35 -apple-system, sans-serif; color: #17181c; background: #fff; }
+  aside { padding: 30px 22px; background: #f6f6f9; border-right: .5px solid #dcdce4; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+  .logo i { width: 26px; height: 26px; border-radius: 8px; background: #6d5ef6; }
+  h1 { margin: 26px 0 2px; font-size: 30px; letter-spacing: -.025em; line-height: 1.1; }
+  .when { color: #72737f; }
+  ol { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 10px; }
+  li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; padding: 13px 14px; border-radius: 14px; background: #fff; box-shadow: 0 1px 2px #0000000f; align-items: center; }
+  li b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: #6d5ef6; color: #fff; font-size: 14px; }
+  li h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  li p { margin: 1px 0 0; color: #72737f; font-size: 13px; }
+  .on { outline: 2px solid #6d5ef6; }
+  main { position: relative; background: #e7efe4; overflow: hidden; }
+  svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .pill { position: absolute; left: 22px; top: 22px; padding: 9px 16px; border-radius: 999px; background: #fff; font-weight: 600; font-size: 14px; box-shadow: 0 4px 14px #0000001f; }
+</style></head>
+<body>
+  <aside>
+    <div class="logo"><i></i>Waypoint</div>
+    <h1>Lisbon</h1>
+    <div class="when">Day 1 · Nov 12</div>
+    <ol>
+      <li><b>1</b><div><h2>Coffee at Fábrica</h2><p>9:00 · 12 min walk</p></div></li>
+      <li class="on"><b>2</b><div><h2>Tram 28 to Alfama</h2><p>10:15 · $3 each</p></div></li>
+      <li><b>3</b><div><h2>Miradouro da Graça</h2><p>11:30 · 8 min walk</p></div></li>
+      <li><b>4</b><div><h2>Lunch at Taberna</h2><p>13:00 · Table for 3</p></div></li>
+      <li><b>5</b><div><h2>Tile museum</h2><p>15:00 · 20 min by tram</p></div></li>
+    </ol>
+  </aside>
+  <main>
+    <svg viewBox="0 0 770 780" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <path d="M0 640C140 610 240 650 360 690s260 40 410-20v110H0z" fill="#a9d3ea"/>
+      <path d="M90 120c70-40 170-30 220 20s30 130-40 160-170 10-210-50 0-110 30-130z" fill="#cfe3c4"/>
+      <path d="M520 330c70-30 150-10 180 50s0 130-70 140-140-40-150-100 10-70 40-90z" fill="#cfe3c4"/>
+      <g fill="none" stroke="#fff" stroke-linecap="round">
+        <path d="M-10 250 780 90M-10 420 780 300M-10 570 780 500M170-10 260 640M400-10 470 660M620-10 650 640" stroke-width="13"/>
+        <path d="M60 100 730 560M300 40 90 560M740 190 330 620" stroke-width="7"/>
+      </g>
+      <path d="M170 180C250 240 270 300 350 330s120 60 190 40 90 60 60 130" fill="none" stroke="#6d5ef6" stroke-width="6" stroke-linecap="round" stroke-dasharray="1 13"/>
+      <g font-family="-apple-system, sans-serif" font-size="15" font-weight="700" text-anchor="middle" fill="#fff">
+        <circle cx="170" cy="180" r="17" fill="#6d5ef6"/><text x="170" y="185">1</text>
+        <circle cx="350" cy="330" r="21" fill="#6d5ef6" stroke="#fff" stroke-width="4"/><text x="350" y="335">2</text>
+        <circle cx="540" cy="370" r="17" fill="#6d5ef6"/><text x="540" y="375">3</text>
+        <circle cx="600" cy="500" r="17" fill="#6d5ef6"/><text x="600" y="505">4</text>
+      </g>
+    </svg>
+    <div class="pill">Walking and trams</div>
+  </main>
+</body></html>

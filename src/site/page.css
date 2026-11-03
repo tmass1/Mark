@@ -104,7 +104,7 @@ html.elsewhere .only-mac { display: none; }
   box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 14px 34px -16px var(--shadow);
 }
 .links { display: flex; gap: 4px; margin-left: auto; }
-.links a { padding: 8px 14px; border-radius: 999px; color: var(--muted); font-size: 15px; font-weight: 500; transition: color .15s, background .15s; }
+.links a { padding: 8px 14px; border-radius: 999px; color: var(--muted); font-size: 15px; font-weight: 500; white-space: nowrap; transition: color .15s, background .15s; }
 .bar .primary { height: 42px; padding: 0 20px; font-size: 15px; }
 .links a:hover { color: var(--ink); background: var(--control); }
 
@@ -233,11 +233,30 @@ section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
 .video .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--brand); }
 .video .eyebrow::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 3px #ff453a33; }
 .video-shot { border-radius: 14px; }
-.facts { list-style: none; margin: 30px 0 0; padding: 0; display: grid; gap: 20px; }
+/* What a recording can do, three across, under the picture and its words. */
+.facts { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 30px 32px; }
 .facts li { display: flex; align-items: flex-start; gap: 14px; }
 .facts h3 { padding-top: 1px; font-size: 16px; }
 .facts p { margin-top: 4px; color: var(--muted); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
 .video .fine { margin-top: 26px; }
+
+/* Frame: what the panel makes, the phone as tall as the rest beside it. The columns
+   are the ones that make it so, at this page's width, for these pictures. */
+.frame { padding-top: 140px; }
+.frame .section-lede { max-width: 640px; }
+.frame h2 { margin-top: 0; }
+.devices {
+  display: grid; gap: 16px; margin-top: 44px;
+  grid-template-columns: minmax(0, 405fr) minmax(0, 318fr) minmax(0, 318fr);
+  grid-template-areas: "phone browser browser" "phone tablet window";
+}
+.device { display: flex; flex-direction: column; min-width: 0; padding: 10px; border-radius: 22px; background: var(--sheen), var(--panel); box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 30px 60px -30px var(--shadow); }
+.device img { flex: 1; min-height: 0; width: 100%; object-fit: cover; border-radius: 12px; }
+.device figcaption { padding: 12px 8px 4px; color: var(--muted); font-size: 14px; font-weight: 500; }
+.phone { grid-area: phone; }
+.browser { grid-area: browser; }
+.tablet { grid-area: tablet; }
+.window { grid-area: window; }
 
 /* The agents: their ask, the setup under both. */
 .agents-note { margin-top: 16px; color: var(--dim); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
@@ -283,6 +302,11 @@ section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
 /* Smaller in a narrow card, never cut off by it. */
 .arrows svg { width: 100%; max-width: 92px; height: auto; aspect-ratio: 92 / 98; filter: drop-shadow(0 10px 16px #ff453a3d); }
 .arrows figcaption { font-size: 12px; color: var(--muted); }
+/* The pointers, as the arrows are shown beside them. */
+.pointers { gap: 14px; color: var(--ink); padding: 0 10px; }
+.pointers figure { flex: 0 1 68px; min-width: 0; display: grid; justify-items: center; gap: 8px; }
+.pointers svg { width: 100%; max-width: 68px; height: auto; aspect-ratio: 1; filter: drop-shadow(0 8px 14px #0a84ff40); }
+.pointers figcaption { font-size: 12px; color: var(--muted); }
 /* The rest, a line each: one pane, four across, each line beside its glyph. */
 .more {
   list-style: none; margin: 16px 0 0; padding: 28px 30px; border-radius: 22px;
@@ -374,6 +398,11 @@ footer .version { margin-left: auto; }
 @media (max-width: 900px) {
   .flow, .video, .agents, .setup { grid-template-columns: 1fr; }
   .video { gap: 40px; }
+  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .devices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "browser browser" "phone tablet" "phone window";
+  }
   /* One column: the words before the picture, as the other sections have them. */
   .video-text { order: -1; }
   .more { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -384,6 +413,12 @@ footer .version { margin-left: auto; }
   .grid .card h3 { grid-column: 2; grid-row: 1; align-self: end; margin-top: 0; }
   .grid .card p { grid-column: 2; grid-row: 2; }
 }
+/* The bar's links, closer together, and gone before they would run out of room. */
+@media (max-width: 900px) { .links a { padding: 8px 9px; } }
+@media (max-width: 800px) {
+  .links { display: none; }
+  .bar .primary { margin-left: auto; }
+}
 @media (max-width: 640px) {
   :root { --gutter: 16px; }
   .top { padding-top: 10px; }
@@ -391,12 +426,13 @@ footer .version { margin-left: auto; }
   .bar .brand { font-size: 18px; gap: 10px; }
   .bar .brand .mark { width: 32px; height: 32px; }
   .bar .primary { height: 38px; padding: 0 16px; font-size: 14px; }
-  .links { display: none; }
   .hero { padding-top: 72px; }
   .hero-shot { display: block; margin-top: 44px; }
   /* The hero shows the mock-up on a phone, so How it works keeps only its notes. */
   .mockup-shot { display: none; }
-  .flow, .video, .agents, .features { padding-top: 96px; }
+  .flow, .video, .frame, .agents, .features { padding-top: 96px; }
+  .facts { grid-template-columns: 1fr; gap: 22px; }
+  .devices { grid-template-columns: minmax(0, 1fr); grid-template-areas: "browser" "phone" "tablet" "window"; margin-top: 32px; }
   /* No demo on a phone, so nothing for an agent to ask in. */
   .agents-actions { display: none; }
   .setup { padding: 22px 20px 24px; }

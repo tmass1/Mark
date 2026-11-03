@@ -53,6 +53,15 @@ async function deselect() { if (await editor.locator('.handle, .note-outline').c
 async function numbered() {
   await editor.locator('.tool[data-slot="0"]').click({ button: 'right' });
   await editor.locator('.tool-menu button', { hasText: 'Numbered arrow' }).click();
+  await dressed();
+}
+// The arrow in hand, in the shadow and the border every picture on the site shows it in.
+// They are kept for the next arrow, and the menu stays open until asked.
+async function dressed() {
+  await editor.locator('.looks-button').click();
+  await editor.locator('.looks-menu [data-look="shadow"]').click();
+  await editor.locator('.looks-menu [data-look="border"]').click();
+  await editor.locator('.looks-button').click();
 }
 
 // The stats and the chart of the demo's desktop: wide, and full of things to point at.
@@ -77,7 +86,7 @@ const k = image.width / REGION.w;                      // screen px per scene po
 const on = (x, y) => ({ x: image.x + (x - REGION.x) * k, y: image.y + (y - REGION.y) * k });
 
 await size(0.55); await tool('Box');    await drag(on(1046, 184), on(1254, 288)); await deselect();
-await size(1);    await tool('Arrow');  await drag(on(790, 500), on(934, 380));   await deselect();
+await size(1);    await tool('Arrow');  await dressed(); await drag(on(790, 500), on(934, 380)); await deselect();
 await size(0.8);  await tool('Text');   await page.mouse.click(on(944, 404).x, on(944, 404).y);
 await page.keyboard.type('Launch day'); await page.keyboard.press('Escape');    await deselect();
 await size(1);    await tool('Redact'); await drag(on(424, 220), on(538, 256));  await deselect();

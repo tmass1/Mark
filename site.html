@@ -280,22 +280,61 @@
 
       <section class="video" id="video" aria-labelledby="video-title">
         <figure class="shot video-shot">
-          <img src="./site/board.png" width="938" height="700" loading="lazy" alt="Mark’s editor holding a 14-second recording of a sprint board: a numbered note “Snaps back when dropped” points at a card mid-drag, boxed in red, and below it a strip of frames is trimmed with yellow handles, with Save Video in the footer." />
+          <img src="./site/board.png" width="1200" height="860" loading="lazy" alt="Mark’s editor holding a 14-second recording of a sprint board: a numbered note “Snaps back when dropped” points at a card mid-drag, boxed in red. Below it, a strip of frames is trimmed with yellow handles, a zoom of 1.5× sits in purple along it and a part is cut out in red, beside buttons for Cut, Zoom, 1× and Frame, with Save Video in the footer." />
         </figure>
         <div class="video-text">
           <p class="eyebrow">New · Video</p>
           <h2 id="video-title">When a still won’t show it, record it.</h2>
           <p class="section-lede">A flicker, a stuck transition, a flow that takes five clicks. Record a region, a window or the
             whole screen — a window you pick comes to the front — with your microphone if you want to talk it through.</p>
-          <ul class="facts">
-            <li><span class="glyph" data-glyph="trim"></span><div><h3>Trim it</h3>
-              <p>Drag the ends of the strip, or press <kbd>I</kbd> and <kbd>O</kbd> at the playhead.</p></div></li>
-            <li><span class="glyph" data-glyph="steps"></span><div><h3>Mark it up</h3>
-              <p>Arrows, boxes and numbered notes, each appearing at the moment you drew it.</p></div></li>
-            <li><span class="glyph" data-glyph="save"></span><div><h3>Keep it as a video or a GIF</h3>
-              <p>Save an MP4, save a looping GIF, or copy the file to paste into Slack, a pull request or an issue.</p></div></li>
-          </ul>
           <p class="fine">Up to five minutes. Recording needs macOS 15 or later.</p>
+        </div>
+        <ul class="facts">
+          <li><span class="glyph" data-glyph="mic"></span><div><h3>One bar for all of it</h3>
+            <p>The microphone, a delay, the pointer and clicks, and zooming sit beside Record, under what you’re about to
+              record.</p></div></li>
+          <li><span class="glyph" data-glyph="timed"></span><div><h3>A countdown you can see</h3>
+            <p>A delayed recording counts down over the shot, then gets out of the way. Clicks go straight through while you
+              set up.</p></div></li>
+          <li><span class="glyph" data-glyph="zoom"></span><div><h3>Zoom in on clicks</h3>
+            <p>The picture moves gently in around each burst of clicks, following the pointer. Drag a zoom’s ends, or press
+              <kbd>Z</kbd> to add one.</p></div></li>
+          <li><span class="glyph" data-glyph="cut"></span><div><h3>Cut it down</h3>
+            <p>Drag the ends of the strip to trim, press <kbd>K</kbd> to cut a part out of the middle, and play the rest
+              at 2×.</p></div></li>
+          <li><span class="glyph" data-glyph="steps"></span><div><h3>Mark it up</h3>
+            <p>Arrows, boxes and numbered notes appear at the moment you drew them, and can go before the end: step 1’s arrow
+              is gone by step 4.</p></div></li>
+          <li><span class="glyph" data-glyph="save"></span><div><h3>Keep it as a video or a GIF</h3>
+            <p>Save an MP4 or a looping GIF, or copy either to paste into Slack, a pull request or an issue. A smaller GIF is
+              one switch away.</p></div></li>
+        </ul>
+      </section>
+
+      <section class="frame" id="frame" aria-labelledby="frame-title">
+        <p class="eyebrow">New · Frame</p>
+        <h2 id="frame-title">A phone prototype belongs in a phone.</h2>
+        <p class="section-lede">Set a recording or a screenshot on a background and put a device round it: a window, a browser,
+          or a phone or tablet in four colours, a phone with its Dynamic Island if you like. A tall recording starts in a
+          phone.</p>
+        <!-- What the Frame panel makes, as it makes it: each is the app's own drawing of that device. -->
+        <div class="devices">
+          <figure class="device phone">
+            <img src="./site/phone.png" width="450" height="846" loading="lazy" alt="A travel app’s Lisbon itinerary in a phone in Natural Titanium, with its Dynamic Island, on a pink-to-blue gradient. A numbered note, “Say who booked it”, points at a table for three." />
+            <figcaption>Phone, with its Dynamic Island</figcaption>
+          </figure>
+          <figure class="device browser">
+            <img src="./site/browser.png" width="600" height="402" loading="lazy" alt="A checkout page in a browser with an address bar, on a violet-to-teal gradient. A numbered note, “Make Pay now full width”, points at the Pay now button." />
+            <figcaption>Browser</figcaption>
+          </figure>
+          <figure class="device tablet">
+            <img src="./site/tablet.png" width="500" height="380" loading="lazy" alt="A map of a day in Lisbon on a tablet in Deep Blue, on a peach gradient. A numbered note, “Say how long the tram takes”, points at the second stop." />
+            <figcaption>Tablet</figcaption>
+          </figure>
+          <figure class="device window">
+            <img src="./site/window.png" width="500" height="359" loading="lazy" alt="A podcast player’s window with its title bar, on a green-to-blue gradient. An arrow and the words “Thicker, with chapters” point at its progress bar." />
+            <figcaption>Window</figcaption>
+          </figure>
         </div>
       </section>
 
@@ -337,12 +376,12 @@
           <article class="card">
             <div class="visual arrows" data-arrows></div>
             <h3>Arrows worth pointing with</h3>
-            <p>Tapered, solid or thin, and the tip lands exactly where you let go.</p>
+            <p>The one from Mark’s icon, tapered, solid or thin, and the tip lands exactly where you let go.</p>
           </article>
           <article class="card">
-            <div class="visual picture"><img src="./site/framed.png" width="300" height="161" loading="lazy" alt="A podcast player’s window set on a pink-to-blue gradient, with room around it, rounded corners, a soft shadow and a title bar; an arrow and the words “Thicker, with chapters” point at its progress bar." /></div>
-            <h3>Framed for showing</h3>
-            <p>A gradient or a solid behind it, with padding, rounded corners and a shadow.</p>
+            <div class="visual pointers" data-pointers></div>
+            <h3>A pointer for the occasion</h3>
+            <p>Chosen before you record: the Mac’s arrow, a soft halo, or a fingertip for phone prototypes, with a ripple at each tap.</p>
           </article>
           <article class="card">
             <div class="visual picture"><img src="./site/redacted.png" width="216" height="108" loading="lazy" alt="An API keys card whose live key has been replaced by coarse grey blocks; the test key beneath it still reads in full." /></div>
@@ -361,11 +400,11 @@
           <li><span class="glyph" data-glyph="crop"></span><div><h3>Crop keeps your work</h3>
             <p>To any shape, and what you drew comes along.</p></div></li>
           <li><span class="glyph" data-glyph="timed"></span><div><h3>Timed, for menus</h3>
-            <p>A few seconds’ wait, to catch a menu or a hover open.</p></div></li>
-          <li><span class="glyph" data-glyph="thumbnail"></span><div><h3>Or a thumbnail</h3>
-            <p>Copied at once, and waiting in the corner to drag anywhere.</p></div></li>
-          <li><span class="glyph" data-glyph="menu"></span><div><h3>Lives in the menu bar</h3>
-            <p>No Dock icon, and it keeps itself up to date.</p></div></li>
+            <p>A countdown over the shot, to catch a menu or a hover open.</p></div></li>
+          <li><span class="glyph" data-glyph="thumbnail"></span><div><h3>Or skip the editor</h3>
+            <p><kbd>⌘C</kbd> copies it and opens nothing, or a thumbnail waits in the corner.</p></div></li>
+          <li><span class="glyph" data-glyph="menu"></span><div><h3>In the Dock, or not</h3>
+            <p>Its icon brings back a closed editor. Or keep Mark in the menu bar alone.</p></div></li>
           <li><span class="glyph" data-glyph="private"></span><div><h3>Nothing leaves your Mac</h3>
             <p>No account, no cloud, and nothing goes to an AI without Send.</p></div></li>
         </ul>
@@ -380,7 +419,7 @@
           Download for Mac
         </a>
         <p class="fine">Open the disk image and drag Mark to Applications. macOS asks for Screen Recording the first time you
-          capture. Screenshots need macOS 13 or later; recording video, macOS 15.</p>
+          capture. Screenshots need macOS 13 or later; recording video, macOS 15. After that, Mark checks for updates by itself.</p>
       </section>
     </main>
 

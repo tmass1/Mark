@@ -1,11 +1,12 @@
 /** Mark's site. The page is written in site.html; this fills in what the app
- *  itself knows -- its version, its shortcut, and the three arrow styles, drawn
+ *  itself knows -- its version, its shortcut, and the arrow styles, drawn
  *  by the same function that draws every arrow in the editor. The mark itself
  *  is the artwork in brand/, shown as it is. */
 import './page.css';
 import pkg from '../../package.json';
 import markIcon from '../mark-icon.png';
 import { arrowPolygon, arrowStrokes, arrowStrokeWidth, polygonPath, strokePath, type Arrow, type ArrowStyle } from '../annotations';
+import { CLICKS, POINTERS } from '../look';
 import { DEFAULT_SHORTCUT, prettyShortcut } from '../shortcut';
 
 const all = <T extends Element>(selector: string) => Array.from(document.querySelectorAll<T>(selector));
@@ -50,6 +51,17 @@ const used = () => window.setTimeout(() => {
 });
 if (demoFrame && tryMe) window.addEventListener('blur', used);
 
+// The demo says ⌘4 starts a capture, and the page is usually what has the keyboard
+// until the demo is clicked. While the demo is in view, its shortcuts are its own.
+let demoInView = false;
+if (demoFrame) new IntersectionObserver(([entry]) => { demoInView = entry.isIntersecting; }, { threshold: 0.4 }).observe(demoFrame);
+window.addEventListener('keydown', event => {
+  const demo = demoFrame?.contentWindow as (Window & { __markDemo?: { key?(e: KeyboardEvent): boolean } }) | null | undefined;
+  if (!demoInView || !demo?.__markDemo?.key?.(event)) return;
+  event.preventDefault();
+  tryMe?.classList.add('used');
+});
+
 // "Let an agent ask": up to the demo, where an agent -- played by the demo -- asks
 // for a screenshot, as it asks the app through its MCP server.
 for (const button of all<HTMLButtonElement>('[data-ask]')) {
@@ -78,11 +90,11 @@ for (const button of all<HTMLButtonElement>('.copy-command')) {
 const platform = `${(navigator as { userAgentData?: { platform: string } }).userAgentData?.platform ?? ''} ${navigator.platform}`;
 document.documentElement.classList.toggle('elsewhere', !/Mac/i.test(platform));
 
-// ---- the three arrows ---------------------------------------------------------------
+// ---- the arrows --------------------------------------------------------------------
 /** Drawn live with the editor's own geometry rather than pictured, for the same
  *  reason the style picker in the app is: a picture could come to misrepresent. */
 const STYLES: { style: ArrowStyle; name: string }[] = [
-  { style: 'taper', name: 'Tapered' }, { style: 'straight', name: 'Solid' }, { style: 'line', name: 'Thin' },
+  { style: 'mark', name: 'Mark' }, { style: 'taper', name: 'Tapered' }, { style: 'straight', name: 'Solid' }, { style: 'line', name: 'Thin' },
 ];
 for (const slot of all('[data-arrows]')) {
   slot.innerHTML = STYLES.map(({ style, name }, i) => {
@@ -92,6 +104,14 @@ for (const slot of all('[data-arrows]')) {
       : `<path d="${polygonPath(arrowPolygon(arrow))}" fill="currentColor"/>`;
     return `<figure><svg viewBox="0 0 104 110" aria-label="${name} arrow">${art}</svg><figcaption>${name}</figcaption></figure>`;
   }).join('');
+}
+
+// ---- the pointers ---------------------------------------------------------------
+/** The choices as the Record bar's menu draws them, for the same reason as the arrows. */
+const LOOKS = [...POINTERS.filter(({ id }) => id !== 'hidden'), ...CLICKS.filter(({ id }) => id === 'ripple')];
+for (const slot of all('[data-pointers]')) {
+  slot.innerHTML = LOOKS.map(({ name, art }) =>
+    `<figure><svg viewBox="0 0 20 20" aria-label="${name}">${art}</svg><figcaption>${name}</figcaption></figure>`).join('');
 }
 
 // ---- glyphs: the app's own strokes ------------------------------------------------------
@@ -113,8 +133,10 @@ const GLYPHS: Record<string, string> = {
   // The request bar's speech bubble, and a screen with a capture waiting in its corner.
   ask: `<path d="M4.4 4.2h11.2a1.6 1.6 0 0 1 1.6 1.6v6.6a1.6 1.6 0 0 1-1.6 1.6H9.4l-3.6 2.9v-2.9H4.4a1.6 1.6 0 0 1-1.6-1.6V5.8a1.6 1.6 0 0 1 1.6-1.6z" ${STROKE}/>`
     + `<path d="M6.8 9.1h6.4" ${STROKE}/>`,
-  // The trim strip with its two handles, and Save's tray with its arrow.
-  trim: `<rect x="2.8" y="6" width="14.4" height="8" rx="1.6" ${STROKE}/><path d="M6.2 4.4v11.2M13.8 4.4v11.2" ${STROKE}/>`,
+  // The Record bar's microphone, Cut's scissors, Zoom's glass, and Save's tray with its arrow.
+  mic: `<rect x="7.4" y="2.8" width="5.2" height="9.2" rx="2.6" ${STROKE}/><path d="M4.6 9.6a5.4 5.4 0 0 0 10.8 0M10 15v2.4" ${STROKE}/>`,
+  cut: `<circle cx="6" cy="14.2" r="2.3" ${STROKE}/><circle cx="14" cy="14.2" r="2.3" ${STROKE}/><path d="M7.6 12.5 14.6 3.8M12.4 12.5 5.4 3.8" ${STROKE}/>`,
+  zoom: `<circle cx="8.6" cy="8.6" r="5.2" ${STROKE}/><path d="M12.4 12.4 16.4 16.4M8.6 6.4v4.4M6.4 8.6h4.4" ${STROKE}/>`,
   save: `<path d="M10 3.4v8.8M6.6 8.8 10 12.2l3.4-3.4M3.6 12.8v2a1.6 1.6 0 0 0 1.6 1.6h9.6a1.6 1.6 0 0 0 1.6-1.6v-2" ${STROKE}/>`,
   thumbnail: `<rect x="2.8" y="3.6" width="14.4" height="12.4" rx="1.8" ${STROKE}/>`
     + `<rect x="10" y="9.8" width="5" height="4" rx=".9" fill="currentColor" opacity=".3"/><rect x="10" y="9.8" width="5" height="4" rx=".9" ${STROKE}/>`,
