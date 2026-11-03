@@ -42,14 +42,9 @@ body { display: flex; flex-direction: column; align-items: center; padding: 16px
 /* The editor's own page is transparent where the Mac shows its material; here
    the desktop behind it is blurred to stand in for that material. */
 .win.editor { -webkit-backdrop-filter: blur(48px) saturate(1.4); backdrop-filter: blur(48px) saturate(1.4); background: #1b212a80; }
-.win.settings { width: 540px; background: #1b212ad9; -webkit-backdrop-filter: blur(48px) saturate(1.4); backdrop-filter: blur(48px) saturate(1.4); display: flex; flex-direction: column; }
 .win .frame { display: block; width: 100%; height: 100%; border: none; background: transparent; }
-.win.settings .frame { height: 244px; }
-.win.settings .titlebar { position: relative; height: 28px; flex: none; display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 600; color: #e8e8ee; background: #ffffff0a; border-bottom: 1px solid #ffffff14; cursor: default; }
 /* Traffic lights: drawn by the Mac in the real thing, so drawn by the page here. */
 .lights { position: absolute; top: 15px; left: 13px; display: flex; gap: 8px; z-index: 2; }
-.win.settings .lights { top: 8px; }
 .lights i, .lights .light { display: block; width: 12px; height: 12px; border-radius: 50%; border: none; padding: 0; background: #ffffff33; box-shadow: inset 0 0 0 .5px #0000002e; }
 .lights .light.close { background: #ff5f57; }
 .lights i:nth-of-type(1) { background: #febc2e; } .lights i:nth-of-type(2) { background: #28c840; }
@@ -126,6 +121,4 @@ html.embedded .stage { border-radius: 0; box-shadow: none; }
 /* ---- light appearance ------------------------------------------------------ */
 /* The "Mac" stays dark; the windows' material follows Mark's appearance. */
 :root[data-theme="light"] .win.editor { background: #ffffff99; }
-:root[data-theme="light"] .win.settings { background: #f2f3f6e6; }
-:root[data-theme="light"] .win.settings .titlebar { color: #1c1c1e; background: #0000000a; border-bottom-color: #00000014; }
 :root[data-theme="light"] .win { box-shadow: 0 30px 80px -20px #00000080, 0 0 0 .5px #00000033, 0 2px 8px #00000033; }

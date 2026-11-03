@@ -91,12 +91,12 @@ test('annotating and copying produce a PNG for the clipboard, and closing return
   await expect(page.locator('.hint')).toContainText('Closed');
 });
 
-test('settings open from the gear, and the appearance switches every frame and the page', async ({ page }) => {
+test('settings open in the editor from the gear, and the appearance switches every frame and the page', async ({ page }) => {
   const editor = await open(page);
   await editor.getByRole('button', { name: 'Settings' }).click();
-  const win = page.locator('.win.settings');
-  await expect(win).toBeVisible();
-  const settings = page.frameLocator('.win.settings iframe');
+  const settings = editor.getByRole('region', { name: 'Settings' });
+  await expect(settings).toBeVisible();
+  await expect(page.locator('.win.settings')).toHaveCount(0);   // not a window of their own
   await expect(settings.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true');
   await expect(settings.locator('#version-title')).toContainText('web demo');
 
@@ -104,7 +104,6 @@ test('settings open from the gear, and the appearance switches every frame and t
   await expect(settings.getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(editor.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect(settings.locator('html')).toHaveAttribute('data-theme', 'light');
 
   // What the browser cannot do is said, not faked. A click rather than a
   // check: the box is put back at once, which check() can catch half done.
@@ -112,8 +111,19 @@ test('settings open from the gear, and the appearance switches every frame and t
   await expect(settings.locator('.login-note')).toContainText('Mac feature');
   await expect(settings.locator('.login')).not.toBeChecked();
 
-  await win.locator('.light.close').click();
-  await expect(win).toBeHidden();
+  await settings.getByRole('button', { name: 'Back' }).click();
+  await expect(settings).toBeHidden();
+  await expect(editor.locator('[data-start="region"]')).toBeVisible();
+});
+
+test('the menu bar’s Settings… brings the editor forward showing them', async ({ page }) => {
+  const editor = await open(page);
+  await page.locator('.win.editor .light.close').click();
+  await expect(page.locator('.win.editor')).toBeHidden();
+  await page.locator('.tray').click();
+  await page.locator('.tray-menu [data-act="settings"]').click();
+  await expect(page.locator('.win.editor')).toBeVisible();
+  await expect(editor.getByRole('region', { name: 'Settings' })).toBeVisible();
 });
 
 test('Record shows where the app shows it, and says the Mac app records', async ({ page }) => {
@@ -140,7 +150,7 @@ test('⌘4 starts a capture, as in the app, and the shortcut is recordable', asy
   await expect(page.locator('.win.editor')).toBeVisible();
 
   await editor.getByRole('button', { name: 'Settings' }).click();
-  const settings = page.frameLocator('.win.settings iframe');
+  const settings = editor.getByRole('region', { name: 'Settings' });
   await settings.getByRole('tab', { name: 'Capture' }).click();
   await settings.locator('.recorder[data-way="region"]').click();
   await page.keyboard.press('Meta+Shift+m');
@@ -153,7 +163,7 @@ test('⌘4 starts a capture, as in the app, and the shortcut is recordable', asy
   await page.keyboard.press('Meta+Alt+5');
   await expect(settings.locator('.recorder[data-way="window"] kbd')).toHaveText('⌥⌘5');
   await expect(page.locator('.tray-menu [data-act="window"] kbd')).toHaveText('⌥⌘5');
-  await page.locator('.win.settings .light.close').click();
+  await settings.getByRole('button', { name: 'Back' }).click();
   await page.locator('.caption').click();
   await page.keyboard.press('Meta+Alt+5');
   await expect(page.frameLocator('.overlay').locator('.hint')).toHaveText(/^Click a window to capture it/);

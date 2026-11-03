@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "editor",
-  "description": "Only Mark's local editor can capture, annotate, frame, read text from, copy, save and share, and send a screenshot to an AI tool that asked for one; and play, trim, copy, save and share a recording.",
+  "description": "Only Mark's local editor can capture, annotate, frame, read text from, copy, save and share, and send a screenshot to an AI tool that asked for one; play, trim, copy, save and share a recording; and, in its Settings, read and change the preferences, say whether Mark may see the screen, add Mark to an AI tool, and look for an update.",
   "windows": ["editor"], "platforms": ["macOS"],
   "permissions": [
     "allow-current-capture", "allow-capture-region", "allow-capture-display", "allow-take-copied",
@@ -9,7 +9,10 @@
     "allow-dismiss-editor", "allow-open-screen-settings", "allow-quit-app", "allow-send-capture", "allow-decline-request",
     "allow-glass-available", "allow-set-glass",
     "allow-recording-supported", "allow-video-frames", "allow-video-pointer", "allow-copy-video", "allow-copy-gif", "allow-save-video", "allow-share-video", "allow-fit-to-recording",
-    "allow-get-settings", "allow-set-frame", "allow-open-settings",
+    "allow-get-settings", "allow-set-frame",
+    "allow-set-appearance", "allow-set-shortcut", "allow-set-after-capture", "allow-set-mcp", "allow-set-record-options", "allow-mcp-setup", "allow-add-to-agent", "allow-open-guide",
+    "allow-set-show-in-dock", "allow-login-enabled", "allow-set-login", "allow-screen-access-granted",
+    "allow-set-auto-update", "allow-set-install-updates", "allow-check-for-update", "allow-pending-update", "allow-open-updates", "core:app:allow-version", "allow-fit-to-settings",
     "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize",
     "core:event:allow-listen", "core:event:allow-unlisten"
   ]

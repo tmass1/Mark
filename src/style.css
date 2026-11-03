@@ -1048,16 +1048,28 @@ h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -.45px; line-
 
 /* ---- settings ------------------------------------------------------------- */
 
-/* Its own window, on the same material, in the shape Tidy gives its settings:
-   tabs along the top, then rows, each with what it is and a line on what it
-   does on the left, its control on the right, and a hairline under it.
+/* A view of the editor's, in place of the capture below the title bar, as
+   Tidy's settings are a page of its panel: the way back, tabs along the top,
+   then rows, each with what it is and a line on what it does on the left, its
+   control on the right, and a hairline under it. A column as wide as Tidy's,
+   on the window's ground, scrolling when the window is shorter than it.
    Controls here are quiet -- a tint, not a pane -- since every row has one.
    Nothing is saved by a button; each control applies as it changes. */
+#app.settings-open > :not(.titlebar):not(.settings-view) { display: none !important; }
+.settings-view { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.settings-column { max-width: 560px; margin: 0 auto; padding: 0 30px 26px; }   /* the width is SETTINGS_WIDTH in lib.rs */
+.settings-button[aria-pressed="true"] { background: var(--sunken); color: var(--ink); }
+.settings-back {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; border: 0; background: none;
+  color: var(--muted); font-size: 13px;
+}
+.settings-back:hover { color: var(--ink); }
+.settings-back svg { width: 15px; height: 15px; }
 .prefs {
   --layer: color-mix(in srgb, var(--ink) 7%, transparent);
   --layer-hover: color-mix(in srgb, var(--ink) 11%, transparent);
   --blue-soft: color-mix(in srgb, var(--blue) 16%, transparent);
-  padding: 8px 30px 26px; display: flex; flex-direction: column;
+  padding-top: 10px; display: flex; flex-direction: column;
 }
 .tabs { display: flex; gap: 15px; padding: 2px 0 6px; }
 .tab {

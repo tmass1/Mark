@@ -605,7 +605,8 @@ test('Settings offers Record Video and the recording options on a Mac that can r
   const saved = { appearance: 'dark', shortcut: 'Super+Digit4', recordMic: false, recordingPointer: 'arrow', recordingClicks: 'rings' };
   await installBridge(page, { returns: { get_settings: saved, login_enabled: false, recording_supported: true,
                                           set_record_options: { ...saved, recordMic: true } } });
-  await page.goto('/settings.html');
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('tab', { name: 'Capture' }).click();
   await expect(page.locator('.recorder[data-way="record"]')).toBeVisible({ timeout: 15_000 });
   await page.getByRole('tab', { name: 'Recording' }).click();
@@ -643,7 +644,8 @@ test('Settings turns zooming in on clicks on for the next recording', async ({ p
   const saved = { appearance: 'dark', shortcut: 'Super+Digit4' };
   await installBridge(page, { returns: { get_settings: saved, login_enabled: false, recording_supported: true,
                                           set_record_options: { ...saved, recordZoom: true } } });
-  await page.goto('/settings.html');
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('tab', { name: 'Recording' }).click({ timeout: 15_000 });
   const zoom = page.getByRole('checkbox', { name: 'Zoom in on clicks' });
   await expect(zoom).not.toBeChecked({ timeout: 15_000 });
@@ -656,7 +658,8 @@ test('Settings chooses how a recording shows the pointer and clicks', async ({ p
   const saved = { appearance: 'dark', shortcut: 'Super+Digit4', recordingPointer: 'arrow', recordingClicks: 'none' };
   await installBridge(page, { returns: { get_settings: saved, login_enabled: false, recording_supported: true,
                                           set_record_options: { ...saved, recordingPointer: 'touch' } } });
-  await page.goto('/settings.html');
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('tab', { name: 'Recording' }).click({ timeout: 15_000 });
   const pointer = page.getByRole('combobox', { name: 'Pointer' });
   const clicks = page.getByRole('combobox', { name: 'Clicks' });
@@ -874,7 +877,8 @@ test('no pointer menu for a recording whose pointer wasn\'t followed', async ({ 
 test('…and neither where it cannot', async ({ page }) => {
   await installBridge(page, { returns: { get_settings: { appearance: 'dark', shortcut: 'Super+Digit4' }, login_enabled: false,
                                           recording_supported: false } });
-  await page.goto('/settings.html');
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('tab', { name: 'Capture' }).click();
   await expect(page.locator('.recorder[data-way="window"]')).toBeVisible({ timeout: 15_000 });
   await waitFor(page, 'recording_supported');

@@ -1,7 +1,7 @@
 /** The web demo: a Mac desktop drawn in a page, with Mark running on it.
  *
- *  The desktop is a picture. Mark is not: the editor, the selection overlay
- *  and settings are the real pages, each in a frame, running their native
+ *  The desktop is a picture. Mark is not: the editor, with its settings, and
+ *  the selection overlay are the real pages, each in a frame, running their native
  *  code path against this file, which plays lib.rs -- it keeps the capture,
  *  crops the scene where the overlay says, sizes the editor's window the way
  *  fit_window does, copies to the clipboard, and answers settings. What cannot
@@ -86,10 +86,6 @@ document.body.innerHTML = `
       <span class="lights"><button class="light close" type="button" aria-label="Close"></button><i></i><i></i></span>
       <iframe class="frame" title="Mark" src="./demo/editor.html"></iframe>
     </div>
-    <div class="win settings" hidden>
-      <div class="titlebar"><span class="lights"><button class="light close" type="button" aria-label="Close"></button><i></i><i></i></span>Mark Settings</div>
-      <iframe class="frame" title="Mark Settings"></iframe>
-    </div>
     <div class="hint"><span></span></div>
     <aside class="sent" hidden aria-live="polite" aria-label="What Claude received">
       <header class="sent-head"><strong>What Claude received</strong><button class="sent-close" type="button" aria-label="Dismiss">×</button></header>
@@ -113,13 +109,12 @@ document.body.innerHTML = `
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 const stage = $<HTMLDivElement>('.stage');
 const editorWin = $<HTMLDivElement>('.win.editor'), editorFrame = editorWin.querySelector('iframe')!;
-const settingsWin = $<HTMLDivElement>('.win.settings'), settingsFrame = settingsWin.querySelector('iframe')!;
 const tray = $<HTMLButtonElement>('.tray'), trayMenu = $<HTMLDivElement>('.tray-menu');
 const countdown = $<HTMLElement>('.countdown'), hint = $<HTMLElement>('.hint span');
 let overlay: HTMLIFrameElement | null = null;
 let editorWanted = true;   // whether the editor should be on screen when nothing else is happening
 
-const frames = (): DemoFrame[] => [editorFrame, settingsFrame, overlay].flatMap(f => f?.contentWindow ? [f.contentWindow as DemoFrame] : []);
+const frames = (): DemoFrame[] => [editorFrame, overlay].flatMap(f => f?.contentWindow ? [f.contentWindow as DemoFrame] : []);
 const emit = (event: string, payload: unknown = null) => { for (const f of frames()) f.__markDemoEmit?.(event, payload); };
 const emitTo = (frame: HTMLIFrameElement, event: string, payload: unknown = null) => (frame.contentWindow as DemoFrame | null)?.__markDemoEmit?.(event, payload);
 
@@ -279,7 +274,7 @@ async function beginSelection(delay: number, window = false) {
   if (state.busy) return;
   state.busy = true; state.armedDelay = delay; state.armedMode = window ? 'window' : 'region'; state.error = null;
   emitTo(editorFrame, 'capture-changed');
-  showEditor(false); settingsWin.hidden = true; stopTips(); showHint(null);
+  showEditor(false); stopTips(); showHint(null);
   clip.hidden = true;                              // the desktop is about to be captured
   // One overlay per selection, as in the app, where the window is made fresh each time.
   overlay?.remove();
@@ -364,12 +359,12 @@ function download(base64: string, name: string) {
 function applyAppearance() {
   const theme = state.settings.appearance === 'system' ? '' : state.settings.appearance;
   // The page too: the window wrappers stand in for the Mac's material, which follows the appearance.
-  for (const doc of [document, editorFrame.contentDocument, settingsFrame.contentDocument, overlay?.contentDocument]) {
+  for (const doc of [document, editorFrame.contentDocument, overlay?.contentDocument]) {
     if (!doc) continue;
     if (theme) doc.documentElement.dataset.theme = theme; else delete doc.documentElement.dataset.theme;
   }
 }
-for (const f of [editorFrame, settingsFrame]) f.addEventListener('load', applyAppearance);
+editorFrame.addEventListener('load', applyAppearance);
 
 // ---- the part of lib.rs the frames talk to ---------------------------------
 export const host: DemoHost & { display(): { x: number; y: number; width: number; height: number; scale: number }; delay(): number; mode(): 'region' | 'window'; windows(): ReturnType<typeof sceneWindows>; beginDrag(label: string, x: number, y: number): void; endDrag(): void; key(e: { code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }): boolean } = {
@@ -377,7 +372,7 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
   delay: () => state.armedDelay,
   mode: () => state.armedMode,
   windows: sceneWindows,
-  beginDrag(label, x, y) { beginDrag(label === 'settings' ? settingsWin : editorWin, x, y); },
+  beginDrag(_label, x, y) { beginDrag(editorWin, x, y); },
   endDrag,
   key(e) {
     const pressed = shortcutFromEvent(e);
@@ -432,8 +427,10 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       }
       case 'open_screen_settings': return;
       case 'screen_access_granted': return true;
+      // The demo's editor is sized by the page; Settings scroll in it.
+      case 'fit_to_settings': return;
       case 'quit_app': {
-        editorWanted = false; showEditor(false); settingsWin.hidden = true; endSelection(); stopTips();
+        editorWanted = false; showEditor(false); endSelection(); stopTips();
         showHint('Mark quit. Click its icon in the menu bar to open it again.'); return;
       }
       case 'glass_available': return false;
@@ -457,7 +454,6 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       }
       case 'login_enabled': return false;
       case 'set_login': throw 'Opening at login is a Mac feature; this web preview can\'t.';
-      case 'open_settings': openSettings(); return;
       case 'set_auto_update': state.settings = { ...state.settings, checkUpdates: Boolean(args.enabled) }; return state.settings;
       // Kept for the visit, as the app keeps it for good: the next capture is framed the same.
       case 'set_frame': state.settings = { ...state.settings, frame: args.frame }; return state.settings;
@@ -499,16 +495,6 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       case 'pending_update': case 'check_for_update': return null;
       case 'open_updates': showHint('The Mac app checks for updates and installs them. This web demo is always the newest version.'); return;
       // The window plugin, as the settings page uses it.
-      case 'plugin:window|close': settingsWin.hidden = true; return;
-      // A size arrives as Tauri sends it: { Logical: { width, height } }, or Physical.
-      case 'plugin:window|set_size': {
-        const size = JSON.parse(JSON.stringify(args.value)) as { Logical?: { height: number }; Physical?: { height: number } };
-        const height = size.Logical?.height ?? (size.Physical ? size.Physical.height / devicePixelRatio : NaN);
-        if (Number.isFinite(height)) settingsFrame.style.height = `${Math.round(height)}px`;
-        return;
-      }
-      case 'plugin:window|inner_size': return { width: settingsFrame.clientWidth * devicePixelRatio, height: settingsFrame.clientHeight * devicePixelRatio };
-      case 'plugin:window|scale_factor': return devicePixelRatio;
       case 'plugin:app|version': return `${pkg.version} (web demo)`;
       case 'plugin:event|emit': emit(String(args.event), args.payload ?? null); return;
       default: throw `The web demo has no ${command}.`;
@@ -517,18 +503,11 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
 };
 (window as Window & { __markDemo?: DemoHost }).__markDemo = host;
 
-/** As wide as lib.rs opens the settings window. */
-const SETTINGS_WIDTH = 540;
-
+/** As lib.rs does: Settings are a view of the editor's, so the editor comes
+ *  forward and is asked to show them. */
 function openSettings() {
-  if (!settingsFrame.src) settingsFrame.src = './demo/settings.html';
-  settingsWin.hidden = false;
-  settingsWin.style.width = `${SETTINGS_WIDTH}px`;
-  if (!settingsWin.dataset.moved) {
-    settingsWin.style.left = `${Math.round((stage.offsetWidth - SETTINGS_WIDTH) / 2 + 40)}px`;
-    settingsWin.style.top = `${Math.round(Math.max(60, stage.offsetHeight / 2 - 160))}px`;
-  }
-  raise(settingsWin);
+  editorWanted = true; showEditor(true); showHint(null);
+  emitTo(editorFrame, 'open-settings');
 }
 
 // ---- the menu bar ----------------------------------------------------------
@@ -566,12 +545,9 @@ trayMenu.addEventListener('click', event => {
 document.addEventListener('click', event => { if (!trayMenu.hidden && !(event.target as Element).closest('.menubar-right, .tray-menu')) toggleTray(false); });
 for (const button of document.querySelectorAll<HTMLButtonElement>('.win .light.close')) {
   button.addEventListener('click', () => {
-    const win = button.closest<HTMLElement>('.win')!;
-    if (win === settingsWin) settingsWin.hidden = true;
-    else void host.invoke('dismiss_editor', {}, window, 'page').catch(() => {});
+    void host.invoke('dismiss_editor', {}, window, 'page').catch(() => {});
   });
 }
-document.querySelector<HTMLElement>('.win.settings .titlebar')!.addEventListener('mousedown', e => { if ((e.target as Element).closest('.light')) return; beginDrag(settingsWin, e.screenX, e.screenY); });
 window.addEventListener('keydown', e => {
   if (host.key(e)) { e.preventDefault(); return; }
   if (e.key === 'Escape' && overlay) { e.preventDefault(); (overlay.contentWindow as DemoFrame | null)?.__markDemoEmit?.('demo-escape', null); }

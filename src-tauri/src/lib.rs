@@ -87,7 +87,6 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use std::str::FromStr;
 
 const EDITOR: &str = "editor";
-const SETTINGS: &str = "settings";
 /// One overlay window per display, labelled selector-0, selector-1, and so on.
 const SELECTOR: &str = "selector-";
 
@@ -189,6 +188,53 @@ fn fit_to_recording(app: AppHandle, width: f64, height: f64) -> Result<(), Strin
     let size = 1.0..=100_000.0;
     if !size.contains(&width) || !size.contains(&height) { return Err("That isn't a recording's size.".into()); }
     fit_recording(&app, (width, height));
+    Ok(())
+}
+
+/// How wide Settings are shown, with their margins. Mirrors .settings-column
+/// in style.css.
+const SETTINGS_WIDTH: f64 = 560.0;
+
+/// The editor's size before Settings grew it, and the size they grew it to.
+#[derive(Default)]
+struct SettingsFit(Mutex<Option<((f64, f64), (f64, f64))>>);
+
+/// Settings in the editor: `height` grows the window to show them whole,
+/// where the screen has room, as a recording grows it; none gives back the
+/// size it had -- unless it has been resized by hand since.
+#[tauri::command]
+fn fit_to_settings(app: AppHandle, height: Option<f64>) -> Result<(), String> {
+    let Some(window) = app.get_webview_window(EDITOR) else { return Ok(()) };
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+    let now = window.inner_size().map_err(|e| e.to_string())?.to_logical::<f64>(scale);
+    let fit = app.state::<SettingsFit>();
+    let mut kept = fit.0.lock().unwrap();
+    let Some(height) = height else {
+        if let Some((before, grown)) = kept.take() {
+            if (now.width - grown.0).abs() < 1.0 && (now.height - grown.1).abs() < 1.0 {
+                window.set_size(tauri::LogicalSize::new(before.0, before.1)).map_err(|e| e.to_string())?;
+            }
+        }
+        return Ok(());
+    };
+    if !(1.0..=100_000.0).contains(&height) { return Err("That isn't a height.".into()); }
+    let mut want = (now.width.max(SETTINGS_WIDTH), now.height.max(height));
+    let monitor = window.current_monitor().ok().flatten();
+    if let Some(monitor) = &monitor {
+        let free = monitor.work_area().size.to_logical::<f64>(monitor.scale_factor());
+        want = (want.0.min(free.width - RECORDING_MARGIN).max(now.width), want.1.min(free.height - RECORDING_MARGIN).max(now.height));
+    }
+    if (want.0 - now.width).abs() < 1.0 && (want.1 - now.height).abs() < 1.0 { *kept = None; return Ok(()); }
+    window.set_size(tauri::LogicalSize::new(want.0, want.1)).map_err(|e| e.to_string())?;
+    *kept = Some(((now.width, now.height), want));
+    // Grown downwards, it may run off the bottom of the screen: if so, up it goes.
+    if let (Some(monitor), Ok(position), Ok(size)) = (monitor, window.outer_position(), window.outer_size()) {
+        let area = monitor.work_area();
+        let bottom = area.position.y + area.size.height as i32;
+        if position.y + size.height as i32 > bottom {
+            let _ = window.set_position(tauri::PhysicalPosition::new(position.x, (bottom - size.height as i32).max(area.position.y)));
+        }
+    }
     Ok(())
 }
 
@@ -1079,7 +1125,7 @@ fn show_shortcuts(app: &AppHandle, prefs: &settings::Settings) {
 /// prefers-color-scheme follows the material, so one call themes everything.
 fn apply_appearance(app: &AppHandle, appearance: &str) {
     let theme = match appearance { "dark" => Some(tauri::Theme::Dark), "light" => Some(tauri::Theme::Light), _ => None };
-    for label in [EDITOR, SETTINGS, updates::WINDOW] {
+    for label in [EDITOR, updates::WINDOW] {
         if let Some(window) = app.get_webview_window(label) { let _ = window.set_theme(theme); }
     }
 }
@@ -1219,21 +1265,19 @@ fn set_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
     Ok(status == macos::LOGIN_ENABLED)
 }
 
-/// One settings window, made the first time it is asked for and shown after.
-#[tauri::command]
-fn open_settings(app: AppHandle) -> Result<(), String> {
-    let window = match app.get_webview_window(SETTINGS) {
-        Some(window) => window,
-        None => panel(&app, SETTINGS, "settings.html", "Mark Settings", 540.0, 560.0, true)?,
-    };
+/// Settings are a view of the editor's, as Tidy's are a page of its panel,
+/// not a window of their own: the editor comes forward and is asked to show
+/// them.
+fn open_settings(app: &AppHandle) {
     macos::activate_self();
-    window.show().and_then(|_| window.set_focus()).map_err(|e| e.to_string())
+    present(app);
+    if let Err(error) = app.emit_to(EDITOR, "open-settings", ()) { eprintln!("[Mark] {error}"); }
 }
 
 /// A small window of Mark's own, in its glass and the appearance chosen in
-/// Settings: Settings itself, and Software Update. Each grows to fit what it
-/// shows, so the height given here is only where it starts. One made hidden
-/// is shown by its own page, once it fits.
+/// Settings: Software Update. It grows to fit what it shows, so the height
+/// given here is only where it starts. One made hidden is shown by its own
+/// page, once it fits.
 pub(crate) fn panel(app: &AppHandle, label: &str, page: &str, title: &str, width: f64, height: f64, visible: bool)
     -> Result<tauri::WebviewWindow, String> {
     let appearance = app.state::<Prefs>().0.lock().unwrap().appearance.clone();
@@ -1262,7 +1306,7 @@ fn menu_action(app: &AppHandle, id: &str) {
         "copy" => { if let Err(error) = app.emit_to(EDITOR, "copy-and-close", ()) { eprintln!("[Mark] {error}"); } }
         "close" => { let _ = dismiss_editor(app.clone()); }
         "login" => toggle_login_item(app),
-        "settings" => { if let Err(e) = open_settings(app.clone()) { report(app, e); } }
+        "settings" => open_settings(app),
         "updates" => { if let Err(e) = updates::show(app, true) { report(app, e); } }
         "quit" => {
             app.exit(0);
@@ -1275,6 +1319,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(Mutex::new(Session::default()))
         .manage(updates::Pending::default())
+        .manage(SettingsFit::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_nspanel::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -1293,8 +1338,8 @@ pub fn run() {
             thumbnail::thumbnail_image, thumbnail::open_thumbnail, thumbnail::close_thumbnail, thumbnail::drag_thumbnail,
             recording::recording_supported, recording::recording_status, recording::stop_recording, recording::discard_recording,
             recording::video_frames, recording::video_pointer, recording::copy_video, recording::copy_gif, recording::save_video, recording::share_video,
-            get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, set_record_options, set_show_in_dock, login_enabled, set_login, open_settings, quit_app,
-            fit_to_recording,
+            get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, set_record_options, set_show_in_dock, login_enabled, set_login, quit_app,
+            fit_to_recording, fit_to_settings,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
             updates::set_auto_update, updates::set_install_updates, updates::open_updates])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))

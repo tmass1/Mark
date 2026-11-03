@@ -1,5 +1,5 @@
 import './style.css';
-import { command, isTauri, videoSource, watchCapture, watchCopied, watchMenuCopy, watchRequestWithdrawn, watchSettings, type Asked,
+import { command, isTauri, videoSource, watchCapture, watchCopied, watchMenuCopy, watchOpenSettings, watchRequestWithdrawn, watchSettings, type Asked,
          type CapturePreview, type SavedSettings, type Snapshot } from './platform';
 import { pointerAt, pressedAt, rippleShape, ripplesAt, type Presses, type Track } from './pointer';
 import { PLAIN, chosen, lookItems, lookLabel, lookOf, pointerArt, recordsArrow, type Look as PointerAndClicks } from './look';
@@ -248,7 +248,7 @@ app.innerHTML = `
   <header class="titlebar" data-tauri-drag-region>
     <span class="app-title" data-tauri-drag-region>Mark</span>
     <span class="preview-label" hidden>Browser preview</span>
-    <button class="settings-button subtle icon" type="button" title="Settings (⌘,)" aria-label="Settings" hidden>
+    <button class="settings-button subtle icon" type="button" title="Settings (⌘,)" aria-label="Settings" aria-pressed="false">
       <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.1" ${STROKE}/><path d="M10 2.8v2.1M10 15.1v2.1M2.8 10h2.1M15.1 10h2.1M4.9 4.9l1.5 1.5M13.6 13.6l1.5 1.5M4.9 15.1l1.5-1.5M13.6 6.4l1.5-1.5" ${STROKE}/></svg>
     </button>
     <div class="capture-control">
@@ -264,6 +264,13 @@ app.innerHTML = `
       </div>
     </div>
   </header>
+  <!-- Settings: in place of the capture, as Tidy's are in place of its text,
+       with the way back above them. -->
+  <section class="settings-view" aria-label="Settings" hidden>
+    <div class="settings-column">
+      <button class="settings-back" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10H4.5M9 5 4 10l5 5" ${STROKE}/></svg><span>Back</span></button>
+    </div>
+  </section>
   <div class="toolbar" role="toolbar" aria-label="Annotation tools" hidden>
     <div class="swatches" role="radiogroup" aria-label="Color">
       ${COLORS.map(color => `<button class="swatch" type="button" role="radio" aria-checked="false"
@@ -1248,9 +1255,14 @@ function syncTools() {
 
 function render() {
   const video = capture?.video ?? null;
+  // Settings take the window's place below the title bar, the editor kept as
+  // it was behind them.
+  app.classList.toggle('settings-open', settingsOpen);
+  settingsView.hidden = !settingsOpen;
+  gear.setAttribute('aria-pressed', String(settingsOpen));
   // The glass is under the toolbar and the rail -- and the crop tool, which a
   // recording goes without.
-  if (isTauri) void command('set_glass', { visible: !!capture, crop: !video }).catch(() => {});
+  if (isTauri) void command('set_glass', { visible: !!capture && !settingsOpen, crop: !video }).catch(() => {});
   stage.hidden = !capture;
   toolbar.hidden = !capture;
   rail.hidden = !capture;
@@ -1369,11 +1381,51 @@ function countDown() {
 }
 
 let revision = 0;
+/** Settings, shown in place of the capture rather than in a window of their
+ *  own, as Tidy's are in place of its text. Loaded the first time they are
+ *  asked for, so an editor that never opens them never pays for them. */
+const settingsView = app.querySelector<HTMLElement>('.settings-view')!;
+const settingsBack = settingsView.querySelector<HTMLButtonElement>('.settings-back')!;
+const gear = app.querySelector<HTMLButtonElement>('.settings-button')!;
+let settingsOpen = false;
+let settingsPage: typeof import('./settings') | null = null;
+
+async function openSettings() {
+  if (settingsOpen) return;
+  settingsPage ??= await import('./settings');
+  if (!settingsPage.settingsRoot.isConnected) settingsView.querySelector('.settings-column')!.append(settingsPage.settingsRoot);
+  closeToolMenu(); closeSaveMenu(); closePointerMenu(); closeZoomMenu(); closeLooksMenu(); closeFramePanel(); closeCaptureMenu();
+  if (picking) stopPicking();
+  if (layer.isEditing) layer.commit();
+  movie.pause();
+  settingsOpen = true;
+  settingsBack.querySelector('span')!.textContent = capture?.video ? 'Back to recording' : capture ? 'Back to capture' : 'Back';
+  render();
+  settingsView.scrollTop = 0;
+  await settingsPage.refreshSettings();
+  // The window grows to show them whole, where the screen has room.
+  const height = app.querySelector<HTMLElement>('.titlebar')!.offsetHeight + settingsView.scrollHeight;
+  if (isTauri && settingsOpen) await command('fit_to_settings', { height }).catch(() => {});
+}
+function closeSettings() {
+  if (!settingsOpen) return;
+  settingsPage?.leaveSettings();
+  settingsOpen = false;
+  render();
+  if (isTauri) void command('fit_to_settings', { height: null }).catch(() => {});
+}
+on(settingsBack, 'click', closeSettings);
+on(gear, 'click', () => { if (settingsOpen) closeSettings(); else void openSettings().catch(report); });
+
 async function refresh() {
   const ticket = ++revision;
   try {
     const snapshot = await command<Snapshot>('current_capture');
     if (disposed || ticket !== revision) return;
+    // What comes in -- a new capture, an error, an AI tool asking -- is to be
+    // seen, so Settings makes way for it.
+    if (settingsOpen && (snapshot.error || (snapshot.request && !request)
+        || (snapshot.capture?.dataUrl ?? null) !== (capture?.dataUrl ?? null))) closeSettings();
     capture = snapshot.capture; busy = snapshot.busy; request = snapshot.request ?? null;
     if (snapshot.error || flashTimer === undefined) showMessage(snapshot.error);
     render();
@@ -1384,6 +1436,7 @@ function report(error: unknown) { console.error('[Mark]', error); showMessage(St
 async function dismiss() {
   if (busy || copyPending) return;
   if (isTauri) { await command('dismiss_editor'); }
+  closeSettings();
   capture = null; showMessage(null); render(); start.focus();
 }
 
@@ -3066,6 +3119,14 @@ document.addEventListener('keydown', event => {
   const target = event.target as HTMLElement | null;
   const typing = target instanceof HTMLTextAreaElement || target?.isContentEditable === true ||
     (target instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'file', 'button'].includes(target.type));
+  // In Settings the editor's keys are asleep: Escape and ⌘, go back, and ⌘W
+  // and ⌘Q still close and quit.
+  if (settingsOpen) {
+    if (key === 'escape' || (event.metaKey && key === ',')) { event.preventDefault(); closeSettings(); }
+    else if ((event.metaKey || event.ctrlKey) && key === 'w') { event.preventDefault(); void dismiss().catch(report); }
+    else if (event.metaKey && key === 'q') { event.preventDefault(); void command('quit_app').catch(report); }
+    return;
+  }
   if (layer.isEditing) return;
   if (key === 'escape' && picking) { event.preventDefault(); stopPicking(); return; }
   // An open slot menu owns Escape entirely: it is a popover, and the editor's
@@ -3131,8 +3192,8 @@ document.addEventListener('keydown', event => {
     event.preventDefault(); void command('quit_app').catch(report);
   } else if ((event.metaKey || event.ctrlKey) && key === 'w') {
     event.preventDefault(); void dismiss().catch(report);
-  } else if (isTauri && event.metaKey && key === ',') {
-    event.preventDefault(); void command('open_settings').catch(report);
+  } else if (event.metaKey && key === ',') {
+    event.preventDefault(); void openSettings().catch(report);
   } else if ((event.metaKey || event.ctrlKey) && key === 'a') {
     // Outside a text field ⌘A means marks, even with no capture to hold any:
     // let through, it would reach the Edit menu and select the window's words.
@@ -3222,9 +3283,7 @@ function showShortcuts(saved: Partial<SavedSettings>) {
 async function init() {
   if (isTauri) {
     app.querySelector<HTMLElement>('.quit-hint')!.hidden = false;
-    const gear = app.querySelector<HTMLButtonElement>('.settings-button')!;
-    gear.hidden = false;
-    on(gear, 'click', () => { void command('open_settings').catch(report); });
+    cleanups.push(await watchOpenSettings(() => { void openSettings().catch(report); }));
     void command<boolean>('recording_supported').then(can => { recordable = can === true; render(); }).catch(() => {});
     void command<Partial<SavedSettings>>('get_settings').then(saved => {
       const kept = sanitizeFrame(saved?.frame);

@@ -1,13 +1,15 @@
 import './style.css';
 import { command, isTauri } from './platform';
-import { fitWindowTo } from './fit';
 import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent, shortcutProblem } from './shortcut';
 import { CLICKS, POINTERS, lookOf, type ClickLook, type PointerLook } from './look';
 import pkg from '../package.json';
 
-/** Mark's settings window: each thing applied the moment it changes, with
- *  nothing to save, in tabs -- General, Capture, Recording, AI tools -- of
- *  rows, each with what it is on the left and its control on the right.
+/** Mark's settings: a view of the editor's, as Tidy's settings are a page of
+ *  its panel, rather than a window of their own. Each thing applies the moment
+ *  it changes, with nothing to save, in tabs -- General, Capture, Recording,
+ *  AI tools -- of rows, each with what it is on the left and its control on
+ *  the right. The editor puts settingsRoot where it shows them and calls
+ *  refreshSettings each time it does.
  *  Appearance, the shortcuts, what follows a capture, AI tools and updates are
  *  Mark's own; login and Screen Recording are read from macOS, which is the
  *  only source of truth for them. */
@@ -84,7 +86,9 @@ const checkRow = (title: string, id: string, input: string, detail = '', note = 
   </label>`;
 const menu = (select: string) => `<span class="menu">${select}${CHEVRON}</span>`;
 
-const root = document.querySelector<HTMLDivElement>('#settings')!;
+export const settingsRoot = document.createElement('div');
+const root = settingsRoot;
+root.id = 'settings';
 root.className = 'prefs';
 root.innerHTML = `
   <nav class="tabs" role="tablist" aria-label="Settings">
@@ -272,7 +276,7 @@ function showScreenAccess(allowed: boolean) {
 }
 const lookAtScreenAccess = () => command<boolean>('screen_access_granted').then(allowed => showScreenAccess(allowed !== false)).catch(() => {});
 screenOpen.addEventListener('click', () => { void command('open_screen_settings').catch(() => {}); });
-window.addEventListener('focus', () => { if (isTauri) void lookAtScreenAccess(); });
+window.addEventListener('focus', () => { if (isTauri && root.offsetParent !== null) void lookAtScreenAccess(); });
 
 /** Which Mark this is, and whether there's a newer one: looked for here, and
  *  shown in Software Update once there is. */
@@ -341,19 +345,19 @@ for (const recorder of recorders) {
   recorder.addEventListener('click', () => { if (recording === recorder) stopRecording(); else startRecording(recorder); });
   recorder.addEventListener('blur', () => { if (recording === recorder) stopRecording(); });
 }
-window.addEventListener('keydown', event => {
-  if (!recording) {
-    // ⌘W and Escape close the window, as they do everywhere else on the Mac.
-    if ((event.metaKey && event.key.toLowerCase() === 'w') || event.key === 'Escape') { event.preventDefault(); void closeWindow(); }
-    return;
-  }
+// A recorder listening takes every key before the editor sees it: Escape
+// stops it rather than leaving Settings, and a chord is the shortcut wanted,
+// not one of the editor's own.
+document.addEventListener('keydown', event => {
+  if (!recording) return;
   event.preventDefault();
+  event.stopImmediatePropagation();
   if (event.key === 'Escape') { stopRecording(); return; }
   if (event.key === 'Backspace' || event.key === 'Delete') { void adopt(recording.dataset.way === 'region' ? DEFAULT_SHORTCUT : ''); return; }
   const problem = shortcutProblem(event);
   if (problem) { if (!/then press a key/.test(problem)) note(shortcutNote, problem); return; }
   void adopt(shortcutFromEvent(event)!);
-});
+}, true);
 
 dock.addEventListener('change', () => {
   note(dockNote, null);
@@ -473,37 +477,38 @@ autoInstall.addEventListener('change', () => {
   void command<Settings>('set_install_updates', { enabled: autoInstall.checked }).then(show)
     .catch(() => { autoInstall.checked = current.installUpdates === true; });
 });
-async function closeWindow() {
-  if (!isTauri) return;
-  const { getCurrentWindow } = await import('@tauri-apps/api/window');
-  await getCurrentWindow().close();
-}
+/** Leaving Settings lets go of a recorder still listening. */
+export function leaveSettings() { if (recording) stopRecording(); }
 
-fitWindowTo(root);
-
-async function init() {
+let opened = false;
+/** Settings as they are now, read each time the editor shows them: the
+ *  Record bar, the menu bar or macOS may have changed something since. The
+ *  tab last used, the tools to add Mark to and which Mark this is are read
+ *  the first time. */
+export async function refreshSettings() {
+  const first = !opened;
+  opened = true;
   if (!isTauri) {
     root.querySelector<HTMLElement>('.pref-preview')!.hidden = false;
-    document.documentElement.classList.add('browser');
     for (const element of root.querySelectorAll<HTMLElement>('[data-records]')) element.hidden = false;
     versionTitle.textContent = `Mark ${pkg.version}`;
     showScreenAccess(true);
     show(current);
-    choose(savedTab(), false, false);
+    if (first) choose(savedTab(), false, false);
     return;
   }
   const [settings, enabled, records] = await Promise.all([command<Settings>('get_settings'), command<boolean>('login_enabled'),
     command<boolean>('recording_supported').catch(() => false)]);
   for (const element of root.querySelectorAll<HTMLElement>('[data-records]')) element.hidden = !records;
   show(settings);
-  choose(savedTab(), false, false);
-  void loadAgents();
-  void lookAtScreenAccess();
   login.checked = enabled;
+  void lookAtScreenAccess();
   // An update a check already found, ready to show.
   void command<Offer | null>('pending_update').then(offer => { if (offer) showOffer(offer, `Mark ${offer.version} is available.`); }).catch(() => {});
+  if (!first) return;
+  choose(savedTab(), false, false);
+  void loadAgents();
   // The first thing anyone testing a build is asked is which build.
   const { getVersion } = await import('@tauri-apps/api/app');
   versionTitle.textContent = `Mark ${await getVersion()}`;
 }
-void init();

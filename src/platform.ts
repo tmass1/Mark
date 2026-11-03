@@ -91,6 +91,13 @@ export interface SavedSettings {
 }
 
 /** Settings change in their own window; the editor shows the shortcuts, so it listens. */
+/** The menu bar's Settings…: the editor comes forward and shows them. */
+export async function watchOpenSettings(open: () => void): Promise<() => void> {
+  if (!isTauri) return () => {};
+  const { listen } = await import('@tauri-apps/api/event');
+  return listen('open-settings', open);
+}
+
 export async function watchSettings(update: (settings: SavedSettings) => void): Promise<() => void> {
   if (!isTauri) return () => {};
   const { listen } = await import('@tauri-apps/api/event');
