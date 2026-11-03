@@ -568,7 +568,7 @@ test('no tool, colour or control is ever clipped out of reach, at any width', as
   test.setTimeout(120_000);
   await page.goto('/');
   // The widest the bar gets: something selected so the label shows, with each
-  // picker in turn -- the arrow's has three buttons and the looks button, the
+  // picker in turn -- the arrow's has four buttons and the looks button, the
   // shape's two. And the two states that used to show both pickers at once and
   // push Delete off the end: a box selected under the arrow tool, and a mixed
   // selection, which now show the pickers for the last thing selected.
@@ -617,6 +617,7 @@ test('no tool, colour or control is ever clipped out of reach, at any width', as
 // be, and holds it whole at every width, as it holds them.
 test('Hide Sensitive is never clipped out of reach, at any width', async ({ page }) => {
   test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1200, height: 600 });
   await page.goto('/');
   await page.keyboard.press('x');
   await drawArrow(page, [200, 200], [600, 420]);                       // a redaction, selected: the label shows too
@@ -1287,9 +1288,10 @@ test('drawing lands on the same pixels whatever the zoom', async ({ page }) => {
   await drawArrow(page, [60, 60], [300, 200]);       // same image coordinates
   const atDouble = await page.locator('.arrow').getAttribute('d');
 
-  // The head of the arrow is its fourth point, and it should sit where the
-  // pointer was released -- in image pixels, not screen ones.
-  const head = (path: string) => path.split('L')[3].split(/[ Z]/).slice(0, 2).map(Number);
+  // The head of the arrow should sit where the pointer was released -- in image
+  // pixels, not screen ones. It is the point furthest along from the tail.
+  const head = (path: string) => path.replace(/Z/g, '').split(/[ML]/).filter(Boolean).map(point => point.trim().split(' ').map(Number))
+    .reduce((far, point) => point[0] + point[1] > far[0] + far[1] ? point : far);
   const [fx, fy] = head(atFit!);
   const [dx, dy] = head(atDouble!);
   expect(Math.abs(fx - 300)).toBeLessThan(3);

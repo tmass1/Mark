@@ -148,9 +148,11 @@ notarization; an Apple Development certificate is only good for this Mac.
    ⌘-click a window, or press ⌘C, to copy it rather than open it.
 5. Pick a tool in the toolbar.
    - **Arrow**: drag. Drag its body to move it, or either end to reshape it.
-     Three styles sit beside the colours: **tapered**, which narrows almost to a
-     point at the tail; **solid**, one width throughout; and **thin**, a stroked
-     shaft and two wings that does not cover what it points at. Each style's
+     Four styles sit beside the colours: **Mark**, the arrow in the icon, with a
+     swept head and a shaft widening to a round tail, which a new arrow is drawn
+     in; **tapered**, which narrows almost to a point at the tail; **solid**, one
+     width throughout; and **thin**, a stroked shaft and two wings that does not
+     cover what it points at. Each style's
      button is drawn from the geometry it draws with, so the picker cannot come
      to misrepresent what it picks — and so is the pointer, which carries a
      small copy of the arrow in the colour in hand, since that is the question

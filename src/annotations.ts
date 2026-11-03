@@ -20,11 +20,13 @@ export function showsAt(item: Timed, seconds: number, early = 0): boolean {
   return (item.at ?? 0) <= seconds + early && (item.until === undefined || seconds + early < item.until);
 }
 interface Ends extends Timed { id: number; x1: number; y1: number; x2: number; y2: number; color: string; weight: number }
-/** Three shapes for the same gesture. Taper is Mark's own; straight is the
+/** Four shapes for the same gesture. Mark is the arrow in the app's icon, and
+ *  what a new arrow is drawn in; taper narrows to the tail; straight is the
  *  plain solid arrow; line is the thin diagram arrow that does not cover what
  *  it points at. */
-export type ArrowStyle = 'taper' | 'straight' | 'line';
-export const ARROW_STYLES: readonly ArrowStyle[] = ['taper', 'straight', 'line'];
+export type ArrowStyle = 'mark' | 'taper' | 'straight' | 'line';
+export const ARROW_STYLES: readonly ArrowStyle[] = ['mark', 'taper', 'straight', 'line'];
+export const DEFAULT_ARROW: ArrowStyle = 'mark';
 /** Two finishing touches an arrow can wear, chosen like its colour: a soft
  *  shadow lifting it off the screenshot, and a border setting it apart from
  *  whatever is underneath. Absent is off, which is how every arrow drawn before
@@ -605,6 +607,7 @@ export function strokePath(runs: readonly Point[][]): string {
  *  the spirit of Skitch's; straight holds one width throughout. Seven points
  *  either way -- only the tail differs. */
 export function arrowPolygon(a: Arrow): Point[] {
+  if (styleOf(a) === 'mark') return markArrowPolygon(a);
   const { ux, uy, nx, ny, length } = axis(a);
   const straight = styleOf(a) === 'straight';
   // A short arrow gives up head length before it gives up head width, so it
@@ -620,6 +623,50 @@ export function arrowPolygon(a: Arrow): Point[] {
     [a.x2, a.y2],
     off(bx, by, -halfHead), off(bx, by, -baseHalf), off(a.x1, a.y1, -tailHalf),
   ];
+}
+
+/** The arrow in Mark's icon (brand/mark-dark.svg), in proportion to its weight:
+ *  a swept head with soft corners, a neck, and a shaft widening to a round tail.
+ *  Its corners are short edges rather than curves, so it is one polygon like the
+ *  others, and the overlay, the export and a border need nothing new. The very
+ *  tip is a point of it, exactly at (x2, y2). */
+function markArrowPolygon(a: Arrow): Point[] {
+  const { ux, uy, nx, ny, length } = axis(a);
+  const w = a.weight;
+  // As the other styles: a short arrow gives up head length before head width.
+  const head = Math.min(w * 2.95, length * 0.5);
+  const halfHead = w * 1.75, neck = w * 0.44, tail = Math.min(w * 0.62, length * 0.2);
+  const tipRadius = Math.min(w * 0.32, head * 0.22);
+  const neckAt = length - head, barbAt = length - head * 0.9;
+  /** How far round the tip's disc the head's edge touches it. */
+  const lean = Math.PI / 2 - Math.atan2(halfHead, head * 0.9);
+  const touch: Point = [length - tipRadius + tipRadius * Math.cos(lean), tipRadius * Math.sin(lean)];
+  /** A corner softened into short edges: `by` along each side, curving between. */
+  const soft = (from: Point, corner: Point, to: Point, by: number): Point[] => {
+    const toward = (end: Point): Point => {
+      const d = Math.hypot(end[0] - corner[0], end[1] - corner[1]) || 1, r = Math.min(by, d * 0.45);
+      return [corner[0] + (end[0] - corner[0]) / d * r, corner[1] + (end[1] - corner[1]) / d * r];
+    };
+    const start = toward(from), end = toward(to);
+    return [0, 0.25, 0.5, 0.75, 1].map(t => [
+      (1 - t) ** 2 * start[0] + 2 * t * (1 - t) * corner[0] + t ** 2 * end[0],
+      (1 - t) ** 2 * start[1] + 2 * t * (1 - t) * corner[1] + t ** 2 * end[1],
+    ]);
+  };
+  const tailEdge: Point = [tail, tail], neckCorner: Point = [neckAt, neck], barb: Point = [barbAt, halfHead];
+  // One side of the arrow, tail to tip, along the axis and out from it.
+  const side = [tailEdge, ...soft(tailEdge, neckCorner, barb, w * 0.16), ...soft(neckCorner, barb, touch, w * 0.36)];
+  const arc = (from: number, to: number, steps: number, centre: Point, r: number): Point[] =>
+    Array.from({ length: steps + 1 }, (_, i) => {
+      const angle = from + (to - from) * (i / steps);
+      return [centre[0] + r * Math.cos(angle), centre[1] + r * Math.sin(angle)];
+    });
+  const tip = arc(lean, -lean, 6, [length - tipRadius, 0], tipRadius);
+  const round = arc(Math.PI * 1.5, Math.PI / 2, 8, [tail, 0], tail).slice(1, -1);
+  const local = [...side, ...tip, ...side.map(([s, v]): Point => [s, -v]).reverse(), ...round];
+  return local.map(([along, across], i): Point => i === side.length + 3
+    ? [a.x2, a.y2]
+    : [a.x1 + ux * along + nx * across, a.y1 + uy * along + ny * across]);
 }
 
 /** A freehand stroke, smoothed through the midpoints of the samples so it reads
@@ -1064,7 +1111,7 @@ export class AnnotationLayer {
   live = false;
   tool: Tool = 'arrow';
   base = 12;
-  style: LayerStyle = { color: COLORS[0].value, scale: 1, arrow: 'taper', fill: 'outline', numbered: false,
+  style: LayerStyle = { color: COLORS[0].value, scale: 1, arrow: DEFAULT_ARROW, fill: 'outline', numbered: false,
                         shadow: false, border: false };
 
   constructor(private svg: SVGSVGElement, private stage: HTMLElement, private onChange: () => void) {

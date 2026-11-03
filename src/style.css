@@ -940,12 +940,12 @@ h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -.45px; line-
    more than it did at these widths. The slider gives up the room first -- it is
    the one control that works just as well narrow -- and the label goes a little
    sooner than it used to. */
-@media (max-width: 860px) {
+@media (max-width: 895px) {
   .weight { width: 62px; }
   .toolbar { gap: 10px; }
   .swatches { gap: 5px; }
 }
-@media (max-width: 790px) { .chosen { display: none; } }
+@media (max-width: 815px) { .chosen { display: none; } }
 /* .choose only exists in the browser preview; the app's footer is narrower. */
 @media (max-width: 740px) { .choose { display: none; } }
 @media (max-width: 560px) {
@@ -1028,13 +1028,13 @@ h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -.45px; line-
    otherwise win, leaving these buttons visible where the bar cannot hold them. */
 /* Send backward and bring forward go first of the four, since ⌘[ and ⌘] do the
    same job. */
-@media (max-width: 680px) { .toolbar .back, .toolbar .front { display: none; } }
+@media (max-width: 705px) { .toolbar .back, .toolbar .front { display: none; } }
 @media (max-width: 480px) { .size-word { display: none; } } /* the slider keeps its aria-label */
-/* At the narrowest the bar carries eight colours, three arrow styles, the
+/* At the narrowest the bar carries eight colours, four arrow styles, the
    looks button and the slider, and they only fit if everything gives a little.
    Tightening them all beats dropping one: a control that is not there is not
    reachable at all, while a control two pixels narrower still is. */
-@media (max-width: 440px) {
+@media (max-width: 465px) {
   .weight { width: 46px; }
   .toolbar { gap: 6px; padding: 0 10px; }
   .swatch { width: 14px; height: 14px; }
@@ -1042,9 +1042,13 @@ h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -.45px; line-
   .style { padding: 4px 5px; }
   .looks-button { padding: 6px 5px; }
 }
+@media (max-width: 400px) {
+  .toolbar { gap: 5px; }
+  .style { padding: 4px 3px; }
+}
 /* Then Undo and Delete, for the same reason: ⌘Z and ⌫ do their job from the
    keyboard. */
-@media (max-width: 600px) { .toolbar .undo, .toolbar .remove { display: none; } }
+@media (max-width: 625px) { .toolbar .undo, .toolbar .remove { display: none; } }
 
 /* ---- settings ------------------------------------------------------------- */
 

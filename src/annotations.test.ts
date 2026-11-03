@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { showsAt,
   HIGHLIGHT_ALPHA, SHAPES, arrowPolygon, baseWeight, blockSize, drawAnnotations, isShape, lines,
-  ARROW_STYLES, COLORS, arrowPaint, arrowStrokeWidth, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
+  ARROW_STYLES, COLORS, DEFAULT_ARROW, arrowPaint, arrowStrokeWidth, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
   noteAt, offsetBy, onto, penPath, scaledNote, stretchedStroke, polygonPath, snapAngle, stepArrow, stepList, stepNumbers, stepRadius, styleOf,
   textSize, thin, borderColor, borderWidth, markShadow, outsetOps, pathData, pillAt, pillExit, restyled,
   shadowReach, stepTextSize, underlay, withNumbering, centredBaseline, measureLabel, measureRuns, measureWidth, hexColour,
@@ -322,6 +322,26 @@ describe('arrow styles', () => {
     expect(styleOf(arrow({ style: 'straight' }))).toBe('straight');
   });
 
+  it('draws a new arrow as the one in the icon: a swept head, a neck, and a shaft widening to a round tail', () => {
+    expect(DEFAULT_ARROW).toBe('mark');
+    const a = arrow({ style: 'mark', weight: 10 });        // along x, 100 long
+    const polygon = arrowPolygon(a);
+    const widthAt = (x: number) => Math.max(...polygon.filter(p => Math.abs(p[0] - x) < 6).map(p => Math.abs(p[1])));
+    expect(Math.max(...polygon.map(p => Math.abs(p[1])))).toBeGreaterThan(15);       // the head wider than the others'
+    expect(widthAt(68)).toBeGreaterThan(widthAt(40));     // the neck narrower than the head
+    expect(widthAt(12)).toBeGreaterThan(widthAt(55));     // the shaft widens going back
+    expect(Math.min(...polygon.map(p => p[0]))).toBeCloseTo(0, 5);    // the tail's end where the drag began
+    expect(Math.max(...polygon.map(p => p[0]))).toBeCloseTo(100, 5);  // and nothing past the tip
+  });
+
+  it('keeps the icon’s arrow whole however short it is drawn', () => {
+    const polygon = arrowPolygon(arrow({ style: 'mark', weight: 10, x2: 12, y2: 0 }));
+    expect(polygon).toContainEqual([12, 0]);
+    expect(Math.min(...polygon.map(p => p[0]))).toBeCloseTo(0, 5);
+    expect(Math.max(...polygon.map(p => p[0]))).toBeCloseTo(12, 5);
+    expect(polygon.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y))).toBe(true);
+  });
+
   it('tapers almost to a point at the tail, and holds width when straight', () => {
     const tapered = arrowPolygon(arrow({ style: 'taper', weight: 10 }));
     const straight = arrowPolygon(arrow({ style: 'straight', weight: 10 }));
@@ -333,8 +353,8 @@ describe('arrow styles', () => {
   it('lands every style head exactly where the pointer was released', () => {
     for (const style of ARROW_STYLES) {
       const a = arrow({ style, x2: 240, y2: 120 });
-      const tip = style === 'line' ? arrowStrokes(a)[0][1] : arrowPolygon(a)[3];
-      expect(tip).toEqual([240, 120]);
+      if (style === 'line') expect(arrowStrokes(a)[0][1]).toEqual([240, 120]);
+      else expect(arrowPolygon(a)).toContainEqual([240, 120]);
     }
   });
 

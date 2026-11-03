@@ -18,14 +18,14 @@ import { describeHidden, findSensitive } from './sensitive';
 import { BACKGROUNDS, BODY_COLOURS, DEFAULT_FRAME, DEVICES, backgroundOf, cssBackground, darkTop, frameGeometry, framePlates, handheld,
          paintFrame, sanitizeFrame, deviceFor, isTall, type BodyColour, type Device, type FrameStyle } from './frame';
 import { sampleCapture } from './sample';
-import { ARROW_STYLES, AnnotationLayer, COLORS, LOOKS, hexColour, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
+import { ARROW_STYLES, AnnotationLayer, COLORS, DEFAULT_ARROW, LOOKS, hexColour, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
          FONT, arrowPaint, badgeAt, blockSize, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isShape, numbered,
          outsetOps, pathData, polygonPath, showsAt, stepArrow, stepList, strokePath, styleOf, takesLooks, textSize,
          type Annotation, type ArrowStyle, type Look, type NoteMode, type Point, type Shape, type ShapeFill, type Tool } from './annotations';
 
 /** Each style's button previews itself, drawn from the geometry it will draw
  *  with, so a picker cannot come to misrepresent what it picks. */
-const STYLE_NAMES: Record<ArrowStyle, string> = { taper: 'Tapered', straight: 'Solid', line: 'Thin' };
+const STYLE_NAMES: Record<ArrowStyle, string> = { mark: 'Mark', taper: 'Tapered', straight: 'Solid', line: 'Thin' };
 function stylePreview(style: ArrowStyle): string {
   const sample = { kind: 'arrow', id: 0, x1: 3, y1: 16, x2: 17, y2: 4, color: '', weight: 2.6, style } as const;
   return style === 'line'
@@ -54,7 +54,7 @@ function fillPreview(fill: ShapeFill): string {
  *  of a pixel deep, would be no picture at all. */
 const LOOK_NAMES: Record<Look, string> = { shadow: 'Shadow', border: 'Border' };
 function lookPreview(looks: readonly Look[]): string {
-  const sample = { kind: 'arrow', id: 0, x1: 4.4, y1: 14.6, x2: 15, y2: 4.6, color: '', weight: 2.2, style: 'taper' } as const;
+  const sample = { kind: 'arrow', id: 0, x1: 4.4, y1: 14.6, x2: 15, y2: 4.6, color: '', weight: 2.2, style: DEFAULT_ARROW } as const;
   const polygon = arrowPolygon(sample);
   const shadow = looks.includes('shadow')
     ? `<path d="${polygonPath(polygon.map(([x, y]) => [x + 0.5, y + 1.9] as Point))}" fill="currentColor" opacity=".3"/>` : '';
@@ -292,7 +292,7 @@ app.innerHTML = `
     </div>
     <div class="styles" role="radiogroup" aria-label="Arrow style" hidden>
       ${ARROW_STYLES.map(style => `<button class="style" type="button" role="radio" data-style="${style}"
-        aria-checked="${style === 'taper'}" title="${STYLE_NAMES[style]} arrow"><svg viewBox="0 0 20 20"
+        aria-checked="${style === DEFAULT_ARROW}" title="${STYLE_NAMES[style]} arrow"><svg viewBox="0 0 20 20"
         aria-hidden="true">${stylePreview(style)}</svg><span class="sr">${STYLE_NAMES[style]}</span></button>`).join('')}
     </div>
     <div class="looks" hidden>
