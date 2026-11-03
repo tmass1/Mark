@@ -745,13 +745,12 @@ test('a recording made with Touch shows a fingertip, pressed while the button wa
 
 test('a recording can be framed too, in a phone, and every copy is sent the frame to set it in', async ({ page }) => {
   await editing(page);
-  // Beside a recording, its style is a column of its own -- folded away while
-  // there is no frame, and opened by Frame under the video.
+  // Its style opens over the video, from Frame under it, and frames it.
   const panel = page.locator('.frame-panel');
-  await expect(panel).toHaveClass(/docked/);
   await expect(panel).toBeHidden();
   await page.locator('.trim .frame-toggle').click();
   await expect(panel).toBeVisible();
+  await expect(page.locator('.canvas')).toHaveClass(/framed/);
   // A movie can't be see-through.
   await expect(panel.getByRole('radio', { name: 'No background', exact: true })).toBeDisabled();
   await panel.getByRole('radio', { name: 'Lagoon', exact: true }).click();
@@ -836,18 +835,28 @@ test('a recording made without zooming in on clicks opens with no zooms, though 
   await expect(page.locator('.zoom-band')).toHaveCount(1);
 });
 
-test('the style panel stays in its column beside the recording when the window is resized', async ({ page }) => {
+test('the style panel opens over the video against Frame, leaves the video its width, and stays in view when the window is resized', async ({ page }) => {
   await editing(page);
   const panel = page.locator('.frame-panel');
-  await page.locator('.trim .frame-toggle').click();
+  const toggle = page.locator('.trim .frame-toggle');
+  const wide = (await page.locator('.canvas').boundingBox())!.width;
+  await toggle.click();
   await expect(panel).toBeVisible();
-  // Mark sizes its window to each recording; the panel stays put and in view.
-  await page.setViewportSize({ width: 1000, height: 640 });
+  const above = async () => {
+    const [box, button] = [(await panel.boundingBox())!, (await toggle.boundingBox())!];
+    expect(box.y + box.height).toBeLessThanOrEqual(button.y);
+    expect(Math.abs(box.x + box.width - (button.x + button.width))).toBeLessThanOrEqual(1);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+  };
+  await above();
+  expect((await page.locator('.canvas').boundingBox())!.width).toBe(wide);
+  // Mark sizes its window to each recording; the panel follows Frame, and in
+  // a short window scrolls rather than leaving it.
+  await page.setViewportSize({ width: 1000, height: 420 });
   await page.evaluate(() => window.dispatchEvent(new Event('resize')));
-  const [box, canvas] = [(await panel.boundingBox())!, (await page.locator('.canvas').boundingBox())!];
-  expect(box.x).toBeGreaterThanOrEqual(canvas.x + canvas.width);
-  expect(box.y).toBeGreaterThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(1000);
+  await above();
+  expect(await panel.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+  await panel.getByRole('radio', { name: 'Phone', exact: true }).scrollIntoViewIfNeeded();
   await expect(panel.getByRole('radio', { name: 'Phone', exact: true })).toBeInViewport();
 });
 
@@ -919,30 +928,69 @@ test('the web view’s own menu never shows over a capture or Recent, only where
   expect(await prevented('.stage')).toBe(true);
 });
 
-test('the panel beside a recording folds away when the frame goes off, and by hand, and Frame under the video opens it', async ({ page }) => {
+test('Frame under the video opens its panel, which goes with Escape or a click elsewhere, the frame staying', async ({ page }) => {
   await editing(page);
   const panel = page.locator('.frame-panel');
   const toggle = page.locator('.trim .frame-toggle');
-  // No frame yet: folded away, the canvas the wider for it.
-  await expect(panel).toBeHidden();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-  const wide = (await page.locator('.canvas').boundingBox())!.width;
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(panel.getByRole('radio', { name: 'Phone', exact: true })).toBeVisible();
-  expect((await page.locator('.canvas').boundingBox())!.width).toBeLessThan(wide);
-  // Choosing anything frames it; folding by hand keeps the frame, and Frame says so.
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await panel.getByRole('radio', { name: 'Phone', exact: true }).click();
   await expect(page.locator('.canvas')).toHaveClass(/framed/);
-  await page.getByRole('button', { name: 'Fold the Frame panel' }).click();
+  await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  // Lit while there is a frame, as Frame in a screenshot's footer is.
   await expect(toggle).toHaveClass(/\bon\b/);
   await expect(page.locator('.canvas')).toHaveClass(/framed/);
-  // Turning the frame off folds it.
   await toggle.click();
-  await page.getByRole('switch', { name: 'Frame the image' }).click();
+  await page.locator('.dimensions').click();
   await expect(panel).toBeHidden();
+  // Off from its switch, and the next recording opens unframed too.
+  await toggle.click();
+  await clear(page);
+  await page.getByRole('switch', { name: 'Frame the image' }).click();
   await expect(page.locator('.canvas')).not.toHaveClass(/framed/);
+  expect((await waitFor(page, 'set_frame')).args).toMatchObject({ frame: { on: false } });
+});
+
+test('a recording opens framed as the last one was', async ({ page }) => {
+  await installBridge(page, { capture: VIDEO, returns: { recording_supported: true, video_frames: [CAPTURE.dataUrl],
+                                                         get_settings: { frame: { ...DEFAULT_FRAME, on: true, device: 'browser' } } } });
+  await page.goto('/');
+  await expect(page.locator('.canvas')).toHaveClass(/framed/, { timeout: 15_000 });
+  await expect(page.locator('.trim .frame-toggle')).toHaveClass(/\bon\b/);
+});
+
+test('a tall recording opens in a phone, and a device chosen for it is its own', async ({ page }) => {
+  const TALL = { ...VIDEO, width: 160, height: 240 };
+  await installBridge(page, { capture: TALL, returns: { recording_supported: true, video_frames: [CAPTURE.dataUrl],
+                                                        get_settings: { frame: { ...DEFAULT_FRAME, on: true, device: 'browser' } } } });
+  await page.goto('/');
+  await expect(page.locator('.canvas')).toHaveClass(/framed/, { timeout: 15_000 });
+  const phone = frameGeometry(160, 240, 1, { ...DEFAULT_FRAME, on: true, background: 'sky', device: 'phone' });
+  await expect(page.locator('.dimensions')).toHaveText(`${phone.width} × ${phone.height} px, framed · 0:12`);
+  await page.locator('.trim .frame-toggle').click();
+  const panel = page.locator('.frame-panel');
+  await expect(panel.getByRole('radio', { name: 'Phone', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await clear(page);
+  await panel.getByRole('radio', { name: 'Tablet', exact: true }).click();
+  // A desktop recording keeps its browser.
+  expect((await waitFor(page, 'set_frame')).args).toMatchObject({ frame: { device: 'browser', tallDevice: 'tablet' } });
+});
+
+test('a recording back from Recent grows the window for it, framed as it was left', async ({ page }) => {
+  await editing(page);
+  await page.locator('.trim .frame-toggle').click();
+  await expect(page.locator('.canvas')).toHaveClass(/framed/);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await waitFor(page, 'dismiss_editor');
+  await clear(page);
+  await page.locator('.recent').first().click();
+  expect((await waitFor(page, 'fit_to_recording')).args).toEqual({ width: VIDEO.width, height: VIDEO.height });
+  await expect(page.locator('.canvas')).toHaveClass(/framed/);
 });
 
 test('Play sits against the timeline, the time just after it, then the tools', async ({ page }) => {

@@ -16,7 +16,7 @@ import { copyThenDismiss } from './model';
 import { readingOrder, within, type Area, type TextLine } from './text';
 import { describeHidden, findSensitive } from './sensitive';
 import { BACKGROUNDS, BODY_COLOURS, DEFAULT_FRAME, DEVICES, backgroundOf, cssBackground, darkTop, frameGeometry, framePlates, handheld,
-         paintFrame, sanitizeFrame, type BodyColour, type Device, type FrameStyle } from './frame';
+         paintFrame, sanitizeFrame, deviceFor, isTall, type BodyColour, type Device, type FrameStyle } from './frame';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, LOOKS, hexColour, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
          FONT, arrowPaint, badgeAt, blockSize, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isShape, numbered,
@@ -127,6 +127,8 @@ function toolCursor(tool: Tool, numbering: boolean, style: ArrowStyle, color: st
 interface Past {
   id: number; capture: CapturePreview; thumb: string; annotations: Annotation[]; at: number;
   trim?: Trim; cuts?: Trim[]; speed?: number; pointerLook?: PointerAndClicks; zooms?: Zoom[];
+  /** Whether it was framed when it was left. */
+  framed?: boolean;
 }
 const KEPT = 6;
 /** How many of them Recent's strip shows side by side; the rest scroll. */
@@ -412,7 +414,7 @@ app.innerHTML = `
     <button class="speed glassy" type="button" aria-label="Speed" title="Play and copy it twice as fast">1×</button>
     <button class="pointer-look glassy icon" type="button" aria-label="Pointer and clicks" aria-haspopup="menu" aria-expanded="false" hidden></button>
     <span class="trim-divider" aria-hidden="true"></span>
-    <button class="frame-toggle glassy labelled" type="button" aria-pressed="false" title="Frame: a background and a device round it">
+    <button class="frame-toggle glassy labelled" type="button" aria-haspopup="dialog" aria-expanded="false" title="Frame: a background and a device round it">
       <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3.4" ${STROKE}/><rect x="6.4" y="6.4" width="7.2" height="7.2" rx="1.4" ${STROKE}/></svg>
       <span>Frame</span>
     </button>
@@ -522,12 +524,7 @@ app.innerHTML = `
   <aside class="frame-panel" role="dialog" aria-label="Frame" hidden>
     <div class="frame-head">
       <span class="frame-title">Frame</span>
-      <span class="frame-head-end">
-        <button class="frame-switch" type="button" role="switch" aria-checked="false" aria-label="Frame the image"></button>
-        <button class="frame-fold icon" type="button" aria-label="Fold the Frame panel" hidden>
-          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5.5 12.5 10 8 14.5" ${STROKE}/></svg>
-        </button>
-      </span>
+      <button class="frame-switch" type="button" role="switch" aria-checked="false" aria-label="Frame the image"></button>
     </div>
     <div class="backgrounds" role="radiogroup" aria-label="Background">
       ${BACKGROUNDS.map(background => `<button class="background" type="button" role="radio" aria-checked="false"
@@ -556,13 +553,14 @@ const image = app.querySelector<HTMLImageElement>('.capture')!;
 const stage = app.querySelector<HTMLElement>('.stage')!;
 const backdrop = app.querySelector<HTMLElement>('.backdrop')!;
 const frameUnder = app.querySelector<HTMLCanvasElement>('.frame-under')!;
-const workspace = app.querySelector<HTMLElement>('.workspace')!;
 const frameOver = app.querySelector<HTMLCanvasElement>('.frame-over')!;
 const card = app.querySelector<HTMLElement>('.card')!;
 const chrome = app.querySelector<HTMLElement>('.chrome')!;
 const frameButton = app.querySelector<HTMLButtonElement>('.frame-button')!;
 const framePanel = app.querySelector<HTMLElement>('.frame-panel')!;
 const frameSwitch = framePanel.querySelector<HTMLButtonElement>('.frame-switch')!;
+/** Which button the Frame panel was opened from, so it closes when the capture changes. */
+let openedFrom: HTMLButtonElement | null = null;
 const overlay = app.querySelector<SVGSVGElement>('.overlay')!;
 const toolbar = app.querySelector<HTMLElement>('.toolbar')!;
 const rail = app.querySelector<HTMLElement>('.rail')!;
@@ -686,8 +684,13 @@ let smallGif = (() => { try { return localStorage.getItem(GIF_SIZE) === 'small';
 let recordable = false;
 /** An AI tool's ask, while one waits for a screenshot. */
 let request: Asked | null = null;
-/** How a capture is framed: kept by Rust in the app, for the session in the preview. */
+/** How a capture is framed: kept by Rust in the app, for the session in the
+ *  preview -- all but `on`, which is this capture's. */
 let frame: FrameStyle = { ...DEFAULT_FRAME };
+/** Whether the next recording opens framed, as the last one was; what Rust
+ *  keeps as `on`. A screenshot never does: framing one is asked for each time. */
+let recordingsFramed = DEFAULT_FRAME.on;
+const opensFramed = (next: CapturePreview) => !!next.video && recordingsFramed;
 /** Whether the current capture's top edge is dark, so its title bar would be. */
 let barDark = false;
 let busy = false;
@@ -1265,6 +1268,7 @@ function render() {
       stage.style.setProperty('--ratio', `${capture.width} / ${capture.height}`);
       layer.density = capture.scale ?? 1;
       layer.setImage(capture.width, capture.height);
+      frame = { ...frame, on: opensFramed(capture) };
       shown = capture; shownAt = Date.now(); mustFlatten = false; crops.length = 0; zoom = startingZoom(capture);
       showMovie(capture);
       // A different capture is a differently sized window, so a position chosen
@@ -1303,7 +1307,9 @@ function render() {
   saveButton.dataset.tip = video ? 'Save the video, as an MP4 (⌘S)' : 'Save to a file (⌘S)';
   saveButton.setAttribute('aria-label', video ? 'Save Video' : 'Save to a file');
   if (!video) closeSaveMenu();
-  dockFramePanel(!!video);
+  // A recording's frame opens from under the video, a screenshot's from here.
+  frameButton.hidden = !!video;
+  if (openedFrom !== frameOpener()) closeFramePanel();
   syncFramePanel();
   copyOnly.dataset.tip = video ? 'Copy the recording and keep working' : 'Copy the image and keep working';
   zoomSelect.parentElement!.hidden = !capture || !!video;
@@ -1389,7 +1395,8 @@ async function flatten(framed = frame.on, size?: { width: number; height: number
   source.src = capture!.dataUrl;
   await source.decode();
   const { width, height } = capture!;
-  const geometry = framed ? frameGeometry(width, height, capture!.scale ?? 1, frame) : null;
+  const style = framing();
+  const geometry = framed ? frameGeometry(width, height, capture!.scale ?? 1, style) : null;
   const canvas = document.createElement('canvas');
   const scaled = !geometry && size && (size.width !== width || size.height !== height) ? size : null;
   canvas.width = geometry?.width ?? scaled?.width ?? width; canvas.height = geometry?.height ?? scaled?.height ?? height;
@@ -1403,7 +1410,7 @@ async function flatten(framed = frame.on, size?: { width: number; height: number
     // The image's own size, which badges are kept inside: not the frame's.
     drawAnnotations(context, layer.annotations, { source, notes: layer.notes, density: layer.density, width, height });
   };
-  if (geometry) paintFrame(context, geometry, frame, { width, height, dark: darkTop(source, width, height) }, draw);
+  if (geometry) paintFrame(context, geometry, style, { width, height, dark: darkTop(source, width, height) }, draw);
   else draw();
   return canvas;
 }
@@ -2636,7 +2643,7 @@ function startingZoom(next: CapturePreview): 'fit' | number {
   const room = canvasRoom();
   if (!room.width || !room.height) return 1;      // before first layout
   const ratio = 1 / (next.scale || 1);
-  const size = frame.on ? frameGeometry(next.width, next.height, next.scale ?? 1, frame) : next;
+  const size = frame.on ? frameGeometry(next.width, next.height, next.scale ?? 1, framing(next)) : next;
   const fits = size.width * ratio <= room.width - 52 && size.height * ratio <= room.height - 52;
   return fits ? 1 : 'fit';
 }
@@ -2712,10 +2719,11 @@ function paintFrameOnScreen(geometry: ReturnType<typeof frameGeometry>, style: F
   if (plates.over) copy(plates.over, frameOver);
 }
 
-/** The frame as this capture takes it. A movie can't be see-through, so a
- *  recording on no background is set on white. */
-function framing(): FrameStyle {
-  return capture?.video && frame.background === 'clear' ? { ...frame, background: 'white' } : frame;
+/** The frame as a capture takes it: in the device for its shape, and -- a
+ *  movie can't be see-through -- a recording on no background set on white. */
+function framing(of: CapturePreview | null = capture): FrameStyle {
+  const style = of ? { ...frame, device: deviceFor(frame, of) } : frame;
+  return of?.video && style.background === 'clear' ? { ...style, background: 'white' } : style;
 }
 
 // At Fit a framed capture is sized from the canvas, so it follows the window.
@@ -2726,7 +2734,6 @@ on(image, 'load', () => { barDark = darkTop(image, image.naturalWidth, image.nat
 
 /** The panel says what the frame is; the footer button says whether there is one. */
 function syncFramePanel() {
-  if (framePanel.classList.contains('docked') && framePanel.classList.contains('folded') !== frameFolded) foldFramePanel(frameFolded);
   frameToggle.classList.toggle('on', frame.on);
   frameSwitch.setAttribute('aria-checked', String(frame.on));
   frameButton.classList.toggle('on', frame.on);
@@ -2741,89 +2748,61 @@ function syncFramePanel() {
   for (const input of framePanel.querySelectorAll<HTMLInputElement>('input[data-frame]')) {
     input.value = String(frame[input.dataset.frame as 'padding' | 'radius' | 'shadow']);
     // A phone's or tablet's corners are its own.
-    input.disabled = input.dataset.frame === 'radius' && handheld(frame.device);
+    input.disabled = input.dataset.frame === 'radius' && handheld(style.device);
     input.closest('.frame-slider')!.classList.toggle('dimmed', input.disabled);
   }
+  // The device for this capture's shape: a tall one's is kept apart.
   for (const button of framePanel.querySelectorAll<HTMLButtonElement>('[data-device]')) {
-    button.setAttribute('aria-checked', String(button.dataset.device === frame.device));
+    button.setAttribute('aria-checked', String(button.dataset.device === style.device));
   }
   // Its colour for a phone or tablet, and its island for a phone.
-  framePanel.querySelector<HTMLElement>('.body-colours')!.hidden = !handheld(frame.device);
+  framePanel.querySelector<HTMLElement>('.body-colours')!.hidden = !handheld(style.device);
   for (const swatch of framePanel.querySelectorAll<HTMLButtonElement>('[data-color]')) {
     swatch.setAttribute('aria-checked', String(swatch.dataset.color === frame.color));
   }
   const island = framePanel.querySelector<HTMLInputElement>('[data-island]')!;
-  island.closest<HTMLElement>('.island-check')!.hidden = frame.device !== 'phone';
+  island.closest<HTMLElement>('.island-check')!.hidden = style.device !== 'phone';
   island.checked = frame.island;
 }
 
 /** Change the frame, show it, and -- unless a slider is still moving -- keep it
  *  for the next capture and the next launch. */
 function setFrame(change: Partial<FrameStyle>, keep = true) {
-  // Beside a recording, turning the frame off folds the panel away, and
-  // turning it on -- by choosing anything in it -- opens it.
-  if (change.on !== undefined && change.on !== frame.on) frameFolded = !change.on;
   frame = { ...frame, ...change };
+  // Only a recording's being framed is kept for the next one.
+  if (capture?.video && change.on !== undefined) recordingsFramed = frame.on;
   syncFramePanel();
   render();
-  if (keep && isTauri) void command('set_frame', { frame }).catch(report);
+  if (keep && isTauri) void command('set_frame', { frame: { ...frame, on: recordingsFramed } }).catch(report);
 }
 
-/** Whether the panel beside a recording is folded away: when the frame is
- *  off, or folded by hand, until Frame under the video opens it again. */
-let frameFolded = false;
-function foldFramePanel(folded: boolean) {
-  frameFolded = folded;
-  const docked = framePanel.classList.contains('docked');
-  framePanel.classList.toggle('folded', docked && folded);
-  frameToggle.setAttribute('aria-pressed', String(docked && !folded));
-  frameToggle.classList.toggle('on', frame.on);
-  framePanel.querySelector<HTMLElement>('.frame-fold')!.hidden = !docked;
-  // The canvas is wider or narrower for it.
-  if (capture) applyZoom();
-}
-
-/** A recording's frame is set beside it, in the panel always in view; a
- *  screenshot's in the same panel, opened from Frame in the footer. */
-function dockFramePanel(docked: boolean) {
-  if (docked === framePanel.classList.contains('docked')) return;
-  framePanel.classList.toggle('docked', docked);
-  if (docked) {
-    workspace.append(framePanel);
-    framePanel.removeAttribute('style');
-    framePanel.hidden = false;
-  } else {
-    app.append(framePanel);
-    framePanel.hidden = true;
-  }
-  frameButton.hidden = docked;
-  frameButton.setAttribute('aria-expanded', 'false');
-  // Off, it starts folded out of the way.
-  foldFramePanel(docked && !frame.on);
-}
-on(framePanel.querySelector<HTMLButtonElement>('.frame-fold')!, 'click', () => foldFramePanel(true));
-on(frameToggle, 'click', () => foldFramePanel(!frameFolded));
+/** The button the panel opens from, and is placed against: Frame in the
+ *  footer for a screenshot; for a recording, Frame under the video, so the
+ *  panel opens over the video and the video keeps the window's width. */
+const frameOpener = () => (capture?.video ? frameToggle : frameButton);
 
 function placeFramePanel() {
-  // Docked, it is laid out in its column, not placed over anything.
-  if (framePanel.classList.contains('docked')) return;
-  const button = frameButton.getBoundingClientRect(), box = framePanel.getBoundingClientRect();
+  const button = frameOpener().getBoundingClientRect(), box = framePanel.getBoundingClientRect();
   const left = Math.min(Math.max(8, button.right - box.width), innerWidth - box.width - 8);
-  Object.assign(framePanel.style, { left: `${left}px`, bottom: `${innerHeight - button.top + 10}px` });
+  // In a short window it scrolls rather than running off the top.
+  Object.assign(framePanel.style, { left: `${left}px`, bottom: `${innerHeight - button.top + 10}px`,
+                                    maxHeight: `${Math.max(160, button.top - 18)}px` });
 }
 function openFramePanel() {
   framePanel.hidden = false;
-  frameButton.setAttribute('aria-expanded', 'true');
+  openedFrom = frameOpener();
+  openedFrom.setAttribute('aria-expanded', 'true');
   placeFramePanel();
 }
 function closeFramePanel(refocus = false) {
-  if (framePanel.hidden || framePanel.classList.contains('docked')) return;
+  if (framePanel.hidden) return;
   framePanel.hidden = true;
-  frameButton.setAttribute('aria-expanded', 'false');
-  if (refocus) frameButton.focus();
+  openedFrom?.setAttribute('aria-expanded', 'false');
+  if (refocus) openedFrom?.focus();
+  openedFrom = null;
 }
 
-on(frameButton, 'click', () => {
+for (const opener of [frameButton, frameToggle]) on(opener, 'click', () => {
   if (!framePanel.hidden) { closeFramePanel(); return; }
   // Asking for Frame is asking for a frame: it comes on as the panel opens,
   // and the switch at its top is there to take it off again.
@@ -2835,7 +2814,8 @@ on(framePanel, 'click', event => {
   const swatch = (event.target as Element).closest<HTMLButtonElement>('.background');
   if (swatch?.dataset.background && !swatch.disabled) setFrame({ background: swatch.dataset.background, on: true });
   const device = (event.target as Element).closest<HTMLButtonElement>('[data-device]')?.dataset.device as Device | undefined;
-  if (device) setFrame({ device, on: true });
+  // A tall capture's device is its own, so it doesn't change a wide one's.
+  if (device) setFrame(capture && isTall(capture) ? { tallDevice: device, on: true } : { device, on: true });
   const color = (event.target as Element).closest<HTMLButtonElement>('[data-color]')?.dataset.color as BodyColour | undefined;
   if (color) setFrame({ color, on: true });
 });
@@ -2850,7 +2830,7 @@ for (const input of framePanel.querySelectorAll<HTMLInputElement>('input[data-fr
 }
 document.addEventListener('pointerdown', event => {
   const target = event.target as Node;
-  if (!framePanel.hidden && !framePanel.contains(target) && !frameButton.contains(target)) closeFramePanel();
+  if (!framePanel.hidden && !framePanel.contains(target) && !frameOpener().contains(target)) closeFramePanel();
 }, { signal: abort.signal });
 window.addEventListener('resize', () => { if (!framePanel.hidden) placeFramePanel(); }, { signal: abort.signal });
 syncFramePanel();
@@ -2913,7 +2893,7 @@ function remember(leaving: CapturePreview) {
   keep({ capture: leaving, thumb: thumbnail(), at: shownAt, annotations: layer.annotations.map(item => ({ ...item })),
          trim: leaving.video && trim ? { ...trim } : undefined, cuts: leaving.video && cuts.length ? cuts.map(cut => ({ ...cut })) : undefined,
          speed: leaving.video && speed !== 1 ? speed : undefined, pointerLook: leaving.video ? pointerLook : undefined,
-         zooms: leaving.video && zooms ? zooms.map(zoom => ({ ...zoom })) : undefined });
+         zooms: leaving.video && zooms ? zooms.map(zoom => ({ ...zoom })) : undefined, framed: frame.on });
 }
 
 /** Captures copied straight from the overlay, which the editor never showed,
@@ -2954,7 +2934,14 @@ function restore(entry: Past) {
   layer.setImage(entry.capture.width, entry.capture.height);
   layer.load(entry.annotations);
   shown = entry.capture; shownAt = entry.at;
+  // Framed or not, as it was left.
+  frame = { ...frame, on: entry.framed ?? opensFramed(entry.capture) };
   zoom = startingZoom(entry.capture);
+  // A recording grows the window for it, as it did when it was made.
+  if (isTauri && entry.capture.video) {
+    const scale = entry.capture.scale || 1;
+    void command('fit_to_recording', { width: entry.capture.width / scale, height: entry.capture.height / scale }).catch(() => {});
+  }
   showMovie(entry.capture, entry.trim, entry.cuts, entry.speed, entry.pointerLook, entry.zooms);
   render();
 }
@@ -3110,7 +3097,7 @@ document.addEventListener('keydown', event => {
     closeLooksMenu(true);
     return;
   }
-  if (key === 'escape' && !framePanel.hidden && !framePanel.classList.contains('docked')) {
+  if (key === 'escape' && !framePanel.hidden) {
     event.preventDefault();
     closeFramePanel(true);
     return;
@@ -3240,7 +3227,9 @@ async function init() {
     on(gear, 'click', () => { void command('open_settings').catch(report); });
     void command<boolean>('recording_supported').then(can => { recordable = can === true; render(); }).catch(() => {});
     void command<Partial<SavedSettings>>('get_settings').then(saved => {
-      frame = sanitizeFrame(saved?.frame); syncFramePanel(); render();
+      const kept = sanitizeFrame(saved?.frame);
+      recordingsFramed = kept.on;
+      frame = { ...kept, on: capture ? opensFramed(capture) : false }; syncFramePanel(); render();
       if (saved) showShortcuts(saved);
     }).catch(() => {});
     cleanups.push(await watchSettings(showShortcuts));

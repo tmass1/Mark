@@ -145,6 +145,53 @@ fn fit_window(app: &AppHandle, to: Option<(f64, f64)>) {
     if window.set_size(size).is_ok() { let _ = window.center(); }
 }
 
+/// Kept between the editor and the edges of the screen's free area when it
+/// grows for a recording.
+const RECORDING_MARGIN: f64 = 40.0;
+
+/// Size the window for a recording `shown` points across, with its trim strip
+/// under it: at actual size where the screen allows, up to nearly all of it
+/// less the menu bar and the Dock, since a recording is watched as well as
+/// marked up. Already open, it only grows: a window made bigger by hand is
+/// left as big.
+fn fit_recording(app: &AppHandle, shown: (f64, f64)) {
+    let Some(window) = app.get_webview_window(EDITOR) else { return };
+    let to = (shown.0, shown.1 + recording::STRIP);
+    let Ok(Some(monitor)) = window.current_monitor().or_else(|_| app.primary_monitor()) else { return fit_window(app, Some(to)) };
+    let asked = app.state::<State>().lock().unwrap().request.is_some();
+    let scale = monitor.scale_factor();
+    let area = monitor.work_area();
+    let free = area.size.to_logical::<f64>(scale);
+    let mut width = (to.0 + SIDES + RAIL).min(free.width - RECORDING_MARGIN).max(380.0);
+    let mut height = (to.1 + CHROME + if asked { REQUEST_BAR } else { 0.0 })
+        .min(free.height - RECORDING_MARGIN).max(CHROME + RAIL_HEIGHT);
+    if window.is_visible().unwrap_or(false) {
+        let now = window.inner_size().map(|size| size.to_logical::<f64>(window.scale_factor().unwrap_or(scale)));
+        if let Ok(now) = now {
+            if now.width >= width && now.height >= height { return; }
+            width = width.max(now.width);
+            height = height.max(now.height);
+        }
+    }
+    if window.set_size(tauri::LogicalSize::new(width, height)).is_err() { return; }
+    // In the middle of the free area, in its own pixels, so a second screen
+    // of another density doesn't throw it.
+    let (across, down) = (width * scale, height * scale);
+    let _ = window.set_position(tauri::PhysicalPosition::new(
+        area.position.x + ((f64::from(area.size.width) - across) / 2.0).max(0.0) as i32,
+        area.position.y + ((f64::from(area.size.height) - down) / 2.0).max(0.0) as i32));
+}
+
+/// A recording back from Recent: the window grows for it, as it did when the
+/// recording was made.
+#[tauri::command]
+fn fit_to_recording(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
+    let size = 1.0..=100_000.0;
+    if !size.contains(&width) || !size.contains(&height) { return Err("That isn't a recording's size.".into()); }
+    fit_recording(&app, (width, height));
+    Ok(())
+}
+
 fn changed(app: &AppHandle) {
     if let Err(error) = app.emit_to(EDITOR, "capture-changed", ()) { eprintln!("[Mark] {error}"); }
 }
@@ -459,6 +506,7 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bo
         let handle = app.clone();
         if let Err(error) = app.run_on_main_thread(move || {
             let mut wanted: Option<(f64, f64)> = None;
+            let mut recorded: Option<(f64, f64)> = None;
             let thumbnail_wanted = handle.state::<Prefs>().0.lock().unwrap().thumbnail();
             let mut thumb: Option<(Vec<u8>, u32, u32, f64, Option<capture::Video>)> = None;
             let mut copied: Option<capture::Capture> = None;
@@ -484,10 +532,9 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bo
                             copied = Some(capture);
                             false
                         } else {
-                            // A recording has its trim strip under it as well.
+                            // A recording grows the window for it, and for its trim strip.
                             let shown = (f64::from(capture.width) / capture.scale, f64::from(capture.height) / capture.scale);
-                            // and its style panel beside it.
-                            wanted = Some(if capture.video.is_some() { (shown.0 + recording::STYLE, shown.1 + recording::STRIP) } else { (width, height) });
+                            if capture.video.is_some() { recorded = Some(shown); } else { wanted = Some((width, height)); }
                             // Taken from another app with the thumbnail chosen, and no AI
                             // tool waiting on it: the corner, not the editor.
                             if thumbnail_wanted && session.request.is_none() && !session.editor_was_visible {
@@ -507,7 +554,8 @@ fn take_selection(app: &AppHandle, target: capture::Target, delay: u32, copy: bo
             if let Some(capture) = copied { keep_copied(&handle, capture, target.size(), restore); return; }
             // Resize before showing, so the window arrives at its size rather
             // than being seen to grow into it.
-            if wanted.is_some() { fit_window(&handle, wanted); }
+            if let Some(shown) = recorded { fit_recording(&handle, shown); }
+            else if wanted.is_some() { fit_window(&handle, wanted); }
             if let Some((png, width, height, scale, video)) = thumb {
                 // Copied at once, so it is on the clipboard whether or not
                 // anyone opens it -- a recording as its movie. If either
@@ -755,21 +803,23 @@ impl mcp::Host for AppHost {
 /// asked is noted now, while it is still in front, to go back to on Send.
 fn show_request(app: &AppHandle, id: u64) {
     let own = std::process::id() as i32;
-    let (busy, shown) = {
+    let (busy, shown, video) = {
         let state = app.state::<State>();
         let mut session = state.lock().unwrap();
         if let Some(request) = session.request.as_mut().filter(|request| request.id == id) {
             request.return_to = macos::frontmost_pid().filter(|pid| *pid != own);
         }
         let shown = session.capture.as_ref().map(|capture| (f64::from(capture.width) / capture.scale, f64::from(capture.height) / capture.scale));
-        (session.busy, shown)
+        (session.busy, shown, session.capture.as_ref().is_some_and(|capture| capture.video.is_some()))
     };
     changed(app);
     if busy { return; }
     let Some(window) = app.get_webview_window(EDITOR) else { return };
     // Opening, it fits what it shows and the bar; already open, it is left
     // the size the user has it.
-    if !window.is_visible().unwrap_or(false) { fit_window(app, shown); }
+    if !window.is_visible().unwrap_or(false) {
+        match shown { Some(shown) if video => fit_recording(app, shown), _ => fit_window(app, shown) }
+    }
     if let Err(error) = window.show() { eprintln!("[Mark] {error}"); }
     if let Ok(handle) = window.ns_window() { macos::bring_forward(handle); }
     let _ = window.set_focus();
@@ -1239,6 +1289,7 @@ pub fn run() {
             recording::recording_supported, recording::recording_status, recording::stop_recording, recording::discard_recording,
             recording::video_frames, recording::video_pointer, recording::copy_video, recording::copy_gif, recording::save_video, recording::share_video,
             get_settings, set_appearance, set_shortcut, set_frame, set_after_capture, set_mcp, set_record_options, set_show_in_dock, login_enabled, set_login, open_settings, quit_app,
+            fit_to_recording,
             updates::check_for_update, updates::pending_update, updates::install_update, updates::skip_update,
             updates::set_auto_update, updates::set_install_updates, updates::open_updates])
         .on_menu_event(|app, event| menu_action(app, event.id.as_ref()))

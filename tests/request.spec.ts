@@ -57,9 +57,12 @@ const WORDS = [
 ];
 
 test('Send sends the capture with its marks, without its frame, and says what it is', async ({ page }) => {
-  // Framed in Settings: Send leaves the frame out all the same, title bar and all.
+  // Framed, in a window: Send leaves the frame out all the same, title bar and all.
   const framed = { on: true, background: 'sky', padding: 0.5, radius: 0.4, shadow: 0.5, chrome: true };
   await open(page, { returns: { get_settings: { appearance: 'dark', shortcut: 'Super+Digit4', frame: framed }, recognize_text: WORDS } });
+  await waitFor(page, 'get_settings');
+  await page.getByRole('button', { name: 'Frame', exact: true }).click();
+  await page.keyboard.press('Escape');
   await expect(page.locator('.canvas')).toHaveClass(/framed/);
   // A numbered step: a mark, and a step to list. A steps through the arrow's
   // slot, so press it until the numbered arrow is the one in hand.

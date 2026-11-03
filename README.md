@@ -391,8 +391,12 @@ notarization; an Apple Development certificate is only good for this Mac.
    corners and shadow are shares of the capture's own size, so a small one
    and a large one come out alike; the title bar is a real one's height in the
    capture's points. Opening Frame turns it on and the switch at its top turns
-   it off; whichever it is, and how, is kept for the next capture and the next
-   launch. Recent keeps captures unframed, as they were drawn.
+   it off. A screenshot opens unframed every time, the frame as it was last
+   set a click away; a recording opens framed if the last one was. A tall
+   capture keeps a device of its own — a tall recording starts in a phone —
+   so a phone chosen for a prototype doesn't follow into the next desktop
+   recording. How it looks is kept for the next launch. Recent shows captures
+   unframed, as they were drawn, and opens each framed or not, as it was left.
 
    **Copy Text** (⇧⌘T), beside Share and Save, copies the words in the
    capture: read on the Mac by the same text recognition as Live Text, so the
@@ -475,9 +479,9 @@ notarization; an Apple Development certificate is only good for this Mac.
     Under it, Play sits against the timeline, with where the playhead is and
     how long the part kept runs just after it, then the tools: Cut and Zoom,
     how fast it plays and how the pointer shows, and **Frame**, lit while it is
-    framed, which opens the Frame panel beside it. The panel folds away while
-    there is no frame, and by its ›; in a narrow window the tools show their
-    icons alone, so the timeline keeps its room.
+    framed, which opens the Frame panel over the video — so the video keeps
+    the window's width — until a click elsewhere or Escape; in a narrow
+    window the tools show their icons alone, so the timeline keeps its room.
     The editor then plays it, over a strip of its frames: drag the yellow
     handles to keep only part of it, or press **I** and **O** to trim to the
     playhead, and Space to play and pause; playing loops the part kept. To
@@ -740,7 +744,10 @@ default anyway.
   show. Mark does not remember a window size between captures, because a window
   that fits its contents cannot also restore an arbitrary earlier one — and a
   remembered size is arbitrary twice over, too big for the empty state and the
-  wrong shape for the next capture.
+  wrong shape for the next capture. A recording, made or opened from Recent,
+  grows the window for it, up to nearly all of the screen's free area, since
+  it is watched as well as marked up; an open window only grows for one, so a
+  window made bigger by hand stays as big.
 - `src-tauri/capabilities/editor.json` is the complete per-window API allowlist.
 
 The editor window is transparent and sits on a native `underWindowBackground`

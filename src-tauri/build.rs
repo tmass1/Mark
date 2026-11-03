@@ -9,7 +9,7 @@ fn main() {
       "dismiss_editor", "open_screen_settings", "send_capture", "decline_request", "mcp_setup", "add_to_agent", "open_guide",
       "thumbnail_image", "open_thumbnail", "close_thumbnail", "drag_thumbnail",
       "recording_supported", "recording_status", "stop_recording", "discard_recording",
-      "video_frames", "video_pointer", "copy_video", "copy_gif", "save_video", "share_video", "set_record_options",
+      "video_frames", "video_pointer", "copy_video", "copy_gif", "save_video", "share_video", "set_record_options", "fit_to_recording",
       "glass_available", "set_glass",
       "get_settings", "set_appearance", "set_shortcut", "set_frame", "set_after_capture", "set_mcp", "set_show_in_dock", "login_enabled", "set_login", "open_settings",
       "check_for_update", "pending_update", "install_update", "skip_update", "set_auto_update", "set_install_updates", "open_updates"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BACKGROUNDS, DEFAULT_FRAME, cssBackground, frameGeometry, gradientLine, sanitizeFrame } from './frame';
+import { BACKGROUNDS, DEFAULT_FRAME, cssBackground, deviceFor, frameGeometry, gradientLine, isTall, sanitizeFrame } from './frame';
 
 describe('frame geometry', () => {
   it('is a share of the image, so a small capture and a large one look alike', () => {
@@ -105,5 +105,29 @@ describe('a stored frame', () => {
     expect(sanitizeFrame({ device: 'tablet', color: 'blue', island: true }))
       .toEqual({ ...DEFAULT_FRAME, device: 'tablet', color: 'blue', island: true });
     expect(sanitizeFrame({ device: 'watch', color: 'gold' })).toEqual(DEFAULT_FRAME);
+    // A tall capture's device, once chosen -- None too -- and nothing if it isn't one.
+    expect(sanitizeFrame({ tallDevice: 'none' }).tallDevice).toBe('none');
+    expect(sanitizeFrame({ tallDevice: 'watch' })).not.toHaveProperty('tallDevice');
+  });
+});
+
+describe('the device for a capture\'s shape', () => {
+  const style = { ...DEFAULT_FRAME, device: 'browser' as const };
+  const wide = { width: 1440, height: 900 }, tall = { width: 390, height: 844 };
+
+  it('is the wide one\'s unless the capture is taller than wide by a fifth', () => {
+    expect(isTall(tall)).toBe(true);
+    expect(isTall({ width: 1000, height: 1200 })).toBe(false);
+    expect(isTall({ width: 1000, height: 1201 })).toBe(true);
+    expect(deviceFor(style, wide)).toBe('browser');
+    expect(deviceFor(style, { ...wide, video: {} })).toBe('browser');
+  });
+
+  it('is a tall one\'s own once chosen; until then a phone for a recording, the wide one\'s for a screenshot', () => {
+    expect(deviceFor(style, { ...tall, video: {} })).toBe('phone');
+    expect(deviceFor(style, tall)).toBe('browser');
+    expect(deviceFor({ ...style, tallDevice: 'tablet' }, { ...tall, video: {} })).toBe('tablet');
+    expect(deviceFor({ ...style, tallDevice: 'none' }, tall)).toBe('none');
+    expect(deviceFor({ ...style, tallDevice: 'tablet' }, wide)).toBe('browser');
   });
 });

@@ -24,6 +24,10 @@ export interface FrameStyle {
   color: BodyColour;
   /** A phone's Dynamic Island, drawn over the top of its screen. */
   island: boolean;
+  /** The device for a tall capture, kept apart from a wide one's, so a phone
+   *  chosen for a prototype doesn't follow into the next desktop recording.
+   *  Until one is chosen, see deviceFor. */
+  tallDevice?: Device;
 }
 
 export type Device = 'none' | 'window' | 'browser' | 'phone' | 'tablet';
@@ -107,7 +111,19 @@ export function sanitizeFrame(value: unknown): FrameStyle {
       : (given as { phone?: unknown }).phone === true ? 'phone' : (given as { chrome?: unknown }).chrome === true ? 'window' : DEFAULT_FRAME.device,
     color: BODY_COLOURS.some(colour => colour.id === given.color) ? given.color as BodyColour : DEFAULT_FRAME.color,
     island: flag(given.island, DEFAULT_FRAME.island),
+    ...(DEVICES.some(device => device.id === given.tallDevice) ? { tallDevice: given.tallDevice as Device } : {}),
   };
+}
+
+/** Taller than wide by a fifth or more: a phone's screen, a prototype's. */
+export const isTall = (capture: { width: number; height: number }) => capture.height > capture.width * 1.2;
+
+/** The device round a capture of this shape: a wide one's is `device`; a tall
+ *  one's is its own once chosen, and until then a phone for a recording --
+ *  likely of a phone -- and the wide one's for a screenshot. */
+export function deviceFor(style: FrameStyle, capture: { width: number; height: number; video?: unknown }): Device {
+  if (!isTall(capture)) return style.device;
+  return style.tallDevice ?? (capture.video ? 'phone' : style.device);
 }
 
 /** A title bar is 28 points, as a Mac's own; its lights sit on centres 20

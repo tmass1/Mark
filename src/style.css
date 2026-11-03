@@ -246,7 +246,7 @@ footer > * { flex: none; }
 .frame-button.on { color: var(--blue); }
 .frame-panel {
   position: fixed; z-index: 30; width: 252px; display: flex; flex-direction: column; gap: 12px; padding: 12px 14px 14px;
-  border-radius: 14px; background: var(--glass);
+  overflow-y: auto; overscroll-behavior: contain; border-radius: 14px; background: var(--glass);
   -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
   box-shadow: 0 12px 34px var(--shadow), 0 0 0 .5px var(--control-line);
 }
@@ -299,27 +299,11 @@ footer > * { flex: none; }
 .body-colour:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 .frame-check { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; }
 .frame-check input { margin: 0; accent-color: var(--blue); }
-.frame-head-end { display: flex; align-items: center; gap: 6px; }
-.frame-fold { width: 26px; height: 26px; padding: 0; border: none; border-radius: 7px; background: transparent; color: var(--muted);
-  display: grid; place-items: center; }
-.frame-fold svg { width: 16px; height: 16px; }
-.frame-fold:hover { background: var(--sunken); color: var(--ink); }
-/* Folded beside a recording, it is gone, and Frame under the video brings
-   it back -- lit, as Frame in a screenshot's footer is, while there is one. */
-.frame-panel.docked.folded { display: none; }
+/* Under a recording, Frame opens the panel over the video, and is lit, as
+   Frame in a screenshot's footer is, while there is a frame. */
 .trim .frame-toggle svg { width: 17px; height: 17px; }
 .frame-toggle.on { color: var(--blue); }
-.frame-toggle[aria-pressed="true"] { background: var(--lens); }
-/* Beside a recording, the panel is a column of its own, always in view, as
-   wide as STYLE in recording.rs, less the gap; change both. */
-.frame-panel.docked {
-  position: relative; z-index: auto; flex: none; width: 260px; align-self: stretch; overflow-y: auto; margin-bottom: 4px;
-  border-radius: 22px; padding: 14px 16px 16px;
-  /* The same pane as the toolbar and the rail, not a menu's: it is part of
-     the window, beside the video, rather than something over it. */
-  background: var(--sheen), var(--panel); -webkit-backdrop-filter: none; backdrop-filter: none;
-  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 14px 34px -16px var(--shadow);
-}
+.frame-toggle[aria-expanded="true"] { background: var(--lens); }
 @media (prefers-reduced-motion: reduce) { .frame-switch, .frame-switch::after { transition: none; } }
 
 /* Share and Save are one pair of related actions, so they read as one control

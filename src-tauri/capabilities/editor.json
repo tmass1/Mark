@@ -8,7 +8,7 @@
     "allow-copy-capture", "allow-copy-edited", "allow-copy-text", "allow-recognize-text", "allow-scan-image", "allow-save-image", "allow-share-image",
     "allow-dismiss-editor", "allow-open-screen-settings", "allow-quit-app", "allow-send-capture", "allow-decline-request",
     "allow-glass-available", "allow-set-glass",
-    "allow-recording-supported", "allow-video-frames", "allow-video-pointer", "allow-copy-video", "allow-copy-gif", "allow-save-video", "allow-share-video",
+    "allow-recording-supported", "allow-video-frames", "allow-video-pointer", "allow-copy-video", "allow-copy-gif", "allow-save-video", "allow-share-video", "allow-fit-to-recording",
     "allow-get-settings", "allow-set-frame", "allow-open-settings",
     "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize",
     "core:event:allow-listen", "core:event:allow-unlisten"

@@ -29,9 +29,6 @@ pub const LONGEST: Duration = Duration::from_secs(300);
 /// The trim strip under a recording in the editor and the gap above it, kept
 /// clear when the window is fitted to it. Mirrors .trim in style.css.
 pub const STRIP: f64 = 12.0 + 52.0;
-/// The style panel beside a recording in the editor, and the gap before it.
-/// Mirrors .frame-panel.docked in style.css.
-pub const STYLE: f64 = 260.0 + 10.0;
 /// The bar's window, its shadow's room included. Mirrors recording.css.
 const BAR_SIZE: (f64, f64) = (256.0, 88.0);
 /// Between what is recorded and the bar.

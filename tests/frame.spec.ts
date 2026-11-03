@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { installBridge, sent, waitFor, clear } from './bridge';
+import { installBridge, sent, waitFor, clear, setBridge, emit } from './bridge';
 import { CAPTURE } from './fixture';
 import { DEFAULT_FRAME, frameGeometry, type FrameStyle } from '../src/frame';
 
@@ -151,24 +151,28 @@ test('framed, even an untouched capture is drawn anew rather than copied as it c
   expect((await sent(page)).map(call => call.cmd)).not.toContain('copy_capture');
 });
 
-test('the frame is kept for next time, and the next capture opens in it', async ({ page }) => {
+test('a screenshot opens unframed, the frame as it was left a click away, and framing one leaves recordings as they were', async ({ page }) => {
+  // The last recording was framed: a screenshot isn't, for that.
   const kept = { on: true, background: 'dusk', padding: 0.2, radius: 0, shadow: 0, device: 'window', color: 'black', island: false };
   await installBridge(page, { returns: { get_settings: { shortcut: 'Super+Digit4', frame: kept } } });
   await page.goto('/');
   await page.locator('.capture').waitFor();
-  // Framed from the start, as it was left.
-  await expect(page.locator('.canvas')).toHaveClass(/framed/);
-  await expect(page.locator('.frame-under')).toBeVisible();
-  await expect(frameButton(page)).toHaveClass(/\bon\b/);
+  await waitFor(page, 'get_settings');
+  await expect(page.locator('.canvas')).not.toHaveClass(/framed/);
+  await expect(page.locator('.frame-under')).toBeHidden();
+  await expect(frameButton(page)).not.toHaveClass(/\bon\b/);
 
+  // Frame frames it, in the style it was left in.
   await frameButton(page).click();
+  await expect(page.locator('.canvas')).toHaveClass(/framed/);
+  await expect(frameButton(page)).toHaveClass(/\bon\b/);
   await expect(background(page, 'Dusk')).toHaveAttribute('aria-checked', 'true');
   await expect(device(page, 'Window')).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('input[data-frame="padding"]')).toHaveValue('0.2');
 
   await clear(page);
   await background(page, 'Peach').click();
-  expect((await waitFor(page, 'set_frame')).args).toEqual({ frame: { ...kept, background: 'peach' } });
+  await saved(page, { ...kept, background: 'peach' });
 
   // A slider is shown as it moves and kept once it is let go -- not on every step.
   await clear(page);
@@ -176,7 +180,48 @@ test('the frame is kept for next time, and the next capture opens in it', async 
   await expect(page.locator('.dimensions')).toHaveText(/framed/);
   expect((await sent(page)).map(call => call.cmd)).not.toContain('set_frame');
   await slide(page, 'padding', 0.6);
+  await saved(page, { ...kept, background: 'peach', padding: 0.6 });
+
+  // Off for this screenshot is off for this screenshot: the next recording is still framed.
+  await clear(page);
+  await frameSwitch(page).click();
+  await expect(page.locator('.canvas')).not.toHaveClass(/framed/);
   expect((await waitFor(page, 'set_frame')).args).toEqual({ frame: { ...kept, background: 'peach', padding: 0.6 } });
+});
+
+test('a framed screenshot comes back from Recent framed, and the next one opens unframed', async ({ page }) => {
+  await installBridge(page);
+  await page.goto('/');
+  await page.locator('.capture').waitFor();
+  await frameButton(page).click();
+  await expect(page.locator('.canvas')).toHaveClass(/framed/);
+  await page.keyboard.press('Escape');                    // the panel
+  await page.keyboard.press('Escape');                    // and the capture
+  await expect(page.locator('.recent')).toHaveCount(1);
+  await page.locator('.recent').click();
+  await expect(page.locator('.canvas')).toHaveClass(/framed/);
+
+  await setBridge(page, { capture: { ...CAPTURE } });
+  await emit(page, 'capture-changed');
+  await expect(page.locator('.canvas')).not.toHaveClass(/framed/);
+  // Both kept: the framed one went back into Recent as the new one came in.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.recent')).toHaveCount(2);
+});
+
+test('a tall screenshot keeps a device of its own, the wide one\'s until one is chosen', async ({ page }) => {
+  await installBridge(page, { capture: { ...CAPTURE, width: 160, height: 240 },
+                              returns: { get_settings: { frame: { ...DEFAULT_FRAME, device: 'browser' } } } });
+  await page.goto('/');
+  await page.locator('.capture').waitFor();
+  await waitFor(page, 'get_settings');
+  await frameButton(page).click();
+  await expect(device(page, 'Browser')).toHaveAttribute('aria-checked', 'true');
+  await clear(page);
+  await device(page, 'Phone').click();
+  await expect(device(page, 'Phone')).toHaveAttribute('aria-checked', 'true');
+  // The wide one's is left as it was.
+  await saved(page, { device: 'browser', tallDevice: 'phone' });
 });
 
 test('the panel goes with Escape or a click elsewhere, and leaves the frame on', async ({ page }) => {

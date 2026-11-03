@@ -167,12 +167,16 @@ pub struct Frame {
     pub color: String,
     /// A phone's Dynamic Island.
     pub island: bool,
+    /// The device for a tall capture, kept apart from a wide one's, once one is
+    /// chosen: any of `device`'s names, "none" too.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tall_device: Option<String>,
 }
 
 impl Default for Frame {
     fn default() -> Self {
         Frame { on: false, background: "sky".into(), padding: 0.5, radius: 0.4, shadow: 0.5, chrome: false,
-                device: "none".into(), color: "black".into(), island: false }
+                device: "none".into(), color: "black".into(), island: false, tall_device: None }
     }
 }
 
@@ -192,13 +196,14 @@ impl Frame {
             _ => defaults.device.clone(),
         };
         let color = if matches!(self.color.as_str(), "black" | "silver" | "titanium" | "blue") { self.color } else { defaults.color };
+        let tall_device = self.tall_device.clone().filter(|tall| matches!(tall.as_str(), "none" | "window" | "browser" | "phone" | "tablet"));
         Frame {
             background: if named { self.background } else { defaults.background },
             padding: share(self.padding, defaults.padding),
             radius: share(self.radius, defaults.radius),
             shadow: share(self.shadow, defaults.shadow),
             chrome: device == "window",
-            device, color,
+            device, color, tall_device,
             ..self
         }
     }
@@ -263,7 +268,7 @@ mod tests {
                                    record: Some("Shift+Super+Digit5".into()) },
             check_updates: false, install_updates: false, skipped_version: Some("0.5.0".into()),
             frame: Frame { on: true, background: "midnight".into(), padding: 0.25, radius: 0.75, shadow: 0.0, chrome: false,
-                           device: "phone".into(), color: "titanium".into(), island: true },
+                           device: "phone".into(), color: "titanium".into(), island: true, tall_device: Some("tablet".into()) },
             after_capture: "thumbnail".into(), mcp: false, record_mic: true, record_clicks: false,
             recording_pointer: PointerLook::Touch, recording_clicks: ClickLook::Ripple, record_zoom: true, show_in_dock: false,
         };
@@ -312,8 +317,17 @@ mod tests {
         // A browser is not a title bar to a Mark from before; a window is.
         assert!(parse(br#"{"frame":{"device":"window"}}"#).unwrap().frame.chrome);
         // Names this Mark doesn't know are its defaults.
-        let odd = parse(br#"{"frame":{"device":"watch","color":"gold"}}"#).unwrap().frame;
-        assert_eq!((odd.device.as_str(), odd.color.as_str()), ("none", "black"));
+        let odd = parse(br#"{"frame":{"device":"watch","color":"gold","tallDevice":"watch"}}"#).unwrap().frame;
+        assert_eq!((odd.device.as_str(), odd.color.as_str(), odd.tall_device), ("none", "black", None));
+    }
+
+    #[test]
+    fn a_tall_capture_keeps_its_own_device_and_one_not_chosen_is_left_out() {
+        let frame = parse(br#"{"frame":{"device":"browser","tallDevice":"phone"}}"#).unwrap().frame;
+        assert_eq!((frame.device.as_str(), frame.tall_device.as_deref()), ("browser", Some("phone")));
+        let saved = String::from_utf8(serde_json::to_vec(&frame).unwrap()).unwrap();
+        assert!(saved.contains(r#""tallDevice":"phone""#));
+        assert!(!String::from_utf8(serde_json::to_vec(&Frame::default()).unwrap()).unwrap().contains("tallDevice"));
     }
 
     #[test]
