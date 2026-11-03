@@ -134,6 +134,15 @@ test('⌘4 on the page reaches the demo while it is in view, as the demo says it
   await expect(inside.locator('iframe.overlay')).toHaveCount(1);
 });
 
+test('“Record a video” opens the demo’s Record bar', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/site.html');
+  await page.locator('[data-record]').click();
+  const inside = page.locator('iframe.demo').contentFrame();
+  await expect(inside.locator('iframe.overlay').contentFrame().locator('.choices')).toBeVisible();
+  await expect(page.locator('iframe.demo')).toBeInViewport();
+});
+
 test('the setup line copies as it reads', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text: string) => { (window as any).__copied = text; } } });

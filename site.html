@@ -237,10 +237,10 @@
           <!-- A picture of an app looks just like the app, so the frame says
                which this is -- until the demo has been used. -->
           <p class="try-me"><span class="live" aria-hidden="true"></span><strong>Try me</strong> — it’s the real app, live</p>
-          <iframe class="demo" data-src="./demo.html?embed" title="Mark, running in your browser"></iframe>
+          <iframe class="demo" data-src="./demo.html?embed" title="Mark, running in your browser" allow="microphone; clipboard-write"></iframe>
         </div>
         <p class="demo-note">This is Mark itself — its real editor, selection overlay and settings — running in your browser
-          against a picture of a desktop.</p>
+          against a picture of a desktop. It really records, too: press Record, and click around its dashboard.</p>
         <figure class="shot hero-shot">
           <img src="./site/mockup.png" width="938" height="616" loading="lazy" alt="Mark’s editor over a captured dashboard, marked up with three numbered notes: add an “All time” range, show the day’s total on hover, and label the dashed line “Last year”." />
         </figure>
@@ -288,6 +288,10 @@
           <p class="section-lede">A flicker, a stuck transition, a flow that takes five clicks. Record a region, a window or the
             whole screen — a window you pick comes to the front — with your microphone if you want to talk it through.</p>
           <p class="fine">Up to five minutes. Recording needs macOS 15 or later.</p>
+          <div class="agents-actions">
+            <button class="primary" type="button" data-record>Record a video</button>
+            <span class="agents-try">in the demo above</span>
+          </div>
         </div>
         <ul class="facts">
           <li><span class="glyph" data-glyph="mic"></span><div><h3>One bar for all of it</h3>

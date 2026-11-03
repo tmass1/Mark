@@ -22,6 +22,10 @@
   Cache-Control: no-cache
 /demo/selector.html
   Cache-Control: no-cache
+/demo/recording
+  Cache-Control: no-cache
+/demo/recording.html
+  Cache-Control: no-cache
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
@@ -33,6 +37,16 @@
   Cache-Control: public, max-age=86400
 
 /demo/scene.jpg
+  Cache-Control: public, max-age=86400
+/demo/scene-7d.jpg
+  Cache-Control: public, max-age=86400
+/demo/scene-90d.jpg
+  Cache-Control: public, max-age=86400
+/demo/scene-1y.jpg
+  Cache-Control: public, max-age=86400
+/demo/scene-orders.jpg
+  Cache-Control: public, max-age=86400
+/demo/scene-customers.jpg
   Cache-Control: public, max-age=86400
 
 # Software Update must see a new version the moment it is published, and the

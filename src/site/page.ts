@@ -62,18 +62,21 @@ window.addEventListener('keydown', event => {
   tryMe?.classList.add('used');
 });
 
-// "Let an agent ask": up to the demo, where an agent -- played by the demo -- asks
-// for a screenshot, as it asks the app through its MCP server.
-for (const button of all<HTMLButtonElement>('[data-ask]')) {
-  button.addEventListener('click', () => {
-    if (!demoFrame) return;
-    tryMe?.classList.add('used');
-    demoFrame.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
-    const ask = () => demoFrame.contentWindow?.postMessage('mark-demo:ask', location.origin);
-    // A demo still loading asks once it has; the editor reads the ask when it starts.
-    if (demoFrame.contentDocument?.readyState === 'complete' && demoFrame.src) ask();
-    else demoFrame.addEventListener('load', ask, { once: true });
-  });
+// "Let an agent ask" and "Record a video": up to the demo, where an agent -- played
+// by the demo -- asks for a screenshot, as it asks the app through its MCP server, or
+// Record opens as it does in the app.
+for (const [selector, message] of [['[data-ask]', 'mark-demo:ask'], ['[data-record]', 'mark-demo:record']]) {
+  for (const button of all<HTMLButtonElement>(selector)) {
+    button.addEventListener('click', () => {
+      if (!demoFrame) return;
+      tryMe?.classList.add('used');
+      demoFrame.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+      const ask = () => demoFrame.contentWindow?.postMessage(message, location.origin);
+      // A demo still loading asks once it has; the editor reads the ask when it starts.
+      if (demoFrame.contentDocument?.readyState === 'complete' && demoFrame.src) ask();
+      else demoFrame.addEventListener('load', ask, { once: true });
+    });
+  }
 }
 
 // The setup line, copied.

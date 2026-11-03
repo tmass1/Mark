@@ -52,6 +52,17 @@ body { display: flex; flex-direction: column; align-items: center; padding: 16px
 .lights .light.close:hover { filter: brightness(.85); }
 
 /* ---- the overlay ------------------------------------------------------------ */
+/* The other states of the dashboard in the picture, fading in, and where to click
+   to get them. A stand-in for its buttons, so they show only what buttons show. */
+.scene-top { position: absolute; inset: 0; width: 100%; height: 100%; }
+.spots { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.spot { position: absolute; padding: 0; border: none; border-radius: 6px; background: transparent; pointer-events: auto; cursor: pointer; }
+.spot:hover { background: #3b82f61a; }
+.spot:focus-visible { outline: 2px solid #3b82f6; outline-offset: 1px; }
+.spots.no-range .spot[data-range] { display: none; }
+/* Mark's bar beside a recording, and the line round what it records. */
+.recording-bar { position: absolute; width: 256px; height: 88px; border: none; background: transparent; z-index: 36; }
+.recording-line { position: absolute; border: none; background: transparent; pointer-events: none; z-index: 35; }
 /* The count before a delayed shot: the app's own, which nothing can click. */
 .count-disc { position: absolute; width: 260px; height: 260px; border: none; background: transparent; pointer-events: none; z-index: 35; }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; border: none; background: transparent; z-index: 40; }
@@ -60,6 +71,7 @@ body { display: flex; flex-direction: column; align-items: center; padding: 16px
 .hint { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 5; max-width: 80%;
   padding: 8px 14px; border-radius: 999px; background: #1b212ad9; color: #f3f3f3; font-size: 12.5px; text-align: center;
   -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: 0 8px 24px #0006, 0 0 0 .5px #ffffff26; }
+.hint.over { top: 36px; bottom: auto; }
 .hint.swap { animation: hint-swap .45s ease; }
 @keyframes hint-swap { from { opacity: .15; } }
 .caption { max-width: 720px; margin: 18px 0 0; color: #9ca3af; font-size: 12.5px; line-height: 1.55; text-align: center; }
@@ -74,8 +86,9 @@ body { display: flex; flex-direction: column; align-items: center; padding: 16px
 }
 .clip.in { animation: clip-in .5s cubic-bezier(.22, 1, .36, 1); }
 @keyframes clip-in { from { opacity: 0; transform: translateY(14px) scale(.98); } }
-.clip-image { grid-column: 1 / -1; display: block; width: 100%; max-height: 150px; object-fit: contain; border-radius: 6px;
+.clip-image, .clip-movie { grid-column: 1 / -1; display: block; width: 100%; max-height: 150px; object-fit: contain; border-radius: 6px;
   background: #0e1118; box-shadow: 0 0 0 .5px #ffffff26; }
+.clip-image[hidden], .clip-movie[hidden] { display: none; }
 .clip-text { display: grid; gap: 1px; min-width: 0; font-size: 12.5px; }
 .clip-text strong { font-weight: 600; }
 .clip-meta { color: #9ca3af; font-size: 11.5px; font-variant-numeric: tabular-nums; }

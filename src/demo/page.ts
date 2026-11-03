@@ -4,14 +4,19 @@
  *  the selection overlay are the real pages, each in a frame, running their native
  *  code path against this file, which plays lib.rs -- it keeps the capture,
  *  crops the scene where the overlay says, sizes the editor's window the way
- *  fit_window does, copies to the clipboard, and answers settings. What cannot
- *  be done in a browser (Liquid Glass, real screen capture, login items) is
- *  said so, not faked. */
+ *  fit_window does, copies to the clipboard, answers settings, and records this
+ *  desktop to a real movie, as recording.rs records a screen. What cannot be done
+ *  in a browser (Liquid Glass, capturing your actual screen, login items) is said
+ *  so, not faked. */
 import './page.css';
 import pkg from '../../package.json';
+import { lookOf, type Look } from '../look';
 import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent } from '../shortcut';
+import { clock } from '../trim';
 import type { DemoFrame, DemoHost } from './bridge';
-import type { Asked } from '../platform';
+import type { Asked, Video } from '../platform';
+import { Recording, canRecord, movieScale, type Area, type Take } from './recorder';
+import type { Asked as Copying } from './export';
 
 // ---- geometry, mirroring lib.rs ------------------------------------------
 const CHROME = 46 + 48 + 10 + 10 + 60;
@@ -21,6 +26,14 @@ const RAIL_HEIGHT = 310 + 8 + RAIL + 6;   // the tool pane, the gap, the crop pa
 const COMPACT: [number, number] = [560, CHROME + RAIL_HEIGHT];
 const SETTINGS_WIDTH = 560;
 const MENU_BAR = 24;
+/** recording.rs: the trim strip under a recording, the bar's window and how far
+ *  it sits from what is recorded, how far out the outline sits, and how long a
+ *  recording may run. */
+const STRIP = 12 + 52;
+const BAR_SIZE: [number, number] = [256, 88];
+const BAR_GAP = 6;
+const OUTSET = 3;
+const LONGEST = 300;
 /** COUNTDOWN_SIZE in recording.rs: room round the disc for its shadow. */
 const DISC = 260;
 /** The app's own shortcut. Browsers use ⌘-digit for their tabs, but it is not
@@ -28,7 +41,7 @@ const DISC = 260;
  *  going further; the menu-bar icon is there for any browser that disagrees. */
 const DEMO_SHORTCUT = DEFAULT_SHORTCUT;
 
-interface Capture { dataUrl: string; width: number; height: number; scale: number }
+interface Capture { dataUrl: string; width: number; height: number; scale: number; video?: Video }
 interface Settings {
   appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates: boolean; frame?: unknown;
   shortcuts?: { window?: string; display?: string; timed?: string; record?: string };
@@ -46,6 +59,7 @@ const state = {
   settings: { appearance: 'dark', shortcut: DEMO_SHORTCUT, checkUpdates: true } as Settings,
   armedDelay: 0,
   armedMode: 'region' as 'region' | 'window',
+  armedKind: 'shot' as 'shot' | 'video',
 };
 
 /** The one app window in the picture of a desktop, as fractions of it, so
@@ -66,6 +80,8 @@ document.documentElement.classList.toggle('embedded', embedded);
 document.body.innerHTML = `
   <div class="stage-box"><div class="stage">
     <img class="scene" src="./demo/scene.jpg" alt="" draggable="false" />
+    <img class="scene-top" alt="" draggable="false" hidden />
+    <div class="spots"></div>
     <div class="menubar">
       <span class="menubar-app">Mark</span>
       <span class="menubar-right">
@@ -100,6 +116,7 @@ document.body.innerHTML = `
     </aside>
     <aside class="clip" hidden aria-live="polite">
       <img class="clip-image" alt="The image that was copied" />
+      <video class="clip-movie" muted loop playsinline hidden></video>
       <div class="clip-text"><strong></strong><small class="clip-meta"></small></div>
       <div class="clip-actions">
         <button class="clip-save" type="button">Save PNG</button>
@@ -108,8 +125,9 @@ document.body.innerHTML = `
     </aside>
   </div></div>
   <p class="caption">This is Mark's real editor, selection overlay and settings, running in your browser against a stand-in for the Mac.
-    Capturing takes a region or the window of this picture of a desktop; Copy puts a real PNG on your clipboard. Liquid Glass,
-    capturing your actual screen, reading the words in it, and opening at login need the Mac app.</p>`;
+    Capturing takes a region or the window of this picture of a desktop; Copy puts a real PNG on your clipboard, and Record makes
+    a real video of it, with what you click on the dashboard. Liquid Glass, capturing your actual screen, reading the words in it,
+    and opening at login need the Mac app.</p>`;
 
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 const stage = $<HTMLDivElement>('.stage');
@@ -119,14 +137,90 @@ const countdown = $<HTMLElement>('.countdown'), hint = $<HTMLElement>('.hint spa
 let overlay: HTMLIFrameElement | null = null;
 let editorWanted = true;   // whether the editor should be on screen when nothing else is happening
 let settingsHeight: number | null = null;   // how tall Settings want the editor, while they show
+let recordingFit: [number, number] | null = null;   // the recording Recent reopened, as fit_to_recording has it
 
 const frames = (): DemoFrame[] => [editorFrame, overlay].flatMap(f => f?.contentWindow ? [f.contentWindow as DemoFrame] : []);
 const emit = (event: string, payload: unknown = null) => { for (const f of frames()) f.__markDemoEmit?.(event, payload); };
 const emitTo = (frame: HTMLIFrameElement, event: string, payload: unknown = null) => (frame.contentWindow as DemoFrame | null)?.__markDemoEmit?.(event, payload);
 
 // ---- the scene, and cropping it -------------------------------------------
-const scene = $<HTMLImageElement>('.scene');
+const scene = $<HTMLImageElement>('.scene'), sceneTop = $<HTMLImageElement>('.scene-top');
 const sceneReady = scene.complete ? Promise.resolve() : new Promise<void>(resolve => scene.addEventListener('load', () => resolve(), { once: true }));
+/** What the dashboard in the picture answers a click with, each state a picture of
+ *  its own (scripts/demo/render-scene.mjs). Where to click is measured off them, in
+ *  points of the 1440 × 900 desktop. */
+type SceneState = 'overview' | '7d' | '90d' | '1y' | 'orders' | 'customers';
+const SCENE_FILES: Record<SceneState, string> = {
+  overview: 'scene', '7d': 'scene-7d', '90d': 'scene-90d', '1y': 'scene-1y', orders: 'scene-orders', customers: 'scene-customers',
+};
+const RANGES: readonly SceneState[] = ['overview', '7d', '90d', '1y'];
+const SPOTS: { to: SceneState; name: string; x: number; y: number; width: number; height: number; range?: boolean }[] = [
+  { to: 'overview', name: 'Overview', x: 182, y: 162, width: 195, height: 27 },
+  { to: 'orders', name: 'Orders', x: 182, y: 191, width: 195, height: 27 },
+  { to: 'customers', name: 'Customers', x: 182, y: 220, width: 195, height: 27 },
+  { to: '7d', name: 'Last 7 days', x: 1009, y: 131, width: 37, height: 25, range: true },
+  { to: 'overview', name: 'Last 30 days', x: 1045, y: 131, width: 46, height: 25, range: true },
+  { to: '90d', name: 'Last 90 days', x: 1091, y: 131, width: 46, height: 25, range: true },
+  { to: '1y', name: 'Last year', x: 1137, y: 131, width: 34, height: 25, range: true },
+];
+const FADE = 120;
+const scenes = new Map<SceneState, Promise<HTMLImageElement>>();
+function sceneNamed(state: SceneState): Promise<HTMLImageElement> {
+  let loading = scenes.get(state);
+  if (!loading) {
+    loading = new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image); image.onerror = reject;
+      image.src = `./demo/${SCENE_FILES[state]}.jpg`;
+    });
+    scenes.set(state, loading);
+  }
+  return loading;
+}
+let sceneNow: SceneState = 'overview';
+let sceneShown: HTMLImageElement = scene;
+let sceneFade: { from: HTMLImageElement; at: number } | null = null;
+const spots = $<HTMLElement>('.spots');
+spots.append(...SPOTS.map(spot => {
+  const button = Object.assign(document.createElement('button'), { type: 'button', className: 'spot', title: spot.name });
+  button.setAttribute('aria-label', spot.name);
+  button.dataset.to = spot.to;
+  if (spot.range) button.dataset.range = '';
+  Object.assign(button.style, {
+    left: `${spot.x / 14.4}%`, top: `${spot.y / 9}%`, width: `${spot.width / 14.4}%`, height: `${spot.height / 9}%`,
+  });
+  return button;
+}));
+spots.addEventListener('click', event => {
+  const to = (event.target as Element).closest<HTMLElement>('.spot')?.dataset.to as SceneState | undefined;
+  if (to) void showScene(to);
+});
+async function showScene(state: SceneState) {
+  if (state === sceneNow) return;
+  sceneNow = state;
+  spots.classList.toggle('no-range', !RANGES.includes(state));
+  const image = await sceneNamed(state);
+  if (sceneNow !== state) return;
+  sceneFade = { from: sceneShown, at: performance.now() };
+  sceneShown = image;
+  sceneTop.src = image.src; sceneTop.hidden = false;
+  const fading = sceneTop.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE });
+  await fading.finished.catch(() => {});
+  if (sceneShown === image) { scene.src = image.src; sceneTop.hidden = true; }
+}
+// The rest of the dashboard is fetched once someone comes near it, not with the page.
+$<HTMLElement>('.stage').addEventListener('pointerenter', () => {
+  scenes.set('overview', Promise.resolve(scene));
+  for (const state of Object.keys(SCENE_FILES) as SceneState[]) void sceneNamed(state);
+}, { once: true });
+/** The desktop as it stands, a change under way fading in, for a recording. */
+function paintDesktop(context: CanvasRenderingContext2D, area: Area, width: number, height: number) {
+  const s = sceneScale();
+  const draw = (image: HTMLImageElement) => context.drawImage(image, area.x * s, area.y * s, area.width * s, area.height * s, 0, 0, width, height);
+  const fading = sceneFade ? (performance.now() - sceneFade.at) / FADE : 1;
+  if (sceneFade && fading < 1) { draw(sceneFade.from); context.globalAlpha = fading; draw(sceneShown); context.globalAlpha = 1; }
+  else draw(sceneShown);
+}
 /** Scene pixels per stage point: the picture is 2x of a 1440-wide desktop, shown at whatever width the page allows. */
 const sceneScale = () => scene.naturalWidth / stage.offsetWidth;
 
@@ -135,7 +229,7 @@ async function crop(x: number, y: number, width: number, height: number): Promis
   const s = sceneScale();
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(width * s)); canvas.height = Math.max(1, Math.round(height * s));
-  canvas.getContext('2d')!.drawImage(scene, Math.round(x * s), Math.round(y * s), canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+  canvas.getContext('2d')!.drawImage(sceneShown, Math.round(x * s), Math.round(y * s), canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
   return { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height, scale: s };
 }
 
@@ -143,8 +237,9 @@ async function crop(x: number, y: number, width: number, height: number): Promis
 /** fit_window: the capture at actual size where the stage allows, compact when empty. */
 function fitEditor() {
   let [w, h] = state.capture
-    ? [state.capture.width / state.capture.scale + SIDES + RAIL, state.capture.height / state.capture.scale + CHROME]
+    ? [state.capture.width / state.capture.scale + SIDES + RAIL, state.capture.height / state.capture.scale + CHROME + (state.capture.video ? STRIP : 0)]
     : COMPACT;
+  if (recordingFit) { w = Math.max(w, recordingFit[0] + SIDES + RAIL); h = Math.max(h, recordingFit[1] + STRIP + CHROME); }
   // fit_to_settings: grown to show Settings without scrolling, while they show.
   if (settingsHeight !== null) { w = Math.max(w, SETTINGS_WIDTH); h = Math.max(h, settingsHeight); }
   w = Math.min(w, stage.offsetWidth - 80); h = Math.min(h, stage.offsetHeight - 80);
@@ -166,8 +261,8 @@ function showHint(text: string | null) {
   // A change of text crossfades, so a tip arriving reads as arriving.
   pill.classList.remove('swap'); void pill.offsetWidth; pill.classList.add('swap');
 }
-/** What Record says here: a browser can't record your screen, so the Mac app does. */
-const RECORD_HINT = 'Recording video is in the Mac app: up to five minutes of a region, a window or the whole screen. Here, try a still.';
+/** What Record says in a browser that can't make a movie. */
+const RECORD_HINT = 'This browser can’t record a video. The Mac app can: up to five minutes of a region, a window or the whole screen.';
 
 // ---- tips ------------------------------------------------------------------
 /** With a capture open, the pill teaches one thing at a time, in about the order
@@ -184,13 +279,23 @@ const TIPS = [
   '⌘C copies the image and keeps working. ⌥⌘C copies and closes.',
   'Closed a capture by accident? Recent, on the empty state, holds the last six.',
 ];
+/** And with a recording open. */
+const MOVIE_TIPS = [
+  'Drag the yellow handles to keep only the part that matters. K cuts a second out of the middle.',
+  'Z zooms in at the playhead. Drag a zoom’s ends along the strip, or click it for 2× or 3×.',
+  'Pause where a mark belongs, then draw: it appears from that moment.',
+  'Select a mark and drag its second flag in: it goes before the end.',
+  '1× after the timeline turns to 2×, for the player and every copy.',
+  'Frame puts it on a background, in a phone, a tablet or a browser.',
+  'Save Video makes a real file here in your browser, with everything drawn into it.',
+];
 const TIP_EVERY = 6500;
-let tipTimer: number | undefined, tipIndex = 0;
+let tipTimer: number | undefined, tipIndex = 0, tips = TIPS;
 function showTip() {
-  const which = tipIndex++ % TIPS.length;
-  showHint(TIPS[which]); hint.parentElement!.dataset.tip = String(which);
+  const which = tipIndex++ % tips.length;
+  showHint(tips[which]); hint.parentElement!.dataset.tip = String(which);
 }
-function startTips() { stopTips(); tipIndex = 0; showTip(); tipTimer = window.setInterval(showTip, TIP_EVERY); }
+function startTips(movie = false) { stopTips(); tipIndex = 0; tips = movie ? MOVIE_TIPS : TIPS; showTip(); tipTimer = window.setInterval(showTip, TIP_EVERY); }
 function stopTips() {
   if (tipTimer !== undefined) clearInterval(tipTimer);
   tipTimer = undefined; delete hint.parentElement!.dataset.tip;
@@ -202,24 +307,48 @@ function stopTips() {
  *  browser would not take them. */
 const clip = $<HTMLElement>('.clip');
 const clipImage = clip.querySelector<HTMLImageElement>('.clip-image')!, clipMeta = clip.querySelector<HTMLElement>('.clip-meta')!;
+const clipMovie = clip.querySelector<HTMLVideoElement>('.clip-movie')!, clipSave = clip.querySelector<HTMLButtonElement>('.clip-save')!;
 let clipPng = '';
+/** A movie or a GIF the card holds, rather than the PNG that went to the clipboard. */
+let clipFile: { blob: Blob; name: string } | null = null;
+function enterClip() { clip.hidden = false; clip.classList.remove('in'); void clip.offsetWidth; clip.classList.add('in'); }   // the entrance again, for a second copy
 function showClip(png: string, refused: string | null) {
-  clipPng = png;
+  clipPng = png; clipFile = null;
+  clipMovie.hidden = true; clipMovie.removeAttribute('src'); clipImage.hidden = false;
+  clipSave.textContent = 'Save PNG';
   clipImage.src = `data:image/png;base64,${png}`;
   clipImage.onload = () => { clipMeta.textContent = `${clipImage.naturalWidth} × ${clipImage.naturalHeight} px`; };
   clip.querySelector('strong')!.textContent = refused ? 'The browser refused the copy' : 'On your clipboard';
   clip.classList.toggle('refused', refused !== null);
-  clip.hidden = false;
-  clip.classList.remove('in'); void clip.offsetWidth; clip.classList.add('in');   // the entrance again, for a second copy
+  enterClip();
 }
-/** The name macOS gives a screenshot, as the app's Save suggests. */
-function suggestedName(): string {
+/** A browser's clipboard takes a picture but not a video or a GIF, so the card holds
+ *  the file instead, to save and put wherever it was going. */
+function showClipFile(blob: Blob, name: string) {
+  clipFile = { blob, name };
+  const url = URL.createObjectURL(blob), gif = blob.type === 'image/gif';
+  clipMovie.hidden = gif; clipImage.hidden = !gif;
+  clipImage.onload = null;
+  if (gif) { clipImage.src = url; clipMovie.removeAttribute('src'); }
+  else { clipMovie.src = url; void clipMovie.play().catch(() => {}); }
+  clipMeta.textContent = sizeOf(blob.size);
+  clipSave.textContent = gif ? 'Save GIF' : 'Save Video';
+  clip.querySelector('strong')!.textContent = gif ? 'Your GIF' : 'Your video';
+  clip.classList.remove('refused');
+  enterClip();
+}
+const sizeOf = (bytes: number) => (bytes < 1_000_000 ? `${Math.max(1, Math.round(bytes / 1000))} KB` : `${(bytes / 1_000_000).toFixed(1)} MB`);
+/** When it is, as macOS names a screenshot and the app's Save suggests. */
+function stamp(): string {
   const now = new Date(), pad = (value: number) => String(value).padStart(2, '0');
   return `Mark ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-    + ` at ${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}.png`;
+    + ` at ${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`;
 }
-clip.querySelector('.clip-save')!.addEventListener('click', () => download(clipPng, suggestedName()));
-clip.querySelector('.clip-close')!.addEventListener('click', () => { clip.hidden = true; });
+const suggestedName = () => `${stamp()}.png`;
+clipSave.addEventListener('click', () => {
+  if (clipFile) saveFile(clipFile.blob, clipFile.name); else download(clipPng, suggestedName());
+});
+clip.querySelector('.clip-close')!.addEventListener('click', () => { clip.hidden = true; clipMovie.pause(); });
 // ---- what Claude received --------------------------------------------------
 /** The demo plays the AI tool, so what it was sent can be seen: the picture,
  *  and the words that went with it -- what was marked, and where. */
@@ -241,9 +370,11 @@ function askAsClaude() {
   editorWanted = true; showEditor(true); emitTo(editorFrame, 'capture-changed'); stopTips();
   showHint('Claude asked to see the chart’s peak. Capture it, point at the peak, then press Send to Claude.');
 }
-// The site's "Let Claude ask", from the page this demo is framed in.
+// The site's "Let Claude ask" and "Record a video", from the page this demo is framed in.
 window.addEventListener('message', event => {
-  if (event.origin === location.origin && event.data === 'mark-demo:ask') askAsClaude();
+  if (event.origin !== location.origin) return;
+  if (event.data === 'mark-demo:ask') askAsClaude();
+  if (event.data === 'mark-demo:record') void startWay('record');
 });
 
 async function copied(png: string, close: boolean) {
@@ -278,9 +409,10 @@ window.addEventListener('mouseup', endDrag);
 window.addEventListener('blur', endDrag);
 
 // ---- selection -------------------------------------------------------------
-async function beginSelection(delay: number, window = false) {
+async function beginSelection(delay: number, window = false, record = false) {
   if (state.busy) return;
   state.busy = true; state.armedDelay = delay; state.armedMode = window ? 'window' : 'region'; state.error = null;
+  state.armedKind = record ? 'video' : 'shot';
   emitTo(editorFrame, 'capture-changed');
   showEditor(false); stopTips(); showHint(null);
   clip.hidden = true;                              // the desktop is about to be captured
@@ -304,7 +436,14 @@ async function captureDisplay(delay: number) {
 
 /** Each way in, as a shortcut or the menu starts it. */
 function startWay(way: Way): Promise<void> {
-  if (way === 'record') { showHint(RECORD_HINT); return Promise.resolve(); }
+  // As start_recording: pressed while one runs, it stops it, kept.
+  if (way === 'record' && live) return finishRecording(true);
+  if (state.busy) return Promise.resolve();
+  if (way === 'record') {
+    if (!canRecord()) { showHint(RECORD_HINT); return Promise.resolve(); }
+    if (state.request) { showHint(WAITING); return Promise.resolve(); }
+    return beginSelection(0, false, true);
+  }
   if (way === 'display') return captureDisplay(0);
   return beginSelection(way === 'timed' ? 5 : 0, way === 'window');
 }
@@ -312,11 +451,11 @@ function startWay(way: Way): Promise<void> {
 /** The count before a delayed shot, as recording.rs's show_countdown has it: in
  *  the menu bar, and in the app's own disc over the middle of what will be taken,
  *  which clicks go straight through and which is gone before the shutter. */
-async function tick(seconds: number, area: { x: number; y: number; width: number; height: number }) {
+async function tick(seconds: number, area: Area, video = false) {
   if (seconds <= 0) return;
   const disc = document.createElement('iframe');
   disc.className = 'count-disc'; disc.title = 'Countdown'; disc.tabIndex = -1;
-  disc.src = `./demo/recording.html?countdown&until=${Date.now() + seconds * 1000}`;
+  disc.src = `./demo/recording.html?countdown&until=${Date.now() + seconds * 1000}${video ? '&video' : ''}`;
   disc.style.left = `${Math.round(Math.min(Math.max(0, area.x + (area.width - DISC) / 2), stage.offsetWidth - DISC))}px`;
   disc.style.top = `${Math.round(Math.min(Math.max(MENU_BAR, area.y + (area.height - DISC) / 2), stage.offsetHeight - DISC))}px`;
   stage.append(disc);
@@ -326,6 +465,171 @@ async function tick(seconds: number, area: { x: number; y: number; width: number
   }
   countdown.hidden = true;
   disc.remove();
+}
+
+// ---- recording ---------------------------------------------------------------
+/** As lib.rs says it when an ask is waiting: the recording would open in its place. */
+const WAITING = 'Claude is waiting for a screenshot. Send one, or Don’t Send, before recording.';
+/** Where the pointer is on the desktop, wherever it went: the page, or a frame over it. */
+let pointerNow: [number, number] | null = null;
+window.addEventListener('pointermove', event => {
+  const box = stage.getBoundingClientRect(), k = stage.offsetWidth / (box.width || 1);
+  pointerNow = [(event.clientX - box.left) * k, (event.clientY - box.top) * k];
+}, { capture: true, passive: true });
+// What is pressed on the desktop, for a recording's clicks; the menu bar and Mark's bar are not on it.
+window.addEventListener('pointerdown', event => {
+  if (live && !(event.target as Element).closest?.('.menubar')) live.recording.press(true);
+}, true);
+window.addEventListener('pointerup', () => live?.recording.press(false), true);
+
+const takes = new Map<number, Take>();
+let nextTake = 1;
+/** How many recordings are kept for Recent to reopen; older ones let go, as Rust's are. */
+const MOST_TAKES = 8;
+const takeOf = (id: unknown) => {
+  const take = takes.get(Number(id));
+  if (!take) throw 'That recording is no longer kept. Record it again.';
+  return take;
+};
+
+/** The recording under way: what follows it round the desktop, and its clock. */
+let live: { recording: Recording; bar: HTMLIFrameElement; line: HTMLIFrameElement | null; clock: number; mic: boolean } | null = null;
+
+/** Where the bar goes for what is recorded, as recording.rs's bar_place. */
+function barPlace(area: Area): [number, number] {
+  const [width, height] = BAR_SIZE;
+  const work = { x: 0, y: MENU_BAR, width: stage.offsetWidth, height: stage.offsetHeight - MENU_BAR };
+  const clamp = (value: number, low: number, high: number) => Math.min(Math.max(value, low), Math.max(high, low));
+  const x = clamp(area.x + (area.width - width) / 2, work.x, work.x + work.width - width);
+  const below = area.y + area.height + BAR_GAP, above = area.y - BAR_GAP - height;
+  const y = below + height <= work.y + work.height ? below : above >= work.y ? above
+    : clamp(area.y + area.height - BAR_GAP - height, work.y, work.y + work.height - height);
+  return [x, y];
+}
+
+function recordingStatus() {
+  return live ? { elapsed: Math.floor(live.recording.elapsed()), limit: LONGEST, mic: live.mic } : null;
+}
+/** The menu bar's recording state: the time counting, Stop Recording in place of Record Video, the rest unavailable. */
+function recordingMenu(running: boolean) {
+  for (const item of trayMenu.querySelectorAll<HTMLButtonElement>('button')) {
+    const act = item.dataset.act;
+    if (act === 'record') item.firstChild!.textContent = running ? 'Stop Recording ' : 'Record Video ';
+    else if (act === 'capture' || act === 'window' || act === 'display' || act === 'timed') item.disabled = running;
+  }
+}
+
+/** What the overlay chose, recorded from now until something stops it. */
+async function beginRecording(area: Area, framed: boolean, delay: number, args: Record<string, unknown>) {
+  const look = lookOf(args), zoom = Boolean(args.zoom), wantMic = Boolean(args.mic);
+  state.settings = { ...state.settings, recordMic: wantMic, recordZoom: zoom, recordingPointer: look.pointer, recordingClicks: look.clicks };
+  overlay?.remove(); overlay = null;
+  // Asked for first, as the app asks, before anything is on screen.
+  let microphone: MediaStream | null = null;
+  if (wantMic) {
+    try { microphone = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch { showHint('The browser didn’t allow the microphone, so this one has no sound.'); }
+  }
+  await tick(delay, area, true);
+  const id = nextTake++;
+  let recording: Recording;
+  try {
+    recording = new Recording({
+      id, area, look, zoom, microphone, scale: movieScale(area, sceneScale()),
+      paint: (context, width, height) => paintDesktop(context, area, width, height),
+      pointer: () => pointerNow,
+    });
+    recording.start();
+  } catch (error) {
+    for (const track of microphone?.getTracks() ?? []) track.stop();
+    state.busy = false; state.error = String(error);
+    editorWanted = true; showEditor(true); emitTo(editorFrame, 'capture-changed');
+    return;
+  }
+  const bar = document.createElement('iframe');
+  bar.className = 'recording-bar'; bar.title = 'Recording'; bar.src = './demo/recording.html';
+  [bar.style.left, bar.style.top] = barPlace(area).map(value => `${Math.round(value)}px`);
+  const line = framed ? document.createElement('iframe') : null;
+  if (line) {
+    line.className = 'recording-line'; line.title = 'What is being recorded'; line.tabIndex = -1; line.src = './demo/recording.html?outline';
+    Object.assign(line.style, {
+      left: `${area.x - OUTSET}px`, top: `${area.y - OUTSET}px`, width: `${area.width + 2 * OUTSET}px`, height: `${area.height + 2 * OUTSET}px`,
+    });
+    stage.append(line);
+  }
+  stage.append(bar);
+  const show = () => {
+    if (!live) return;
+    const status = recordingStatus()!;
+    if (status.elapsed >= LONGEST) { void finishRecording(true); return; }
+    countdown.textContent = clock(status.elapsed);
+    emitTo(bar, 'recording-tick', status);
+  };
+  live = { recording, bar, line, mic: !!microphone, clock: window.setInterval(show, 250) };
+  bar.addEventListener('load', show, { once: true });
+  countdown.hidden = false; countdown.textContent = clock(0);
+  recordingMenu(true);
+  // Under the menu bar, since Mark's bar may be where this usually goes.
+  hint.parentElement!.classList.add('over');
+  showHint('Recording this desktop. Click 7d, 90d or 1y on the dashboard, or Orders in its sidebar, then press Stop.');
+}
+
+/** Stopped: kept, it opens in the editor as a capture does; thrown away, all is as it was. */
+async function finishRecording(keep: boolean) {
+  const ending = live;
+  if (!ending) return;
+  live = null;
+  clearInterval(ending.clock);
+  ending.bar.remove(); ending.line?.remove();
+  countdown.hidden = true;
+  recordingMenu(false);
+  hint.parentElement!.classList.remove('over');
+  showHint(null);
+  const take = await ending.recording.stop(keep);
+  state.busy = false;
+  if (!take) {
+    if (editorWanted) showEditor(true);
+    emitTo(editorFrame, 'capture-changed');
+    return;
+  }
+  takes.set(take.id, take);
+  for (const id of [...takes.keys()].slice(0, Math.max(0, takes.size - MOST_TAKES))) {
+    URL.revokeObjectURL(takes.get(id)!.url); takes.delete(id);
+  }
+  recordingFit = null;
+  await took({
+    dataUrl: take.poster, width: take.width, height: take.height, scale: take.scale,
+    video: { id: take.id, path: `/Recordings/${take.id}/${stamp()}.mp4`, duration: take.duration, sound: take.sound },
+  });
+}
+
+/** The file for what the editor asks a copy of: the same asked twice is made once,
+ *  since a movie takes as long to make as it runs. */
+let madeMovie: { key: string; blob: Blob } | null = null;
+const copying = (args: Record<string, unknown>): Copying => ({
+  start: Number(args.start), end: Number(args.end), cuts: (args.cuts ?? []) as [number, number][], speed: Number(args.speed ?? 1),
+  look: lookOf(args.look), marks: (args.marks ?? null) as Copying['marks'], small: Boolean(args.small),
+});
+async function movieFile(args: Record<string, unknown>): Promise<Blob> {
+  const take = takeOf(args.id), asked = copying(args);
+  const key = JSON.stringify([take.id, asked]);
+  if (madeMovie?.key === key) return madeMovie.blob;
+  const { movieOf } = await import('./export');
+  const blob = await movieOf(take, asked);
+  madeMovie = { key, blob };
+  return blob;
+}
+async function gifFile(args: Record<string, unknown>): Promise<Blob> {
+  const { gifOf } = await import('./export');
+  return gifOf(takeOf(args.id), copying(args));
+}
+/** A movie is named for what the browser could write: an MP4 where it can. */
+const movieName = (name: string, blob: Blob) => (blob.type.includes('webm') ? name.replace(/\.mp4$/i, '.webm') : name);
+function saveFile(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 /** Copied straight from the overlay, as lib.rs's keep_copied: onto the
@@ -352,7 +656,7 @@ async function took(capture: Capture) {
   showEditor(true);
   emitTo(editorFrame, 'capture-changed');
   if (state.request) showHint('Point at what matters: an arrow, or a numbered step with a note. Then press Send to Claude.');
-  else startTips();
+  else startTips(!!capture.video);
 }
 
 // ---- files -----------------------------------------------------------------
@@ -367,12 +671,7 @@ async function toClipboard(base64: string) {
     throw 'This browser wouldn\'t allow the copy. Save the image instead.';
   }
 }
-function download(base64: string, name: string) {
-  const url = URL.createObjectURL(pngBlob(base64));
-  const a = Object.assign(document.createElement('a'), { href: url, download: name });
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
+function download(base64: string, name: string) { saveFile(pngBlob(base64), name); }
 
 // ---- appearance ------------------------------------------------------------
 function applyAppearance() {
@@ -386,13 +685,26 @@ function applyAppearance() {
 editorFrame.addEventListener('load', applyAppearance);
 
 // ---- the part of lib.rs the frames talk to ---------------------------------
-export const host: DemoHost & { display(): { x: number; y: number; width: number; height: number; scale: number }; delay(): number; mode(): 'region' | 'window'; windows(): ReturnType<typeof sceneWindows>; beginDrag(label: string, x: number, y: number): void; endDrag(): void; key(e: { code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }): boolean } = {
+export const host: DemoHost & { display(): { x: number; y: number; width: number; height: number; scale: number }; delay(): number; mode(): 'region' | 'window'; windows(): ReturnType<typeof sceneWindows>; beginDrag(label: string, x: number, y: number): void; endDrag(): void; overlaySetup(): Partial<Window>; key(e: { code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }): boolean } = {
   display: () => ({ x: 0, y: 0, width: stage.offsetWidth, height: stage.offsetHeight, scale: sceneScale() }),
   delay: () => state.armedDelay,
   mode: () => state.armedMode,
   windows: sceneWindows,
-  beginDrag(_label, x, y) { beginDrag(editorWin, x, y); },
+  /** What Rust hands the overlay for a recording, as the last one was set up. */
+  overlaySetup: () => ({
+    __MARK_KIND__: state.armedKind, __MARK_MIC__: state.settings.recordMic === true,
+    __MARK_LOOK__: lookOf({ pointer: state.settings.recordingPointer, clicks: state.settings.recordingClicks }) as Look,
+    __MARK_ZOOM__: state.settings.recordZoom === true,
+    __MARK_WORK__: { x: 0, y: MENU_BAR, width: stage.offsetWidth, height: stage.offsetHeight - MENU_BAR },
+    __MARK_POINTER__: pointerNow ? { x: pointerNow[0], y: pointerNow[1] } : null,
+  }),
+  beginDrag(label, x, y) { beginDrag(label === 'recording' && live ? live.bar : editorWin, x, y); },
   endDrag,
+  pointerMoved(label, x, y) {
+    if (label === 'selector') pointerNow = [x, y];
+    else if (label === 'recording' && live) pointerNow = [live.bar.offsetLeft + x, live.bar.offsetTop + y];
+  },
+  fileSrc(path) { return takes.get(Number(path.split('/')[2]))?.url; },
   key(e) {
     const pressed = shortcutFromEvent(e);
     const way = pressed ? (Object.keys(WAY_NAMES) as Way[]).find(w => shortcutOf(w) === pressed) : undefined;
@@ -403,12 +715,17 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
     switch (command) {
       case 'current_capture': return { capture: state.capture, error: state.error, busy: state.busy, request: state.request };
       case 'capture_region':
-        if (args.record) { showHint(RECORD_HINT); return; }
+        if (args.record) {
+          if (!canRecord()) { showHint(RECORD_HINT); return; }
+          if (state.request) throw WAITING;
+          await beginSelection(Number(args.delay ?? 0), Boolean(args.window), true); return;
+        }
         await beginSelection(Number(args.delay ?? 0), Boolean(args.window)); return;
       case 'capture_display': await captureDisplay(Number(args.delay ?? 0)); return;
       case 'capture_rect': {
         overlay?.remove(); overlay = null;
         const area = { x: Number(args.x), y: Number(args.y), width: Number(args.width), height: Number(args.height) };
+        if (args.record) { await beginRecording(area, area.width < stage.offsetWidth - 1 || area.height < stage.offsetHeight - 1, Number(args.delay ?? 0), args); return; }
         await tick(Number(args.delay ?? 0), area);
         const region = await crop(area.x, area.y, area.width, area.height);
         state.busy = false; await (args.copy && !state.request ? tookCopy : took)(region); return;
@@ -416,6 +733,7 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       case 'capture_window': {
         const picked = sceneWindows().find(w => w.id === Number(args.id));
         if (!picked) throw 'That window has closed. Pick another, or press Escape.';
+        if (args.record) { await beginRecording(picked, false, Number(args.delay ?? 0), args); return; }
         overlay?.remove(); overlay = null;
         await tick(Number(args.delay ?? 0), picked);
         const shot = await crop(picked.x, picked.y, picked.width, picked.height);
@@ -439,7 +757,7 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         if (state.busy) throw 'Press Escape to cancel the selection first.';
         // As in the app, closing the editor is a no to an ask still waiting.
         const declined = state.request !== null;
-        state.capture = null; state.error = null; state.request = null; editorWanted = false;
+        state.capture = null; state.error = null; state.request = null; editorWanted = false; recordingFit = null;
         showEditor(false); emitTo(editorFrame, 'capture-changed'); stopTips();
         showHint(declined ? 'Closed, which tells Claude no.'
           : `Closed. Click the Mark icon in the menu bar, or press ${prettyShortcut(state.settings.shortcut)}, to capture again.`);
@@ -512,17 +830,52 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         emitTo(editorFrame, 'capture-changed');
         showHint('Claude was told no, and not to ask again unless you say so.');
         return;
-      // Recording is the Mac app's. The demo offers it where the app does, so it
-      // looks like the app, and says so when it's asked to record.
-      case 'recording_supported': return true;
+      // A real recording, of this desktop rather than your screen, in any browser that can make a movie.
+      case 'recording_supported': return canRecord();
+      case 'recording_status': return recordingStatus();
+      case 'stop_recording': if (!live) throw 'Nothing is recording.'; await finishRecording(true); return;
+      case 'discard_recording': if (!live) throw 'Nothing is recording.'; await finishRecording(false); return;
+      case 'fit_to_recording':
+        recordingFit = [Number(args.width), Number(args.height)];
+        if (!editorWin.hidden) fitEditor();
+        return;
+      case 'video_frames': {
+        const { thumbs } = takeOf(args.id), count = Math.max(1, Math.min(24, Number(args.count ?? 10)));
+        return Array.from({ length: Math.min(count, thumbs.length) }, (_, i) => thumbs[Math.floor(i * thumbs.length / Math.min(count, thumbs.length))]);
+      }
+      case 'video_pointer': {
+        const take = takeOf(args.id);
+        return { track: take.track, presses: take.presses, look: take.look, zoom: take.zoom };
+      }
+      // A browser's clipboard takes neither, so the card holds the file, and the status line says why.
+      case 'copy_video': {
+        const blob = await movieFile(args);
+        showClipFile(blob, movieName(`${stamp()}.mp4`, blob));
+        throw 'A browser can’t put a video on the clipboard, so it’s here to save. In the Mac app, Copy pastes it into a message.';
+      }
+      case 'copy_gif': {
+        const blob = await gifFile(args);
+        showClipFile(blob, String(args.name));
+        throw 'A browser can’t put a GIF on the clipboard, so it’s here to save. In the Mac app, Copy as GIF pastes it anywhere.';
+      }
+      case 'save_video': {
+        const blob = args.gif ? await gifFile(args) : await movieFile(args);
+        const name = args.gif ? String(args.name) : movieName(String(args.name), blob);
+        saveFile(blob, name);
+        return { name, bytes: blob.size };
+      }
+      case 'share_video': {
+        const blob = await movieFile(args), name = movieName(`${stamp()}.mp4`, blob);
+        const file = new File([blob], name, { type: blob.type });
+        if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file] }).catch(() => {}); return; }
+        saveFile(blob, name); return;
+      }
       case 'set_record_options':
         state.settings = { ...state.settings, recordMic: Boolean(args.mic ?? state.settings.recordMic),
                            recordZoom: Boolean(args.zoom ?? state.settings.recordZoom),
                            recordingPointer: String(args.pointer ?? state.settings.recordingPointer ?? 'arrow'),
                            recordingClicks: String(args.clicks ?? state.settings.recordingClicks ?? 'rings') };
         return state.settings;
-      case 'video_frames': case 'copy_video': case 'copy_gif': case 'save_video': case 'share_video':
-        throw 'Recording the screen is in the Mac app.';
       case 'recognize_text': throw 'Copy Text reads the image with the Mac\'s own text recognition, so it works in the Mac app.';
       case 'scan_image': throw 'Hide Sensitive reads the image with the Mac\'s own text and face recognition, so it works in the Mac app.';
       // The web demo is always the newest Mark.

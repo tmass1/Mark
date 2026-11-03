@@ -14,6 +14,10 @@ export interface DemoHost {
   beginDrag?(label: string, screenX: number, screenY: number): void;
   /** A mouseup anywhere, in case the drag's own ended inside a frame. */
   endDrag?(): void;
+  /** Where the pointer is in a frame, as the Mac would know it wherever it went. */
+  pointerMoved?(label: string, x: number, y: number): void;
+  /** A movie Mark keeps, as a frame can load it. */
+  fileSrc?(path: string): string | undefined;
   /** A key chord that may be the capture shortcut; true if it was taken. */
   key?(event: { code: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }): boolean;
 }
@@ -35,7 +39,7 @@ export function installBridge(label: string): DemoHost {
     metadata: { currentWindow: { label }, currentWebview: { label } },
     transformCallback(callback: (payload: unknown) => void) { const id = next++; callbacks.set(id, callback); return id; },
     unregisterCallback(id: number) { callbacks.delete(id); },
-    convertFileSrc: (path: string) => path,
+    convertFileSrc: (path: string) => host.fileSrc?.(path) ?? path,
     async invoke(command: string, args: Record<string, unknown> = {}) {
       if (command === 'plugin:event|listen') {
         listeners.push({ event: String(args.event), id: Number(args.handler) });
@@ -59,6 +63,7 @@ export function installBridge(label: string): DemoHost {
     if (e.button === 0 && (e.target as Element).hasAttribute?.('data-tauri-drag-region')) host.beginDrag?.(label, e.screenX, e.screenY);
   });
   window.addEventListener('mouseup', () => host.endDrag?.());
+  window.addEventListener('pointermove', e => host.pointerMoved?.(label, e.clientX, e.clientY), { passive: true });
   if (label === 'editor') window.addEventListener('keydown', e => { if (host.key?.(e)) e.preventDefault(); });
   if (label === 'selector') {
     // An Escape the page heard while the overlay lacked focus arrives as an event; deliver it as the key.

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Download, type Page } from '@playwright/test';
 
 /** The web demo: Mark's real pages in frames, against the page that plays
  *  lib.rs. These drive the whole thing the way a visitor would -- menu bar,
@@ -182,16 +182,198 @@ test('every setting the demo offers stays as it was left, and Settings fit the w
   await expect.poll(async () => (await page.locator('.win.editor').boundingBox())!.height).toBeLessThan(grown);
 });
 
-test('Record shows where the app shows it, and says the Mac app records', async ({ page }) => {
-  const editor = await open(page);
-  const record = editor.locator('[data-start="record"]');
-  await expect(record).toBeVisible();
-  await record.click();
-  await expect(page.locator('.hint')).toContainText('Recording video is in the Mac app');
-  await expect(page.locator('.overlay')).toHaveCount(0);
-  await expect(page.locator('.win.editor')).toBeVisible();
+/** What the overlay's Record bar starts with, the editor having opened it. */
+async function recordBar(page: Page) {
+  await page.goto('/demo.html');
+  const editor = page.frameLocator('.win.editor iframe');
+  await editor.locator('[data-start="record"]').click();
+  const overlay = page.frameLocator('iframe.overlay');
+  await expect(overlay.locator('.choices')).toBeVisible();
+  return { editor, overlay };
+}
+/** The whole desktop recorded for a moment, with a few clicks on it, and stopped. */
+async function recorded(page: Page, seconds = 1500) {
+  const { editor, overlay } = await recordBar(page);
+  await overlay.getByRole('radio', { name: 'Screen' }).click();
+  await overlay.locator('.go').click();
+  const bar = page.frameLocator('iframe.recording-bar');
+  await expect(bar.locator('.stop')).toBeVisible();
+  await page.locator('.spot[title="Last 90 days"]').click();
+  await page.waitForTimeout(seconds);
+  await bar.locator('.stop').click();
+  await expect(editor.locator('.trim')).toBeVisible({ timeout: 15_000 });
+  return editor;
+}
+const fileHead = async (download: Download, count: number) => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of await download.createReadStream()) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).subarray(0, count);
+};
+
+test('Record opens the app’s bar, and everything it sets up is remembered for the next', async ({ page }) => {
+  const { overlay } = await recordBar(page);
+  await expect(overlay.getByRole('radio')).toHaveText(['Region', 'Window', 'Screen']);
+  await expect(overlay.locator('.go')).toBeDisabled();
+  // Choosing the screen holds: its own announcement comes back to it, and must not undo it.
+  await overlay.getByRole('radio', { name: 'Screen' }).click();
+  await page.waitForTimeout(150);
+  await expect(overlay.locator('.go')).toBeEnabled();
+  await overlay.locator('.look-button').click();
+  await overlay.locator('[data-pointer="touch"]').click();
+  await overlay.locator('[data-clicks="ripple"]').click();
+  await overlay.locator('[data-zoom="on"]').click();
+  await expect(overlay.locator('.look-label')).toHaveText('Touch · Ripple · Zoom');
+  await overlay.locator('.look-button').click();
+  await overlay.locator('.go').click();
+  const bar = page.frameLocator('iframe.recording-bar');
+  await bar.locator('.discard').click();
+  await expect(page.locator('iframe.recording-bar')).toHaveCount(0);
+  const editor = page.frameLocator('.win.editor iframe');
+  await editor.locator('[data-start="record"]').click();
+  await expect(overlay.locator('.look-label')).toHaveText('Touch · Ripple · Zoom');
+});
+
+test('recording runs with the app’s bar and a count in the menu bar, what is chosen outlined, and × throws it away', async ({ page }) => {
+  const { editor, overlay } = await recordBar(page);
+  await overlay.getByRole('radio', { name: 'Region' }).click();
+  const stage = (await page.locator('.stage').boundingBox())!;
+  await page.mouse.move(stage.x + 300, stage.y + 150); await page.mouse.down();
+  await page.mouse.move(stage.x + 800, stage.y + 450, { steps: 6 }); await page.mouse.up();
+  await overlay.locator('.go').click();
+  const bar = page.locator('iframe.recording-bar');
+  await expect(bar).toBeVisible();
+  await expect(page.locator('iframe.recording-line')).toBeVisible();
+  await expect(page.locator('iframe.overlay')).toHaveCount(0);
+  await expect(page.locator('.win.editor')).toBeHidden();
+  await expect(page.locator('.countdown')).toHaveText(/^0:0\d$/);
+  await expect(bar.contentFrame().locator('.time')).toHaveText(/^0:0\d$/);
+  await expect(page.locator('.hint span')).toContainText('Recording this desktop');
+  // The menu says how to stop it, and nothing else can start.
   await page.locator('.tray').click();
-  await expect(page.locator('.tray-menu [data-act="record"]')).toHaveText(/^Record Video/);
+  await expect(page.locator('.tray-menu [data-act="record"]')).toContainText('Stop Recording');
+  await expect(page.locator('.tray-menu [data-act="capture"]')).toBeDisabled();
+  await page.locator('.tray').click();
+  await bar.contentFrame().locator('.discard').click();
+  await expect(bar).toHaveCount(0);
+  await expect(page.locator('iframe.recording-line')).toHaveCount(0);
+  await expect(page.locator('.countdown')).toBeHidden();
+  await expect(editor.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
+  await expect(editor.locator('.trim')).toBeHidden();
+  await page.locator('.tray').click();
+  await expect(page.locator('.tray-menu [data-act="record"]')).toContainText('Record Video');
+});
+
+test('a delayed recording counts down in red before it starts', async ({ page }) => {
+  const { overlay } = await recordBar(page);
+  await overlay.getByRole('radio', { name: 'Screen' }).click();
+  await overlay.locator('.delay').click();
+  await overlay.locator('.go').click();
+  await expect(page.frameLocator('iframe.count-disc').locator('.what')).toHaveText('Recording');
+  await expect(page.locator('iframe.recording-bar')).toHaveCount(0);
+  await expect(page.locator('iframe.recording-bar')).toBeVisible({ timeout: 6000 });
+  await expect(page.locator('iframe.count-disc')).toHaveCount(0);
+  await page.frameLocator('iframe.recording-bar').locator('.discard').click();
+});
+
+test('a recording opens in the real editor: a movie that plays, its frames on the strip, and all the tools', async ({ page }) => {
+  const editor = await recorded(page);
+  const movie = editor.locator('video.movie, video').first();
+  await expect.poll(() => movie.evaluate(v => (v as HTMLVideoElement).videoWidth)).toBeGreaterThan(0);
+  const made = await movie.evaluate(v => ({ duration: (v as HTMLVideoElement).duration, src: (v as HTMLVideoElement).src }));
+  expect(made.src).toMatch(/^blob:/);
+  expect(made.duration).toBeGreaterThan(1);
+  await expect(editor.locator('.strip img').first()).toBeVisible();
+  for (const tool of ['.cut-out', '.zoom-in', '.speed', '.frame-toggle', '.pointer-look']) await expect(editor.locator(tool)).toBeVisible();
+  // Its window has room for the strip, and the pill teaches a recording.
+  await expect(page.locator('.hint span')).toContainText('yellow handles');
+  await editor.locator('.play').click();
+  await expect.poll(() => movie.evaluate(v => (v as HTMLVideoElement).currentTime)).toBeGreaterThan(0.1);
+  await editor.locator('.play').click();
+  // Closed, it waits in Recent, and reopens as a recording.
+  await page.keyboard.press('Meta+w');
+  await page.locator('.tray').click();
+  await page.locator('.tray-menu [data-act="show"]').click();
+  await editor.locator('.recent').first().click();
+  await expect(editor.locator('.trim')).toBeVisible();
+  await expect.poll(() => movie.evaluate(v => (v as HTMLVideoElement).videoWidth)).toBeGreaterThan(0);
+});
+
+test('Save Video writes a real movie, and with nothing changed it is the recording itself', async ({ page }) => {
+  const editor = await recorded(page);
+  const [saved] = await Promise.all([page.waitForEvent('download'), editor.getByRole('button', { name: /Save Video/ }).first().click()]);
+  expect(saved.suggestedFilename()).toMatch(/^Mark \d{4}-\d\d-\d\d at .*\.(mp4|webm)$/);
+  const head = await fileHead(saved, 12);
+  expect(head.includes('ftyp') || head[0] === 0x1a).toBe(true);
+  await expect(editor.locator('.message span')).toContainText('Saved as');
+});
+
+test('a copy takes what was drawn, cut and framed, and saves as a GIF too', async ({ page }) => {
+  const editor = await recorded(page);
+  await expect(editor.locator('.strip img').first()).toBeVisible();
+  const box = (await editor.locator('.overlay').boundingBox())!;
+  await page.mouse.move(box.x + 100, box.y + 100); await page.mouse.down();
+  await page.mouse.move(box.x + 300, box.y + 200, { steps: 4 }); await page.mouse.up();
+  await page.keyboard.press('Escape');
+  await editor.locator('.speed').click();
+  await editor.locator('.frame-toggle').click();
+  await editor.locator('.frame-panel .devices').getByRole('radio', { name: 'Browser', exact: true }).click();
+  await page.keyboard.press('Escape');
+  const [movie] = await Promise.all([page.waitForEvent('download', { timeout: 30_000 }), editor.getByRole('button', { name: /Save Video/ }).first().click()]);
+  const head = await fileHead(movie, 12);
+  expect(head.includes('ftyp') || head[0] === 0x1a).toBe(true);
+  await editor.locator('.save-more').click();
+  const [gif] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), editor.getByRole('menuitem', { name: /Save as GIF/ }).click()]);
+  expect(gif.suggestedFilename()).toMatch(/\.gif$/);
+  expect((await fileHead(gif, 6)).toString()).toBe('GIF89a');
+  await expect(editor.locator('.message span')).toContainText(/Saved as .*\.gif/);
+});
+
+test('a browser can’t copy a video, so the card holds it to save, and the editor says why', async ({ page }) => {
+  const editor = await recorded(page);
+  await editor.getByRole('button', { name: /^Copy\b/ }).first().click();
+  await expect(editor.locator('.message span')).toContainText('can’t put a video on the clipboard');
+  await expect(page.locator('.clip')).toBeVisible();
+  await expect(page.locator('.clip-movie')).toBeVisible();
+  await expect(page.locator('.clip-image')).toBeHidden();
+  await expect(page.locator('.clip-save')).toHaveText('Save Video');
+  const [saved] = await Promise.all([page.waitForEvent('download'), page.locator('.clip-save').click()]);
+  expect(saved.suggestedFilename()).toMatch(/\.(mp4|webm)$/);
+});
+
+test('the dashboard in the desktop answers its clicks, and what is taken is what it shows', async ({ page }) => {
+  await page.goto('/demo.html');
+  const editor = page.frameLocator('.win.editor iframe');
+  await editor.getByRole('heading', { name: 'Capture your screen' }).waitFor();
+  await page.keyboard.press('Meta+w');
+  const pixels = async () => page.evaluate(async () => {
+    const host = (window as unknown as { __markDemo: { invoke(c: string, a: object, f: Window, l: string): Promise<unknown> } }).__markDemo;
+    await host.invoke('capture_display', { delay: 0 }, window, 'page');
+    const { capture } = await host.invoke('current_capture', {}, window, 'page') as { capture: { dataUrl: string } };
+    await host.invoke('dismiss_editor', {}, window, 'page');
+    return capture.dataUrl.length;
+  });
+  const before = await pixels();
+  await page.locator('.spot[title="Orders"]').click();
+  await expect(page.locator('.scene')).toHaveAttribute('src', /scene-orders/);
+  // No range to pick on Orders.
+  await expect(page.locator('.spot[title="Last 90 days"]')).toBeHidden();
+  expect(await pixels()).not.toBe(before);
+  await page.locator('.spot[title="Overview"]').click();
+  await expect(page.locator('.spot[title="Last 90 days"]')).toBeVisible();
+  await page.locator('.spot[title="Last 90 days"]').click();
+  await expect(page.locator('.scene')).toHaveAttribute('src', /scene-90d/);
+});
+
+test('a browser that can’t make a movie says so, and the app’s Record stays out of its way', async ({ page }) => {
+  await page.addInitScript(() => { delete (window as { MediaRecorder?: unknown }).MediaRecorder; });
+  await page.goto('/demo.html');
+  const editor = page.frameLocator('.win.editor iframe');
+  await editor.getByRole('heading', { name: 'Capture your screen' }).waitFor();
+  await expect(editor.locator('[data-start="record"]')).toBeHidden();
+  await page.locator('.tray').click();
+  await page.locator('.tray-menu [data-act="record"]').click();
+  await expect(page.locator('.hint span')).toContainText('can’t record a video');
+  await expect(page.locator('iframe.overlay')).toHaveCount(0);
 });
 
 test('⌘4 starts a capture, as in the app, and the shortcut is recordable', async ({ page }) => {

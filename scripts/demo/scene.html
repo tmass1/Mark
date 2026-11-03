@@ -6,7 +6,8 @@
 <style>
   /* A 1440 x 900 Mac desktop, drawn once and rendered to public/demo/scene.png
      at 2x. The top 24px is plain wallpaper: the demo page draws a live menu
-     bar there. Everything is fictional. */
+     bar there. Everything is fictional. ?range= and ?page= give the states the
+     demo's dashboard answers its clicks with, each its own picture. */
   * { box-sizing: border-box; }
   html, body { margin: 0; width: 1440px; height: 900px; overflow: hidden;
     font: 13px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; color: #1c1c1e;
@@ -58,6 +59,9 @@
   tr:last-child td { border-bottom: none; }
   .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; }
   .pill.ok { background: #dcfce7; color: #15803d; } .pill.warn { background: #fef3c7; color: #b45309; } .pill.mut { background: #f1f1f4; color: #52525b; }
+  .chips { grid-column: 1 / 5; display: flex; gap: 8px; }
+  .chips span { padding: 5px 11px; border-radius: 999px; background: #fff; border: 1px solid #e3e3e8; font-size: 12px; color: #52525b; }
+  .chips span.on { background: #1c1c1e; border-color: #1c1c1e; color: #fff; font-weight: 500; }
 </style>
 </head>
 <body>
@@ -112,5 +116,88 @@
       </div>
     </div>
   </div>
+  <script>
+    const asked = new URLSearchParams(location.search);
+    const $ = selector => document.querySelector(selector);
+    const line = ys => {
+      const at = i => [i * 800 / (ys.length - 1), ys[i]];
+      let d = `M0 ${ys[0]}`;
+      for (let i = 0; i < ys.length - 1; i++) {
+        const [a, b, c, e] = [at(Math.max(0, i - 1)), at(i), at(i + 1), at(Math.min(ys.length - 1, i + 2))];
+        d += ` C ${b[0] + (c[0] - a[0]) / 6} ${b[1] + (c[1] - a[1]) / 6}, ${c[0] - (e[0] - b[0]) / 6} ${c[1] - (e[1] - b[1]) / 6}, ${c[0]} ${c[1]}`;
+      }
+      return d;
+    };
+    const RANGES = {
+      '7d': { title: 'Revenue by day', span: 'Last 7 days · USD', stats: [['$42,180', '▲ 4.2% vs last week'], ['912', '▲ 2.7%'], ['$46.25', '▼ 0.8%'], ['41%', '▲ 1.1 pts']],
+              now: [120, 104, 112, 78, 92, 60, 44], then: [132, 128, 124, 126, 118, 112, 108], peak: 5, channels: [46, 25, 18, 11] },
+      '90d': { title: 'Revenue by week', span: 'Last 90 days · USD', stats: [['$512,640', '▲ 18.6% vs last quarter'], ['11,204', '▲ 14.2%'], ['$45.75', '▲ 3.8%'], ['36%', '▼ 0.9 pts']],
+               now: [158, 148, 126, 134, 104, 96, 110, 84, 72, 58, 66, 40, 28], then: [168, 162, 158, 150, 146, 138, 134, 128, 120, 116, 110, 104, 98], peak: 11, channels: [39, 29, 21, 11] },
+      '1y': { title: 'Revenue by month', span: 'Last 12 months · USD', stats: [['$2.08M', '▲ 31.4% vs last year'], ['44,310', '▲ 26.0%'], ['$46.94', '▲ 4.3%'], ['35%', '▲ 3.2 pts']],
+              now: [166, 150, 156, 128, 112, 124, 92, 74, 88, 52, 36, 22], then: [176, 170, 168, 160, 150, 152, 140, 130, 124, 112, 104, 96], peak: 10, channels: [37, 31, 20, 12] },
+    };
+    const range = RANGES[asked.get('range')];
+    if (range) {
+      for (const span of document.querySelectorAll('.range span')) span.classList.toggle('on', span.textContent === asked.get('range'));
+      document.querySelectorAll('.card:not(.chart):not(.side)').forEach((card, i) => {
+        const [value, change] = range.stats[i];
+        card.querySelector('.v').textContent = value;
+        card.querySelector('.d').textContent = change;
+        card.querySelector('.d').classList.toggle('down', change.startsWith('▼'));
+      });
+      $('.chart .t').firstChild.textContent = `${range.title} `;
+      $('.chart .t small').textContent = range.span;
+      const [area, stroke, dashed] = document.querySelectorAll('.chart path');
+      area.setAttribute('d', `${line(range.now)} L800 190 L0 190Z`);
+      stroke.setAttribute('d', line(range.now));
+      dashed.setAttribute('d', line(range.then));
+      const dot = $('.chart circle');
+      dot.setAttribute('cx', range.peak * 800 / (range.now.length - 1));
+      dot.setAttribute('cy', range.now[range.peak]);
+      document.querySelectorAll('.side > div:not(.t)').forEach((row, i) => {
+        row.querySelector('b').textContent = `${range.channels[i]}%`;
+        row.querySelector('.bar i').style.width = `${range.channels[i]}%`;
+      });
+    }
+    const pill = (text, kind) => `<span class="pill ${kind}">${text}</span>`;
+    const table = (head, rows) => `<table><thead><tr>${head.map(cell => `<th>${cell}</th>`).join('')}</tr></thead><tbody>${
+      rows.map(row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    const chips = (names) => `<div class="chips">${names.map((name, i) => `<span class="${i ? '' : 'on'}">${name}</span>`).join('')}</div>`;
+    const PAGES = {
+      Orders: chips(['All 3,912', 'Awaiting payment 41', 'Shipped 3,688', 'Drafts 183']) + table(['Order', 'Customer', 'Items', 'Total', 'Status', 'Placed'], [
+        ['#10482', 'Lantern Studio', 14, '$1,240.00', pill('Shipped', 'ok'), 'Today, 9:41'],
+        ['#10481', 'Maya Okafor', 2, '$96.00', pill('Awaiting payment', 'warn'), 'Today, 9:12'],
+        ['#10480', 'Northline Coffee', 36, '$2,880.00', pill('Shipped', 'ok'), 'Yesterday'],
+        ['#10479', 'Sweeney &amp; Co.', 5, '$310.50', pill('Draft', 'mut'), 'Yesterday'],
+        ['#10478', 'Harbour Goods', 9, '$624.00', pill('Shipped', 'ok'), 'Nov 1'],
+        ['#10477', 'Priya Raman', 1, '$48.00', pill('Shipped', 'ok'), 'Nov 1'],
+        ['#10476', 'Fernweh Press', 22, '$1,716.00', pill('Awaiting payment', 'warn'), 'Oct 31'],
+        ['#10475', 'Oak &amp; Ember', 4, '$212.00', pill('Shipped', 'ok'), 'Oct 31'],
+        ['#10474', 'Tomás Ibarra', 3, '$141.50', pill('Shipped', 'ok'), 'Oct 30'],
+        ['#10473', 'Second Street Cafe', 18, '$1,062.00', pill('Draft', 'mut'), 'Oct 30'],
+        ['#10472', 'Juniper Hall', 7, '$389.00', pill('Shipped', 'ok'), 'Oct 29'],
+      ]),
+      Customers: chips(['All 1,284', 'Wholesale 96', 'Returning 488', 'New this month 73']) + table(['Customer', 'Type', 'Orders', 'Spent', 'Status', 'Last order'], [
+        ['Northline Coffee', 'Wholesale', 41, '$38,420.00', pill('Active', 'ok'), 'Yesterday'],
+        ['Lantern Studio', 'Wholesale', 28, '$21,960.00', pill('Active', 'ok'), 'Today'],
+        ['Fernweh Press', 'Wholesale', 17, '$14,288.00', pill('Payment due', 'warn'), 'Oct 31'],
+        ['Second Street Cafe', 'Wholesale', 12, '$9,744.00', pill('Active', 'ok'), 'Oct 30'],
+        ['Harbour Goods', 'Wholesale', 9, '$6,120.00', pill('Active', 'ok'), 'Nov 1'],
+        ['Oak &amp; Ember', 'Retail', 14, '$2,968.00', pill('Active', 'ok'), 'Oct 31'],
+        ['Maya Okafor', 'Retail', 8, '$1,104.00', pill('Payment due', 'warn'), 'Today'],
+        ['Priya Raman', 'Retail', 6, '$744.00', pill('Active', 'ok'), 'Nov 1'],
+        ['Tomás Ibarra', 'Retail', 5, '$612.50', pill('Active', 'ok'), 'Oct 30'],
+        ['Juniper Hall', 'Retail', 3, '$389.00', pill('New', 'mut'), 'Oct 29'],
+        ['Sweeney &amp; Co.', 'Retail', 2, '$310.50', pill('New', 'mut'), 'Yesterday'],
+      ]),
+    };
+    const page = asked.get('page');
+    if (PAGES[page]) {
+      for (const nav of document.querySelectorAll('.nav')) nav.classList.toggle('on', nav.textContent === page);
+      $('.head h1').textContent = page;
+      $('.head .range').style.visibility = 'hidden';
+      $('.body').innerHTML = PAGES[page];
+    }
+  </script>
 </body>
 </html>
