@@ -166,7 +166,7 @@ export function releaseStops(live, here) {
 // What's checked on the live site, before and after: pages that must load,
 // release files that must be there, and paths that must stay hidden. The site
 // has no sign-in, so nothing on it is private beyond what's never uploaded.
-export const PUBLIC_PAGES = ['/', '/ai', '/demo', '/demo/editor', '/demo/selector'];
+export const PUBLIC_PAGES = ['/', '/ai', '/demo', '/demo/editor', '/demo/selector', '/demo/recording'];
 
 /** Public pages the build in `dir` doesn't have, so that would answer "not
  *  found" once it is live. Cloudflare serves /demo/editor from

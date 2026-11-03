@@ -52,6 +52,8 @@ body { display: flex; flex-direction: column; align-items: center; padding: 16px
 .lights .light.close:hover { filter: brightness(.85); }
 
 /* ---- the overlay ------------------------------------------------------------ */
+/* The count before a delayed shot: the app's own, which nothing can click. */
+.count-disc { position: absolute; width: 260px; height: 260px; border: none; background: transparent; pointer-events: none; z-index: 35; }
 .overlay { position: absolute; inset: 0; width: 100%; height: 100%; border: none; background: transparent; z-index: 40; }
 
 /* ---- hint and caption ------------------------------------------------------- */

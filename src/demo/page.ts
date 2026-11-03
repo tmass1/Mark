@@ -19,6 +19,10 @@ const SIDES = 12 + 10 + 12;
 const RAIL = 44;
 const RAIL_HEIGHT = 310 + 8 + RAIL + 6;   // the tool pane, the gap, the crop pane, and air beneath
 const COMPACT: [number, number] = [560, CHROME + RAIL_HEIGHT];
+const SETTINGS_WIDTH = 560;
+const MENU_BAR = 24;
+/** COUNTDOWN_SIZE in recording.rs: room round the disc for its shadow. */
+const DISC = 260;
 /** The app's own shortcut. Browsers use ⌘-digit for their tabs, but it is not
  *  among the keys they refuse to hand a page, so the demo takes it and stops it
  *  going further; the menu-bar icon is there for any browser that disagrees. */
@@ -28,7 +32,8 @@ interface Capture { dataUrl: string; width: number; height: number; scale: numbe
 interface Settings {
   appearance: 'dark' | 'light' | 'system'; shortcut: string; checkUpdates: boolean; frame?: unknown;
   shortcuts?: { window?: string; display?: string; timed?: string; record?: string };
-  afterCapture?: 'editor' | 'thumbnail'; mcp?: boolean; recordMic?: boolean; recordClicks?: boolean;
+  afterCapture?: 'editor' | 'thumbnail'; mcp?: boolean; recordMic?: boolean; recordZoom?: boolean;
+  recordingPointer?: string; recordingClicks?: string; showInDock?: boolean; installUpdates?: boolean;
 }
 type Way = 'region' | 'window' | 'display' | 'timed' | 'record';
 const WAY_NAMES: Record<Way, string> = { region: 'Capture Region', window: 'Capture Window', display: 'Capture Whole Screen', timed: 'Timed Region', record: 'Record Video' };
@@ -113,6 +118,7 @@ const tray = $<HTMLButtonElement>('.tray'), trayMenu = $<HTMLDivElement>('.tray-
 const countdown = $<HTMLElement>('.countdown'), hint = $<HTMLElement>('.hint span');
 let overlay: HTMLIFrameElement | null = null;
 let editorWanted = true;   // whether the editor should be on screen when nothing else is happening
+let settingsHeight: number | null = null;   // how tall Settings want the editor, while they show
 
 const frames = (): DemoFrame[] => [editorFrame, overlay].flatMap(f => f?.contentWindow ? [f.contentWindow as DemoFrame] : []);
 const emit = (event: string, payload: unknown = null) => { for (const f of frames()) f.__markDemoEmit?.(event, payload); };
@@ -139,6 +145,8 @@ function fitEditor() {
   let [w, h] = state.capture
     ? [state.capture.width / state.capture.scale + SIDES + RAIL, state.capture.height / state.capture.scale + CHROME]
     : COMPACT;
+  // fit_to_settings: grown to show Settings without scrolling, while they show.
+  if (settingsHeight !== null) { w = Math.max(w, SETTINGS_WIDTH); h = Math.max(h, settingsHeight); }
   w = Math.min(w, stage.offsetWidth - 80); h = Math.min(h, stage.offsetHeight - 80);
   w = Math.max(w, 380); h = Math.max(h, Math.min(CHROME + RAIL_HEIGHT, stage.offsetHeight - 40));
   place(editorWin, w, h);
@@ -167,7 +175,7 @@ const RECORD_HINT = 'Recording video is in the Mac app: up to five minutes of a 
  *  something the app does. */
 const TIPS = [
   'Drag to draw. The tip of an arrow lands exactly where you let go.',
-  'Three arrow styles sit beside the colours: tapered, solid and thin.',
+  'Four arrow styles sit beside the colours: Mark’s own, tapered, solid and thin.',
   'Drag an arrow\'s end to reshape it, or its body to move it.',
   '⌘Z takes the last thing back, a crop included.',
   'Redact pixelates rather than blurs: a blur can be undone.',
@@ -289,7 +297,7 @@ function endSelection() { overlay?.remove(); overlay = null; state.busy = false;
 /** The whole display, straight away or after a delay, as lib.rs's capture_display. */
 async function captureDisplay(delay: number) {
   state.busy = true; emitTo(editorFrame, 'capture-changed'); showEditor(false);
-  await tick(delay);
+  await tick(delay, { x: 0, y: 0, width: stage.offsetWidth, height: stage.offsetHeight });
   const whole = await crop(0, 0, stage.offsetWidth, stage.offsetHeight);
   state.busy = false; await took(whole);
 }
@@ -301,12 +309,23 @@ function startWay(way: Way): Promise<void> {
   return beginSelection(way === 'timed' ? 5 : 0, way === 'window');
 }
 
-async function tick(seconds: number) {
+/** The count before a delayed shot, as recording.rs's show_countdown has it: in
+ *  the menu bar, and in the app's own disc over the middle of what will be taken,
+ *  which clicks go straight through and which is gone before the shutter. */
+async function tick(seconds: number, area: { x: number; y: number; width: number; height: number }) {
+  if (seconds <= 0) return;
+  const disc = document.createElement('iframe');
+  disc.className = 'count-disc'; disc.title = 'Countdown'; disc.tabIndex = -1;
+  disc.src = `./demo/recording.html?countdown&until=${Date.now() + seconds * 1000}`;
+  disc.style.left = `${Math.round(Math.min(Math.max(0, area.x + (area.width - DISC) / 2), stage.offsetWidth - DISC))}px`;
+  disc.style.top = `${Math.round(Math.min(Math.max(MENU_BAR, area.y + (area.height - DISC) / 2), stage.offsetHeight - DISC))}px`;
+  stage.append(disc);
   for (let left = seconds; left > 0; left--) {
     countdown.hidden = false; countdown.textContent = `${left}`;
     await new Promise(r => setTimeout(r, 1000));
   }
   countdown.hidden = true;
+  disc.remove();
 }
 
 /** Copied straight from the overlay, as lib.rs's keep_copied: onto the
@@ -389,15 +408,16 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       case 'capture_display': await captureDisplay(Number(args.delay ?? 0)); return;
       case 'capture_rect': {
         overlay?.remove(); overlay = null;
-        await tick(Number(args.delay ?? 0));
-        const region = await crop(Number(args.x), Number(args.y), Number(args.width), Number(args.height));
+        const area = { x: Number(args.x), y: Number(args.y), width: Number(args.width), height: Number(args.height) };
+        await tick(Number(args.delay ?? 0), area);
+        const region = await crop(area.x, area.y, area.width, area.height);
         state.busy = false; await (args.copy && !state.request ? tookCopy : took)(region); return;
       }
       case 'capture_window': {
         const picked = sceneWindows().find(w => w.id === Number(args.id));
         if (!picked) throw 'That window has closed. Pick another, or press Escape.';
         overlay?.remove(); overlay = null;
-        await tick(Number(args.delay ?? 0));
+        await tick(Number(args.delay ?? 0), picked);
         const shot = await crop(picked.x, picked.y, picked.width, picked.height);
         state.busy = false; await (args.copy && !state.request ? tookCopy : took)(shot); return;
       }
@@ -427,8 +447,10 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       }
       case 'open_screen_settings': return;
       case 'screen_access_granted': return true;
-      // The demo's editor is sized by the page; Settings scroll in it.
-      case 'fit_to_settings': return;
+      case 'fit_to_settings':
+        settingsHeight = args.height === null || args.height === undefined ? null : Number(args.height);
+        if (!editorWin.hidden) fitEditor();
+        return;
       case 'quit_app': {
         editorWanted = false; showEditor(false); endSelection(); stopTips();
         showHint('Mark quit. Click its icon in the menu bar to open it again.'); return;
@@ -454,7 +476,17 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       }
       case 'login_enabled': return false;
       case 'set_login': throw 'Opening at login is a Mac feature; this web preview can\'t.';
-      case 'set_auto_update': state.settings = { ...state.settings, checkUpdates: Boolean(args.enabled) }; return state.settings;
+      // Kept for the visit, so each choice stays as it was made; the Mac app acts on them.
+      // As lib.rs: installing by itself means looking by itself, and not looking means not installing.
+      case 'set_auto_update':
+        state.settings = { ...state.settings, checkUpdates: Boolean(args.enabled),
+                           installUpdates: Boolean(args.enabled) && state.settings.installUpdates };
+        return state.settings;
+      case 'set_install_updates':
+        state.settings = { ...state.settings, installUpdates: Boolean(args.enabled),
+                           checkUpdates: Boolean(args.enabled) || state.settings.checkUpdates };
+        return state.settings;
+      case 'set_show_in_dock': state.settings = { ...state.settings, showInDock: Boolean(args.show) }; return state.settings;
       // Kept for the visit, as the app keeps it for good: the next capture is framed the same.
       case 'set_frame': state.settings = { ...state.settings, frame: args.frame }; return state.settings;
       // What follows a capture, and AI tools: the Mac app's. The demo keeps
@@ -485,7 +517,9 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
       case 'recording_supported': return true;
       case 'set_record_options':
         state.settings = { ...state.settings, recordMic: Boolean(args.mic ?? state.settings.recordMic),
-                           recordClicks: Boolean(args.clicks ?? state.settings.recordClicks ?? true) };
+                           recordZoom: Boolean(args.zoom ?? state.settings.recordZoom),
+                           recordingPointer: String(args.pointer ?? state.settings.recordingPointer ?? 'arrow'),
+                           recordingClicks: String(args.clicks ?? state.settings.recordingClicks ?? 'rings') };
         return state.settings;
       case 'video_frames': case 'copy_video': case 'copy_gif': case 'save_video': case 'share_video':
         throw 'Recording the screen is in the Mac app.';

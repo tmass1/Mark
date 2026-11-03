@@ -216,8 +216,9 @@ describe('the pages a build has', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pages-'));
     mkdirSync(join(dir, 'demo'));
     for (const file of ['index.html', 'ai.html', 'demo.html', 'demo/editor.html']) writeFileSync(join(dir, file), '');
-    expect(pagesMissing(dir)).toEqual(['/demo/selector']);
+    expect(pagesMissing(dir)).toEqual(['/demo/selector', '/demo/recording']);
     writeFileSync(join(dir, 'demo/selector.html'), '');
+    writeFileSync(join(dir, 'demo/recording.html'), '');
     expect(pagesMissing(dir)).toEqual([]);
     rmSync(dir, { recursive: true });
   });

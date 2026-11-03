@@ -12,7 +12,7 @@ export default defineConfig({
     // are separate windows, so separate pages. The demo page hosts copies of most in frames.
     rollupOptions: { input: {
       main: 'index.html', selector: 'selector.html', update: 'update.html', thumbnail: 'thumbnail.html', recording: 'recording.html',
-      demo: 'demo.html', demoEditor: 'demo/editor.html', demoSelector: 'demo/selector.html',
+      demo: 'demo.html', demoEditor: 'demo/editor.html', demoSelector: 'demo/selector.html', demoRecording: 'demo/recording.html',
       site: 'site.html', ai: 'ai.html',
     } },
   },

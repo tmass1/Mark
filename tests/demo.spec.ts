@@ -126,6 +126,62 @@ test('the menu bar’s Settings… brings the editor forward showing them', asyn
   await expect(editor.getByRole('region', { name: 'Settings' })).toBeVisible();
 });
 
+test('a timed shot counts down in the menu bar and in the app’s disc over what it will take, gone before the shutter', async ({ page }) => {
+  await page.goto('/demo.html');
+  const editor = page.frameLocator('.win.editor iframe');
+  await editor.getByRole('button', { name: /^Timed/ }).first().click();
+  const overlay = page.frameLocator('iframe.overlay');
+  await overlay.locator('.veil').waitFor();
+  const stage = (await page.locator('.stage').boundingBox())!;
+  await page.mouse.move(stage.x + 300, stage.y + 150); await page.mouse.down();
+  await page.mouse.move(stage.x + 800, stage.y + 450, { steps: 6 }); await page.mouse.up();
+  await overlay.getByRole('button', { name: 'Capture', exact: true }).click();
+  const disc = page.locator('iframe.count-disc');
+  await expect(disc).toBeVisible();
+  await expect(page.frameLocator('iframe.count-disc').locator('.what')).toHaveText('Screenshot');
+  await expect(page.frameLocator('iframe.count-disc').locator('.number')).toHaveText(/^[1-5]$/);
+  await expect(page.locator('.countdown')).toHaveText(/^[1-5]$/);
+  // Over the middle of what will be taken, and in the way of nothing.
+  const box = (await disc.boundingBox())!;
+  const scale = stage.width / await page.locator('.stage').evaluate(el => (el as HTMLElement).offsetWidth);
+  expect(Math.abs(box.x + box.width / 2 - (stage.x + 550 * scale))).toBeLessThan(3);
+  expect(Math.abs(box.y + box.height / 2 - (stage.y + 300 * scale))).toBeLessThan(3);
+  expect(await disc.evaluate(el => getComputedStyle(el).pointerEvents)).toBe('none');
+  await editor.locator('.capture').waitFor({ timeout: 8000 });
+  await expect(disc).toHaveCount(0);
+  await expect(page.locator('.countdown')).toBeHidden();
+});
+
+test('every setting the demo offers stays as it was left, and Settings fit the window', async ({ page }) => {
+  await page.setViewportSize({ width: 1472, height: 960 });
+  await page.goto('/demo.html');
+  const editor = page.frameLocator('.win.editor iframe');
+  await editor.locator('.gear, [aria-label="Settings"]').first().click();
+  await expect(editor.locator('.settings-view')).toBeVisible();
+  await expect.poll(() => editor.locator('.settings-view').evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+  const dock = editor.locator('.dock'), install = editor.locator('.auto-install'), check = editor.locator('.auto-update');
+  await dock.click({ force: true });
+  await expect(dock).not.toBeChecked();
+  await expect(editor.locator('.dock-note')).toBeHidden();
+  await install.click({ force: true });
+  await expect(install).toBeChecked();
+  // Not looking means not installing.
+  await check.click({ force: true });
+  await expect(check).not.toBeChecked();
+  await expect(install).not.toBeChecked();
+  await editor.getByRole('tab', { name: 'Recording', exact: true }).click();
+  await editor.locator('.record-pointer').selectOption('touch');
+  await editor.locator('.record-clicks').selectOption('ripple');
+  await editor.locator('.record-zoom').click({ force: true });
+  await expect(editor.locator('.record-pointer')).toHaveValue('touch');
+  await expect(editor.locator('.record-clicks')).toHaveValue('ripple');
+  await expect(editor.locator('.record-zoom')).toBeChecked();
+  // Back, the window goes back to the size it was.
+  const grown = (await page.locator('.win.editor').boundingBox())!.height;
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await page.locator('.win.editor').boundingBox())!.height).toBeLessThan(grown);
+});
+
 test('Record shows where the app shows it, and says the Mac app records', async ({ page }) => {
   const editor = await open(page);
   const record = editor.locator('[data-start="record"]');
