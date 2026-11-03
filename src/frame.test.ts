@@ -38,8 +38,8 @@ describe('frame geometry', () => {
   it('puts a phone round it: a bezel on every side, its own screen corners, and no title bar', () => {
     const phone = frameGeometry(780, 1688, 2, { ...DEFAULT_FRAME, device: 'phone', radius: 0 });
     expect(phone.bar).toBe(0);
-    expect(phone.bezel).toBe(Math.round(0.045 * 780));
-    expect(phone.radius).toBe(Math.round(0.12 * 780));
+    expect(phone.bezel).toBe(Math.round(0.044 * 780));
+    expect(phone.radius).toBe(Math.round(0.135 * 780));
     expect(phone.width).toBe(780 + 2 * (phone.pad + phone.bezel));
     expect(phone.height).toBe(1688 + 2 * (phone.pad + phone.bezel));
     // Corners are the phone's, whatever the slider says.

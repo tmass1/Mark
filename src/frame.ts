@@ -49,10 +49,10 @@ export const DEVICES: { id: Device; name: string; art: string }[] = [
 /** A phone's or tablet's metal: its band, the lighter edge that catches the
  *  light, and a name. The bezel round the screen is black whatever it is. */
 export const BODY_COLOURS: { id: BodyColour; name: string; band: string; edge: string }[] = [
-  { id: 'black', name: 'Black', band: '#2b2b2e', edge: '#4a4a4f' },
-  { id: 'silver', name: 'Silver', band: '#d5d7da', edge: '#f2f3f5' },
-  { id: 'titanium', name: 'Natural Titanium', band: '#b8b1a6', edge: '#d9d3c9' },
-  { id: 'blue', name: 'Deep Blue', band: '#3c4a5f', edge: '#5b6b82' },
+  { id: 'black', name: 'Black', band: '#3a3a3d', edge: '#77777d' },
+  { id: 'silver', name: 'Silver', band: '#d9dadc', edge: '#ffffff' },
+  { id: 'titanium', name: 'Natural Titanium', band: '#bdb6aa', edge: '#ebe6dd' },
+  { id: 'blue', name: 'Deep Blue', band: '#3f4b5e', edge: '#7d8ba1' },
 ];
 
 /** Whether it is held: a phone or a tablet, with a body and its own corners. */
@@ -128,11 +128,11 @@ export const BAR_COLOURS = {
 const BROWSER_BAR = 52;
 /** A phone's and a tablet's bezel, and their screens' corners, as shares of
  *  the screen's shorter side, about a current one's. */
-const BEZEL = { phone: 0.045, tablet: 0.055 };
-const SCREEN_CORNER = { phone: 0.12, tablet: 0.03 };
+const BEZEL = { phone: 0.044, tablet: 0.055 };
+const SCREEN_CORNER = { phone: 0.135, tablet: 0.03 };
 /** The metal band round the bezel, as a share of it, and how far a button
  *  stands out from the side. */
-const BAND = 0.34;
+const BAND = 0.42;
 const KNOB = 0.2;
 /** A phone's Dynamic Island, in shares of the screen's shorter side. */
 const ISLAND = { width: 0.32, height: 0.094, top: 0.028 };
@@ -340,61 +340,139 @@ function paintBar(context: CanvasRenderingContext2D, { x, y, width, bar }: { x: 
   context.stroke();
 }
 
-/** A phone's or tablet's body: its buttons standing out of the sides, the
- *  metal band in its colour with a lighter edge and a faint sheen, and the
- *  black bezel inside it, which the screen sits in. */
+/** A colour mixed towards white (`amount` above 0) or black (below), as a
+ *  shade of metal is lit or in shadow. */
+function shade(hex: string, amount: number): string {
+  const value = parseInt(hex.slice(1), 16);
+  const towards = amount > 0 ? 255 : 0, share = Math.min(1, Math.abs(amount));
+  const channel = (shift: number) => Math.round(((value >> shift) & 255) + (towards - ((value >> shift) & 255)) * share);
+  return `rgb(${channel(16)}, ${channel(8)}, ${channel(0)})`;
+}
+
+/** A phone's or tablet's body, as a current one is made: its buttons standing
+ *  out of the sides, rounded and lit like the metal; the metal band itself,
+ *  lit from the top left, with a dark outer edge, a bright line just inside
+ *  it, and the short antenna lines across it; a dark line where it meets the
+ *  glass; and the black bezel under the glass, its edge catching the light. */
 function paintBody(context: CanvasRenderingContext2D, body: { x: number; y: number; width: number; height: number; radius: number },
                    bezel: number, style: FrameStyle) {
   const colour = BODY_COLOURS.find(each => each.id === style.color) ?? BODY_COLOURS[0];
   const band = Math.max(1, Math.round(bezel * BAND));
   const knob = Math.max(1, Math.ceil(bezel * KNOB));
+  const hair = Math.max(1, band * 0.12);
+  const metal = (x0: number, y0: number, x1: number, y1: number) => {
+    const gradient = context.createLinearGradient(x0, y0, x1, y1);
+    gradient.addColorStop(0, shade(colour.band, 0.2));
+    gradient.addColorStop(0.5, colour.band);
+    gradient.addColorStop(1, shade(colour.band, -0.25));
+    return gradient;
+  };
   // Buttons first, so the body sits over their inner ends: a phone's action
   // button and volume on the left, power on the right; a tablet's top button.
-  const buttons = style.device === 'phone'
-    ? [[-1, 0.17, 0.035], [-1, 0.23, 0.065], [-1, 0.31, 0.065], [1, 0.25, 0.1]] as const
-    : [] as const;
-  context.fillStyle = colour.band;
-  for (const [side, at, length] of buttons) {
-    const left = side < 0 ? body.x - knob : body.x + body.width - band;
-    roundedRect(context, left, body.y + body.height * at, knob + band, body.height * length, knob);
+  // Each is round in section, so lit across it.
+  const button = (x: number, y: number, width: number, height: number, across: 'x' | 'y') => {
+    const gradient = across === 'x' ? context.createLinearGradient(x, 0, x + width, 0) : context.createLinearGradient(0, y, 0, y + height);
+    gradient.addColorStop(0, shade(colour.band, -0.3));
+    gradient.addColorStop(0.45, shade(colour.band, 0.25));
+    gradient.addColorStop(1, shade(colour.band, -0.2));
+    roundedRect(context, x, y, width, height, Math.min(width, height) / 2);
+    context.fillStyle = gradient;
     context.fill();
+    context.lineWidth = hair;
+    context.strokeStyle = shade(colour.band, -0.45);
+    context.stroke();
+  };
+  if (style.device === 'phone') {
+    for (const [side, at, length] of [[-1, 0.17, 0.035], [-1, 0.23, 0.065], [-1, 0.31, 0.065], [1, 0.25, 0.1]] as const) {
+      const x = side < 0 ? body.x - knob : body.x + body.width - band;
+      button(x, body.y + body.height * at, knob + band, body.height * length, 'x');
+    }
+  } else if (style.device === 'tablet') {
+    button(body.x + body.width * 0.74, body.y - knob, body.width * 0.07, knob + band, 'y');
   }
-  if (style.device === 'tablet') {
-    roundedRect(context, body.x + body.width * 0.74, body.y - knob, body.width * 0.07, knob + band, knob);
-    context.fill();
-  }
-  // The band, its edge catching the light, and a sheen across it.
+  // The band, lit from the top left.
   roundedRect(context, body.x, body.y, body.width, body.height, body.radius);
-  context.fillStyle = colour.band;
+  context.fillStyle = metal(body.x, body.y, body.x + body.width, body.y + body.height);
   context.fill();
-  const sheen = context.createLinearGradient(body.x, body.y, body.x + body.width, body.y + body.height);
-  sheen.addColorStop(0, '#ffffff38'); sheen.addColorStop(0.45, '#ffffff00'); sheen.addColorStop(1, '#ffffff14');
-  context.fillStyle = sheen;
-  context.fill();
-  context.lineWidth = Math.max(1, band * 0.35);
-  context.strokeStyle = colour.edge;
-  roundedRect(context, body.x + context.lineWidth / 2, body.y + context.lineWidth / 2, body.width - context.lineWidth,
-              body.height - context.lineWidth, body.radius - context.lineWidth / 2);
+  // Its outer edge, dark, so it stands off any background.
+  context.lineWidth = hair;
+  context.strokeStyle = shade(colour.band, -0.5);
+  roundedRect(context, body.x + hair / 2, body.y + hair / 2, body.width - hair, body.height - hair, body.radius - hair / 2);
   context.stroke();
-  // The bezel, black, inside the band.
-  roundedRect(context, body.x + band, body.y + band, body.width - 2 * band, body.height - 2 * band, body.radius - band);
-  context.fillStyle = '#060607';
+  // A bright line just inside it, strongest where the light falls.
+  const inset = band * 0.28;
+  const light = context.createLinearGradient(body.x, body.y, body.x + body.width, body.y + body.height);
+  light.addColorStop(0, colour.edge);
+  light.addColorStop(0.55, `${colour.edge}55`);
+  light.addColorStop(1, `${colour.edge}22`);
+  context.lineWidth = Math.max(1, band * 0.16);
+  context.strokeStyle = light;
+  roundedRect(context, body.x + inset, body.y + inset, body.width - 2 * inset, body.height - 2 * inset, body.radius - inset);
+  context.stroke();
+  // The antenna lines: short breaks across the band near each corner.
+  if (style.device === 'phone') {
+    context.strokeStyle = shade(colour.band, -0.35);
+    context.lineWidth = Math.max(1, band * 0.22);
+    const near = body.radius * 1.15;
+    for (const y of [body.y + near, body.y + body.height - near]) {
+      for (const x of [body.x, body.x + body.width - band]) {
+        context.beginPath(); context.moveTo(x, y); context.lineTo(x + band, y); context.stroke();
+      }
+    }
+    for (const x of [body.x + body.width * 0.24, body.x + body.width * 0.76]) {
+      context.beginPath(); context.moveTo(x, body.y + body.height - band); context.lineTo(x, body.y + body.height); context.stroke();
+    }
+  }
+  // Where the band meets the glass: a dark line, then the bezel under it.
+  const glass = { x: body.x + band, y: body.y + band, width: body.width - 2 * band, height: body.height - 2 * band, radius: body.radius - band };
+  roundedRect(context, glass.x, glass.y, glass.width, glass.height, glass.radius);
+  context.fillStyle = '#040405';
   context.fill();
+  context.lineWidth = Math.max(1, band * 0.18);
+  context.strokeStyle = shade(colour.band, -0.65);
+  context.stroke();
+  // The glass's own edge, catching the light along the top.
+  const edge = context.createLinearGradient(0, glass.y, 0, glass.y + glass.height);
+  edge.addColorStop(0, '#ffffff2e'); edge.addColorStop(0.3, '#ffffff0d'); edge.addColorStop(1, '#ffffff08');
+  context.lineWidth = Math.max(1, (bezel - band) * 0.08);
+  context.strokeStyle = edge;
+  const lip = context.lineWidth * 1.5;
+  roundedRect(context, glass.x + lip, glass.y + lip, glass.width - 2 * lip, glass.height - 2 * lip, glass.radius - lip);
+  context.stroke();
   if (style.device === 'tablet') {
     // Its front camera, in the middle of the top bezel.
+    const camera = { x: body.x + body.width / 2, y: body.y + band + (bezel - band) / 2, r: Math.max(1, (bezel - band) * 0.14) };
     context.beginPath();
-    context.arc(body.x + body.width / 2, body.y + band + (bezel - band) / 2, Math.max(1, (bezel - band) * 0.14), 0, Math.PI * 2);
-    context.fillStyle = '#1c1d22';
+    context.arc(camera.x, camera.y, camera.r, 0, Math.PI * 2);
+    context.fillStyle = '#16181f';
+    context.fill();
+    context.beginPath();
+    context.arc(camera.x - camera.r * 0.3, camera.y - camera.r * 0.3, camera.r * 0.28, 0, Math.PI * 2);
+    context.fillStyle = '#3a4152';
     context.fill();
   }
 }
 
-/** A phone's Dynamic Island: a black pill over the top of the screen. */
+/** A phone's Dynamic Island: a black pill over the top of the screen, its
+ *  camera's lens towards the right end of it. */
 function paintIsland(context: CanvasRenderingContext2D, screen: { x: number; y: number; width: number; height: number }) {
   const short = Math.min(screen.width, screen.height);
   const width = ISLAND.width * short, height = ISLAND.height * short;
-  roundedRect(context, screen.x + (screen.width - width) / 2, screen.y + ISLAND.top * short, width, height, height / 2);
+  const left = screen.x + (screen.width - width) / 2, top = screen.y + ISLAND.top * short;
+  roundedRect(context, left, top, width, height, height / 2);
   context.fillStyle = '#000';
+  context.fill();
+  const lens = { x: left + width - height / 2, y: top + height / 2, r: height * 0.22 };
+  context.beginPath();
+  context.arc(lens.x, lens.y, lens.r, 0, Math.PI * 2);
+  context.fillStyle = '#0b0d14';
+  context.fill();
+  context.lineWidth = Math.max(0.5, lens.r * 0.25);
+  context.strokeStyle = '#1c2233';
+  context.stroke();
+  context.beginPath();
+  context.arc(lens.x - lens.r * 0.3, lens.y - lens.r * 0.3, lens.r * 0.22, 0, Math.PI * 2);
+  context.fillStyle = '#4a5878';
   context.fill();
 }
 
