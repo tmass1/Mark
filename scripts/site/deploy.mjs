@@ -138,6 +138,8 @@ let packed = liveRelease;
 if (!opts.check) {
   const build = run('sh', ['scripts/site/pack.sh']);
   if (build.status !== 0) stopWith([{ id: 'build-failed', output: tail({ stdout: build.stdout + build.stderr }, 25) }]);
+  const gone = check.pagesMissing(join(root, 'dist-site'));
+  if (gone.length) stopWith([{ id: 'page-missing', pages: gone }]);
   packed = check.releaseFilesPacked(join(root, 'dist-site'), version);
   const lost = check.releaseStops(liveRelease, packed);
   if (lost.length) stopWith(lost);

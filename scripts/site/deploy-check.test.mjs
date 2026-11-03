@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
-  HIDDEN, PUBLIC_PAGES, SITE, STOPS, BUNDLE, confirmations, deployNote, deployTag, describe as describeStop,
+  HIDDEN, PUBLIC_PAGES, SITE, STOPS, BUNDLE, pagesMissing, confirmations, deployNote, deployTag, describe as describeStop,
   isBuildInput, liveCommit, liveProblems, missingLiveWork, newer, oneVersion, parseStatus, readNote,
   releaseFilesHere, releaseStops, sortChanges,
 } from './deploy-check.mjs';
@@ -211,10 +211,22 @@ describe('the live site', () => {
   });
 });
 
+describe('the pages a build has', () => {
+  it('names each public page the build left out, and none it has', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pages-'));
+    mkdirSync(join(dir, 'demo'));
+    for (const file of ['index.html', 'ai.html', 'demo.html', 'demo/editor.html']) writeFileSync(join(dir, file), '');
+    expect(pagesMissing(dir)).toEqual(['/demo/selector']);
+    writeFileSync(join(dir, 'demo/selector.html'), '');
+    expect(pagesMissing(dir)).toEqual([]);
+    rmSync(dir, { recursive: true });
+  });
+});
+
 describe('what each stop says', () => {
   it('fills every blank, for every stop', () => {
     const fields = { files: ['src/main.ts'], lost: ['abc1234 A change'], holders: ['origin/main'], versions: ['v1 (50%)'],
-      output: 'out', versionId: 'v', named: 'n', recorded: 'r', live: 'l', here: 'h', changes: 'someone else deployed' };
+      output: 'out', versionId: 'v', named: 'n', recorded: 'r', live: 'l', here: 'h', changes: 'someone else deployed', pages: ['/demo'] };
     for (const id of Object.keys(STOPS)) {
       const { title, meaning, fix } = describeStop({ id, ...fields });
       expect(title).toBeTruthy();

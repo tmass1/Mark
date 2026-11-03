@@ -166,7 +166,14 @@ export function releaseStops(live, here) {
 // What's checked on the live site, before and after: pages that must load,
 // release files that must be there, and paths that must stay hidden. The site
 // has no sign-in, so nothing on it is private beyond what's never uploaded.
-export const PUBLIC_PAGES = ['/', '/ai', '/demo', '/demo/editor', '/demo/selector', '/demo/settings'];
+export const PUBLIC_PAGES = ['/', '/ai', '/demo', '/demo/editor', '/demo/selector'];
+
+/** Public pages the build in `dir` doesn't have, so that would answer "not
+ *  found" once it is live. Cloudflare serves /demo/editor from
+ *  demo/editor.html, and / from index.html. */
+export function pagesMissing(dir) {
+  return PUBLIC_PAGES.filter(page => !existsSync(join(dir, page === '/' ? 'index.html' : `${page.slice(1)}.html`)));
+}
 export const HIDDEN = ['/.git/config', '/.git/HEAD', '/.env', '/.dev.vars', '/wrangler.jsonc', '/package.json',
   '/pnpm-lock.yaml', '/vite.config.ts', '/src/main.ts', '/src-tauri/tauri.conf.json', '/scripts/release.sh',
   '/selector.html', '/settings.html', '/update.html', '/thumbnail.html', '/recording.html', '/dist-site/index.html'];
@@ -265,6 +272,11 @@ export const STOPS = {
     meaning: '{output}',
     fix: 'Fix the build, commit, then run this again.',
   },
+  'page-missing': {
+    title: "A public page isn't in the build",
+    meaning: '{pages} would answer "not found" once this is live.',
+    fix: 'If it was taken out on purpose, take it off PUBLIC_PAGES in scripts/site/deploy-check.mjs and the list in docs/deploying.md, commit, then run this again. If not, find out why the build left it out.',
+  },
   'no-terminal': {
     title: 'Nobody here to answer',
     meaning: "The deploy has to ask before going on, and there's no terminal to ask in.",
@@ -294,6 +306,7 @@ export function describe(stop) {
     if (key === 'lost') return stop.lost.map(c => `  ${c}`).join('\n');
     if (key === 'holder') return stop.holders?.[0] ?? 'the branch that has it';
     if (key === 'versions') return stop.versions.join(', ');
+    if (key === 'pages') return stop.pages.join(', ');
     const value = String(stop[key] ?? '');
     return /^[0-9a-f]{40}$/.test(value) ? value.slice(0, 7) : value;
   });

@@ -30,12 +30,12 @@ Two options:
    - GitHub's `main` has commits you don't.
 
    None of these takes live work off the site, so each is a question, not a stop.
-6. **Tests and build.** `pnpm test`, then the production build (`scripts/site/pack.sh`). Either failing stops it. `--check` runs the tests and skips the build.
+6. **Tests and build.** `pnpm test`, then the production build (`scripts/site/pack.sh`). Either failing stops it, and so does a build missing one of the public pages listed in step 9, before anything is uploaded. `--check` runs the tests and skips the build.
 7. **What it adds.** The commits since the live one, and the download and update it would publish. Then it waits for you to type `deploy`.
 8. **Deploy**, with the note naming the commit and branch. Just before uploading, it looks once more at what's live and at this checkout, in case someone deployed or something changed while the tests and build ran.
 9. **The live site.**
    - Cloudflare has to report the new version with its note, and the home page has to be the one just built.
-   - The public pages have to load: `/`, `/ai`, `/demo`, `/demo/editor`, `/demo/selector` and `/demo/settings`. So do the download and both Software Update files.
+   - The public pages have to load: `/`, `/ai`, `/demo`, `/demo/editor` and `/demo/selector`. So do the download and both Software Update files.
    - Everything that must stay hidden has to answer "not found": Git's files, `.env`, `.dev.vars`, the config files, the source, and the app's own window pages.
    - The site has no sign-in, so it has no private pages to check.
 10. **Rollback and to-dos.** It prints the command that puts the previous version back, and reminds you to:
@@ -60,6 +60,7 @@ Every stop ends with "Nothing was deployed" and leaves the live site as it was. 
 | The download would disappear | The site offers a download this checkout doesn't have, often because the version was raised before releasing. | Copy that version's `dmg/` folder into `src-tauri/target/universal-apple-darwin/release/bundle/`, deploy from the checkout that made the release, or release first. |
 | Software Update would lose its update | The same, for the `updates/` folder. | The same, for `updates/`. |
 | The tests failed / The site didn't build | The output shows what failed. | Fix it, commit, and try again. |
+| A public page isn't in the build | One of the pages the site must have would answer "not found" once live. | If it was taken out on purpose, take it off the list in `scripts/site/deploy-check.mjs` and here. If not, find out why the build left it out. |
 | Nobody here to answer | It needs an answer and has no terminal. | Run it in a terminal. An agent adds `--yes` only after Tommy says yes in chat. |
 | Stopped at your answer | You answered no, or didn't type `deploy`. | Run it again when you're ready. |
 | Something changed while the checks ran | Someone deployed, a commit landed, or a file changed during the tests and build. | Run it again, so everything is checked as it is now. |
