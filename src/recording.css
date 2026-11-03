@@ -68,11 +68,13 @@ html.outline #recording { inset: 0; }
    be taken, the seconds left in it, a ring going round once a second -- red
    before a recording -- and what is coming. Nothing in it can be clicked:
    the panel lets every click through to what is being set up. */
-html.countdown #recording { inset: 0; display: grid; place-items: center; }
+/* The window is COUNTDOWN_SIZE in recording.rs: room round the disc for its
+   shadow, which sits a little low, as a shadow falls; change both. */
+html.countdown #recording { inset: 0 0 16px; display: grid; place-items: center; }
 .count {
   position: relative; width: 148px; height: 148px; display: grid; place-items: center; align-content: center; gap: 2px;
   border-radius: 50%; background: #1c1c1ed9; color: #fff;
-  box-shadow: 0 14px 40px #00000066, inset 0 0 0 .5px var(--control-line);
+  box-shadow: 0 12px 34px #00000059, 0 2px 6px #00000040, inset 0 0 0 .5px var(--control-line);
   transition: opacity .15s ease-out, transform .15s ease-out;
 }
 .count.done { opacity: 0; transform: scale(.92); }

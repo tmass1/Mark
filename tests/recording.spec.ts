@@ -885,6 +885,11 @@ test('a delayed shot counts down over what it will take, by the clock, and is go
   await expect(count.locator('.what')).toHaveText('Recording');
   await expect(count.locator('.number')).toHaveText('2', { timeout: 2000 });
   await expect(count).toHaveClass(/done/, { timeout: 4000 });
+  // Its window has room for its whole shadow, most of all below.
+  await page.setViewportSize({ width: 260, height: 260 });
+  const disc = (await count.boundingBox())!;
+  expect(disc.x).toBeGreaterThanOrEqual(46);
+  expect(260 - (disc.y + disc.height)).toBeGreaterThanOrEqual(46);
   // A screenshot's count says so.
   await page.goto(`/recording.html?countdown&until=${Date.now() + 5000}`);
   await expect(page.getByRole('timer').locator('.what')).toHaveText('Screenshot');

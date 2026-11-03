@@ -21,7 +21,9 @@ pub const OUTLINE: &str = "recording-outline";
 /// The count before a delayed screenshot or recording: a panel of the same
 /// page, centred on what will be taken, which clicks go straight through.
 pub const COUNTDOWN: &str = "recording-countdown";
-const COUNTDOWN_SIZE: (f64, f64) = (180.0, 180.0);
+/// Its window: the disc, 148 across, with room all round for its shadow,
+/// most below, where it falls. Mirrors .count in recording.css.
+const COUNTDOWN_SIZE: (f64, f64) = (260.0, 260.0);
 /// Recordings stop by themselves after this long. Mark is for short ones.
 pub const LONGEST: Duration = Duration::from_secs(300);
 /// The trim strip under a recording in the editor and the gap above it, kept
