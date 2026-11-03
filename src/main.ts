@@ -380,18 +380,12 @@ app.innerHTML = `
   </div>
   <!-- A recording's player and trim: play, and the part to keep, between two
        handles over a strip of its frames. Its height is STRIP in recording.rs. -->
+  <!-- Play against the timeline, where it is and how long it runs, then the
+       tools: what to cut and zoom, and how it plays and shows the pointer. -->
   <div class="trim" hidden>
     <button class="play glassy icon" type="button" aria-label="Play" title="Play (Space)">
       <svg class="when-paused" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 4.6v10.8L15.4 10z" fill="currentColor"/></svg>
       <svg class="when-playing" viewBox="0 0 20 20" aria-hidden="true" hidden><path d="M6 4.6h2.8v10.8H6zM11.2 4.6H14v10.8h-2.8z" fill="currentColor"/></svg>
-    </button>
-    <button class="speed glassy" type="button" aria-label="Speed" title="Play and copy it twice as fast">1×</button>
-    <button class="pointer-look glassy icon" type="button" aria-label="Pointer and clicks" aria-haspopup="menu" aria-expanded="false" hidden></button>
-    <button class="cut-out glassy icon" type="button" aria-label="Cut a part out" title="Cut a part out around the playhead (K)">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="6" cy="14.2" r="2.3" ${STROKE}/><circle cx="14" cy="14.2" r="2.3" ${STROKE}/><path d="M7.6 12.5 14.6 3.8M12.4 12.5 5.4 3.8" ${STROKE}/></svg>
-    </button>
-    <button class="zoom-in glassy icon" type="button" aria-label="Zoom in" title="Zoom in around the playhead (Z)">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.6" cy="8.6" r="5.2" ${STROKE}/><path d="M12.4 12.4 16.4 16.4M8.6 6.4v4.4M6.4 8.6h4.4" ${STROKE}/></svg>
     </button>
     <div class="strip">
       <div class="frames"></div>
@@ -404,7 +398,19 @@ app.innerHTML = `
       <span class="edge" data-edge="start" role="slider" tabindex="0" aria-label="Start of the part to keep" title="Drag to trim the start (I)"></span>
       <span class="edge" data-edge="end" role="slider" tabindex="0" aria-label="End of the part to keep" title="Drag to trim the end (O)"></span>
     </div>
-    <span class="trim-time"></span>
+    <span class="times"><span class="now-time" aria-label="Playhead"></span><span class="trim-time"></span></span>
+    <span class="trim-divider" aria-hidden="true"></span>
+    <button class="cut-out glassy labelled" type="button" aria-label="Cut a part out" title="Cut a part out around the playhead (K)">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="6" cy="14.2" r="2.3" ${STROKE}/><circle cx="14" cy="14.2" r="2.3" ${STROKE}/><path d="M7.6 12.5 14.6 3.8M12.4 12.5 5.4 3.8" ${STROKE}/></svg>
+      <span>Cut</span>
+    </button>
+    <button class="zoom-in glassy labelled" type="button" aria-label="Zoom in" title="Zoom in around the playhead (Z)">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.6" cy="8.6" r="5.2" ${STROKE}/><path d="M12.4 12.4 16.4 16.4M8.6 6.4v4.4M6.4 8.6h4.4" ${STROKE}/></svg>
+      <span>Zoom</span>
+    </button>
+    <span class="trim-divider" aria-hidden="true"></span>
+    <button class="speed glassy" type="button" aria-label="Speed" title="Play and copy it twice as fast">1×</button>
+    <button class="pointer-look glassy icon" type="button" aria-label="Pointer and clicks" aria-haspopup="menu" aria-expanded="false" hidden></button>
   </div>
   <aside class="message" role="status" aria-live="polite" hidden><span></span><button class="settings" hidden>Open System Settings</button></aside>
   <aside class="steps" hidden aria-label="Steps">
@@ -509,9 +515,19 @@ app.innerHTML = `
   <!-- Paused, where the camera is looking at the playhead. -->
   <div class="camera-view" aria-hidden="true" hidden></div>
   <aside class="frame-panel" role="dialog" aria-label="Frame" hidden>
+    <!-- Beside a recording, folded: a tab to open it by. -->
+    <button class="frame-tab" type="button" aria-label="Show Frame" hidden>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3.4" ${STROKE}/><rect x="6.4" y="6.4" width="7.2" height="7.2" rx="1.4" ${STROKE}/></svg>
+      <span>Frame</span>
+    </button>
     <div class="frame-head">
       <span class="frame-title">Frame</span>
-      <button class="frame-switch" type="button" role="switch" aria-checked="false" aria-label="Frame the image"></button>
+      <span class="frame-head-end">
+        <button class="frame-switch" type="button" role="switch" aria-checked="false" aria-label="Frame the image"></button>
+        <button class="frame-fold icon" type="button" aria-label="Fold the Frame panel" hidden>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5.5 12.5 10 8 14.5" ${STROKE}/></svg>
+        </button>
+      </span>
     </div>
     <div class="backgrounds" role="radiogroup" aria-label="Background">
       ${BACKGROUNDS.map(background => `<button class="background" type="button" role="radio" aria-checked="false"
@@ -608,6 +624,7 @@ const touch = stage.querySelector<HTMLElement>('.pointer-touch')!;
 const ripples = stage.querySelector<HTMLElement>('.pointer-ripples')!;
 const playhead = strip.querySelector<HTMLElement>('.playhead')!;
 const trimTime = trimBar.querySelector<HTMLElement>('.trim-time')!;
+const nowTime = trimBar.querySelector<HTMLElement>('.now-time')!;
 const markAt = strip.querySelector<HTMLElement>('.mark-at')!;
 const markUntil = strip.querySelector<HTMLElement>('.mark-until')!;
 /** The crop tool's own group at the foot of the rail. */
@@ -1625,6 +1642,7 @@ function drawTrim() {
   playButton.setAttribute('aria-label', playing ? 'Pause' : 'Play');
   playButton.dataset.tip = playing ? 'Pause (Space)' : 'Play (Space)';
   const edited = !whole(trim, length) || cuts.length > 0;
+  nowTime.textContent = `${clock(movie.currentTime || trim.start)} /`;
   trimTime.textContent = speed !== 1 ? `${clock(keptLength(trim, cuts) / speed)} at ${speed}×`
     : edited ? `${clock(keptLength(trim, cuts))} of ${clock(length)}` : clock(length);
   trimBar.classList.toggle('trimmed', edited || speed !== 1);
@@ -2707,6 +2725,8 @@ on(image, 'load', () => { barDark = darkTop(image, image.naturalWidth, image.nat
 
 /** The panel says what the frame is; the footer button says whether there is one. */
 function syncFramePanel() {
+  if (framePanel.classList.contains('docked') && framePanel.classList.contains('folded') !== frameFolded) foldFramePanel(frameFolded);
+  framePanel.querySelector<HTMLElement>('.frame-tab')!.classList.toggle('on', frame.on);
   frameSwitch.setAttribute('aria-checked', String(frame.on));
   frameButton.classList.toggle('on', frame.on);
   const style = framing();
@@ -2739,10 +2759,27 @@ function syncFramePanel() {
 /** Change the frame, show it, and -- unless a slider is still moving -- keep it
  *  for the next capture and the next launch. */
 function setFrame(change: Partial<FrameStyle>, keep = true) {
+  // Beside a recording, turning the frame off folds the panel away, and
+  // turning it on -- by choosing anything in it -- opens it.
+  if (change.on !== undefined && change.on !== frame.on) frameFolded = !change.on;
   frame = { ...frame, ...change };
   syncFramePanel();
   render();
   if (keep && isTauri) void command('set_frame', { frame }).catch(report);
+}
+
+/** Whether the panel beside a recording is folded to a tab: when the frame
+ *  is off, or folded by hand, until opened again. */
+let frameFolded = false;
+function foldFramePanel(folded: boolean) {
+  frameFolded = folded;
+  const docked = framePanel.classList.contains('docked');
+  framePanel.classList.toggle('folded', docked && folded);
+  framePanel.querySelector<HTMLElement>('.frame-tab')!.hidden = !(docked && folded);
+  framePanel.querySelector<HTMLElement>('.frame-tab')!.classList.toggle('on', frame.on);
+  framePanel.querySelector<HTMLElement>('.frame-fold')!.hidden = !docked;
+  // The canvas is wider or narrower for it.
+  if (capture) applyZoom();
 }
 
 /** A recording's frame is set beside it, in the panel always in view; a
@@ -2760,7 +2797,11 @@ function dockFramePanel(docked: boolean) {
   }
   frameButton.hidden = docked;
   frameButton.setAttribute('aria-expanded', 'false');
+  // Off, it starts folded out of the way.
+  foldFramePanel(docked && !frame.on);
 }
+on(framePanel.querySelector<HTMLButtonElement>('.frame-fold')!, 'click', () => foldFramePanel(true));
+on(framePanel.querySelector<HTMLButtonElement>('.frame-tab')!, 'click', () => foldFramePanel(false));
 
 function placeFramePanel() {
   // Docked, it is laid out in its column, not placed over anything.

@@ -23,6 +23,16 @@ async function slide(page: Page, key: 'padding' | 'radius' | 'shadow', value: nu
   }, [value, letGo] as const);
 }
 
+/** The frame Rust was last asked to keep, once it matches: a save made by an
+ *  earlier click can land after a later one is made. */
+async function saved(page: Page, frame: Record<string, unknown>) {
+  await expect.poll(async () => {
+    const last = [...(await sent(page))].reverse().find(call => call.cmd === 'set_frame');
+    const kept = (last?.args as { frame?: Record<string, unknown> } | undefined)?.frame ?? {};
+    return Object.entries(frame).every(([key, value]) => kept[key] === value);
+  }).toBe(true);
+}
+
 /** A PNG's size and the RGBA of the pixels asked for. */
 function sample(page: Page, png: string, points: [number, number][]) {
   return page.evaluate(async ([source, at]) => {
@@ -224,17 +234,15 @@ test('a phone comes in four colours and can have its island; a tablet and a brow
   await expect(page.locator('.frame-panel .devices').getByRole('radio')).toHaveText(['None', 'Window', 'Browser', 'Phone', 'Tablet']);
   // Colour and island belong to a phone; a window has neither.
   await device(page, 'Window').click();
+  await saved(page, { device: 'window' });
   await expect(page.locator('.frame-panel .colours')).toBeHidden();
   await expect(page.getByRole('checkbox', { name: 'Dynamic Island' })).toBeHidden();
-  await clear(page);
   await device(page, 'Phone').click();
-  expect((await waitFor(page, 'set_frame')).args).toMatchObject({ frame: { device: 'phone' } });
-  await clear(page);
+  await saved(page, { device: 'phone' });
   await page.locator('.frame-panel').getByRole('radio', { name: 'Deep Blue' }).click();
-  expect((await waitFor(page, 'set_frame')).args).toMatchObject({ frame: { device: 'phone', color: 'blue' } });
-  await clear(page);
+  await saved(page, { device: 'phone', color: 'blue' });
   await page.getByRole('checkbox', { name: 'Dynamic Island' }).check();
-  expect((await waitFor(page, 'set_frame')).args).toMatchObject({ frame: { device: 'phone', island: true } });
+  await saved(page, { device: 'phone', island: true });
   // A tablet keeps its colour, and has no island.
   await device(page, 'Tablet').click();
   await expect(page.locator('.frame-panel .colours')).toBeVisible();

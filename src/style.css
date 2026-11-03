@@ -299,6 +299,19 @@ footer > * { flex: none; }
 .body-colour:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 .frame-check { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; }
 .frame-check input { margin: 0; accent-color: var(--blue); }
+.frame-head-end { display: flex; align-items: center; gap: 6px; }
+.frame-fold { width: 26px; height: 26px; padding: 0; border: none; border-radius: 7px; background: transparent; color: var(--muted);
+  display: grid; place-items: center; }
+.frame-fold svg { width: 16px; height: 16px; }
+.frame-fold:hover { background: var(--sunken); color: var(--ink); }
+/* Folded beside a recording: a slim tab, lit while the frame is on. */
+.frame-tab { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px; border: none; border-radius: 10px;
+  background: transparent; color: var(--muted); font-size: 11px; font-weight: 500; }
+.frame-tab svg { width: 20px; height: 20px; }
+.frame-tab:hover { background: var(--sunken); color: var(--ink); }
+.frame-tab.on { color: var(--blue); }
+.frame-panel.docked.folded { width: 60px; padding: 8px 6px; gap: 0; }
+.frame-panel.folded > :not(.frame-tab) { display: none !important; }
 /* Beside a recording, the panel is a column of its own, always in view, as
    wide as STYLE in recording.rs, less the gap; change both. */
 .frame-panel.docked {
@@ -679,7 +692,6 @@ footer > * { flex: none; }
   box-shadow: 0 -1px 3px #00000066; }
 /* Cut a part out, beside Play. A part cut out: dark, edged in red, a red
    handle at each end, and an × on hover to put it back. */
-.cut-out { flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
 .trim .cut-out svg { width: 17px; height: 17px; }
 .cuts { position: absolute; inset: 0; pointer-events: none; }
 .cut { --cut: #ff453a; position: absolute; top: 0; bottom: 0; pointer-events: auto;
@@ -692,7 +704,6 @@ footer > * { flex: none; }
 .cut:hover .cut-back, .cut-back:focus-visible { opacity: 1; }
 /* Zoom in, beside Cut. Each zoom: a violet band along the foot of the strip,
    saying how close it comes, a handle at each end. */
-.zoom-in { flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
 .trim .zoom-in svg { width: 18px; height: 18px; }
 .zooms { position: absolute; left: 0; right: 0; bottom: 5px; height: 15px; pointer-events: none; }
 .zoom-band {
@@ -718,7 +729,16 @@ footer > * { flex: none; }
 /* Paused, what the camera takes at the playhead: a dashed violet outline. */
 .camera-view { position: absolute; z-index: 2; pointer-events: none; border: 1.5px dashed #af52de; border-radius: 4px;
   box-shadow: 0 0 0 1px #ffffff99, inset 0 0 0 1px #ffffff99; }
-.trim-time { flex: none; min-width: 70px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Where the playhead is, and how long what is kept runs: right after the
+   timeline, as in QuickTime. */
+.times { flex: none; min-width: 118px; display: flex; align-items: baseline; gap: 4px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.now-time { color: var(--ink); }
+.trim-time { color: var(--muted); }
+/* The tools after it, in groups: what to cut and zoom; how it plays and
+   shows the pointer. */
+.trim-divider { flex: none; align-self: center; width: 1px; height: 22px; background: var(--hairline); }
+.trim .labelled { flex: none; height: 34px; padding: 0 13px 0 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 500; }
 .trim.trimmed .trim-time { color: var(--ink); }
 /* A recording saves as a video, in words, with its ▾ for a GIF ending the
    exports' pill where Copy Text would. */

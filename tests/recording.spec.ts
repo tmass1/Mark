@@ -270,7 +270,7 @@ test('a redaction on a recording is pixelated by Rust in every frame, and a mark
   await arrow(page, [0.1, 0.1], [0.4, 0.4]);
   await expect(page.locator('.redact-live')).toHaveCount(1);
   await page.keyboard.press('a');
-  await seek(page, 0.03);                                   // just past the start handle: 0:00
+  await seek(page, 0.04);                                   // just past the start handle: 0:00
   await arrow(page, [0.5, 0.5], [0.9, 0.9]);
   await seek(page, 0.75);
   await arrow(page, [0.5, 0.2], [0.9, 0.3]);
@@ -745,11 +745,14 @@ test('a recording made with Touch shows a fingertip, pressed while the button wa
 
 test('a recording can be framed too, in a phone, and every copy is sent the frame to set it in', async ({ page }) => {
   await editing(page);
-  // Beside a recording, its style is in view without asking.
+  // Beside a recording, its style is a column of its own -- folded to a tab
+  // while there is no frame, opened with it.
   const panel = page.locator('.frame-panel');
-  await expect(panel).toBeVisible();
   await expect(panel).toHaveClass(/docked/);
+  await expect(panel).toHaveClass(/folded/);
   await expect(page.getByRole('button', { name: 'Frame', exact: true })).toBeHidden();
+  await page.getByRole('button', { name: 'Show Frame' }).click();
+  await expect(panel).not.toHaveClass(/folded/);
   // A movie can't be see-through.
   await expect(panel.getByRole('radio', { name: 'No background', exact: true })).toBeDisabled();
   await panel.getByRole('radio', { name: 'Lagoon', exact: true }).click();
@@ -837,6 +840,7 @@ test('a recording made without zooming in on clicks opens with no zooms, though 
 test('the style panel stays in its column beside the recording when the window is resized', async ({ page }) => {
   await editing(page);
   const panel = page.locator('.frame-panel');
+  await page.getByRole('button', { name: 'Show Frame' }).click();
   await expect(panel).toBeVisible();
   // Mark sizes its window to each recording; the panel stays put and in view.
   await page.setViewportSize({ width: 1000, height: 640 });
@@ -909,4 +913,41 @@ test('the web view’s own menu never shows over a capture or Recent, only where
   });
   expect(await prevented('.capture')).toBe(true);
   expect(await prevented('.stage')).toBe(true);
+});
+
+test('the panel beside a recording folds to a tab when the frame goes off, and by hand, and opens with it', async ({ page }) => {
+  await editing(page);
+  const panel = page.locator('.frame-panel');
+  const tab = page.getByRole('button', { name: 'Show Frame' });
+  // No frame yet: folded out of the way, the canvas the wider for it.
+  await expect(tab).toBeVisible();
+  const narrow = (await page.locator('.canvas').boundingBox())!.width;
+  await tab.click();
+  await expect(panel.getByRole('radio', { name: 'Phone', exact: true })).toBeVisible();
+  expect((await page.locator('.canvas').boundingBox())!.width).toBeLessThan(narrow);
+  // Choosing anything frames it; folding by hand keeps the frame, and the tab says so.
+  await panel.getByRole('radio', { name: 'Phone', exact: true }).click();
+  await expect(page.locator('.canvas')).toHaveClass(/framed/);
+  await page.getByRole('button', { name: 'Fold the Frame panel' }).click();
+  await expect(tab).toBeVisible();
+  await expect(tab).toHaveClass(/\bon\b/);
+  await expect(page.locator('.canvas')).toHaveClass(/framed/);
+  // Turning the frame off folds it; on again, it opens.
+  await tab.click();
+  await page.getByRole('switch', { name: 'Frame the image' }).click();
+  await expect(tab).toBeVisible();
+  await expect(page.locator('.canvas')).not.toHaveClass(/framed/);
+});
+
+test('Play sits against the timeline, the time just after it, then the tools', async ({ page }) => {
+  await editing(page);
+  const x = async (selector: string) => (await page.locator(selector).boundingBox())!.x;
+  const order = await Promise.all(['.play', '.strip', '.times', '.cut-out', '.zoom-in', '.speed'].map(x));
+  expect([...order].sort((a, b) => a - b)).toEqual(order);
+  const [play, strip] = [(await page.locator('.play').boundingBox())!, (await page.locator('.strip').boundingBox())!];
+  expect(strip.x - (play.x + play.width)).toBeLessThanOrEqual(14);
+  await expect(page.locator('.cut-out')).toContainText('Cut');
+  await expect(page.locator('.zoom-in')).toContainText('Zoom');
+  await seek(page, 0.25);
+  await expect(page.locator('.now-time')).toHaveText('0:03 /');
 });

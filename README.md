@@ -469,14 +469,19 @@ notarization; an Apple Development certificate is only good for this Mac.
     and the rings are macOS's, recorded into the movie, and stay. The halo,
     the fingertip and the ripple Mark draws over it, from where it followed
     the pointer and when the button went down and came up, so the button
-    beside Play changes them afterwards — over the movie in the editor and in
+    after the timeline changes them afterwards — over the movie in the editor and in
     every copy — with what the recording can't take dimmed.
 
+    Under it, Play sits against the timeline, with where the playhead is and
+    how long the part kept runs just after it, then the tools: Cut and Zoom,
+    and how fast it plays and how the pointer shows. Beside it, its Frame
+    panel folds to a tab while there is no frame, and by its ›, and opens again
+    from the tab or as soon as anything in it is chosen.
     The editor then plays it, over a strip of its frames: drag the yellow
     handles to keep only part of it, or press **I** and **O** to trim to the
     playhead, and Space to play and pause; playing loops the part kept. To
     take a stretch out of the middle — a page loading, a URL being typed —
-    press **✂︎** beside Play, or **K**: a second around the playhead is cut,
+    press **Cut** after the timeline, or **K**: a second around the playhead is cut,
     dark between two red handles that drag to change it, with an × to put it
     back. Playing skips what is cut, and so does every copy.
     **Copy** puts the movie on the clipboard as a file, which Slack, Messages
@@ -487,7 +492,7 @@ notarization; an Apple Development certificate is only good for this Mac.
     hands it to the share sheet. **GIF size** at the foot of that menu makes
     every GIF small instead — 10 frames a second, at most 640 across, for a
     chat — and is remembered. A GIF saved or copied says how big it came out.
-    Each takes only the part kept, trimmed to the frame. **2×** beside Play
+    Each takes only the part kept, trimmed to the frame. **1×**, after the timeline, turned to **2×**,
     plays it twice as fast, and every copy with it, a voice keeping its pitch.
 
     Mark it up as you would a screenshot: arrows, boxes, numbered steps, text,
@@ -508,7 +513,7 @@ notarization; an Apple Development certificate is only good for this Mac.
     the last — following the pointer
     smoothly while it is in, and never past the edge of the picture. Each is a
     violet band along the foot of the strip: drag its ends, click it for
-    **1.5×**, **2×**, **3×** or **Remove**, and press the magnifier beside ✂︎,
+    **1.5×**, **2×**, **3×** or **Remove**, and press **Zoom** beside Cut,
     or **Z**, to add one at the playhead. Playing shows it as the copy will
     be; paused, the whole picture shows, so marks land where they should, with
     a dashed outline of what the zoom takes. With a frame, the zoom moves in
