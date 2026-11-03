@@ -49,4 +49,6 @@ When the other agent has merged, merge `origin/main` into your branch before you
 
 Deploying the site, publishing a release, notarizing, or pushing to `main` happens only when Tommy asks. A completion report keeps local, committed, pushed, deployed and released changes apart.
 
-`./scripts/release.sh` leaves the disk image and the in-app update in the build folder of the checkout that ran it, usually Tommy's. `pnpm site:deploy` publishes only what's in its own checkout. So before deploying from a worktree, copy that version's `dmg/` image and `updates/` files into the worktree's `src-tauri/target/universal-apple-darwin/release/bundle/`, or the live site loses its download and Software Update loses its manifest.
+The site deploys only through `pnpm site:deploy`, with `--check` first; `AGENTS.md` has the rules and `docs/deploying.md` the details. It stops a deploy from a branch or checkout that's missing work already live.
+
+`./scripts/release.sh` leaves the disk image and the in-app update in the build folder of the checkout that ran it, usually Tommy's. `pnpm site:deploy` publishes only what's in its own checkout. So before deploying from a worktree, copy that version's `dmg/` image and `updates/` files into the worktree's `src-tauri/target/universal-apple-darwin/release/bundle/`. The deploy check stops when they're missing, rather than letting the site lose its download and Software Update lose its manifest.

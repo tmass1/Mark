@@ -17,5 +17,5 @@ export default defineConfig({
     } },
   },
   // Unit tests live beside the source. tests/ belongs to Playwright.
-  test: { include: ['src/**/*.test.ts'] },
+  test: { include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'] },
 });

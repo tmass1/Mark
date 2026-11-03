@@ -1,0 +1,8 @@
+{
+  "_about": "Site versions deployed before each deploy carried a note naming its commit. Only versions whose commit is proven belong here; scripts/site/deploy.mjs reads it when the live version has no note.",
+  "b1c878fa-0e9a-440e-b280-e014d2a90f22": {
+    "commit": "d7356e1311f630fde995634d7437ccc3c9af6475",
+    "deployed": "2026-11-03T02:11:21Z",
+    "proof": "Claude's session log shows `pnpm site:deploy` run from d7356e1 at 02:11:09 UTC, answered with this version ID; a clean build of d7356e1 matched all 97 live files byte for byte, and one of b3f6356, the commit before, differed in 15."
+  }
+}

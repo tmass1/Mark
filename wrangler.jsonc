@@ -3,7 +3,8 @@
 // domain is created on deploy, DNS record and certificate included, because
 // the zone is on the same account. That account is pinned here on purpose --
 // Tommy's personal one, never a client's.
-//   pnpm site && pnpm exec wrangler deploy
+//   pnpm site:deploy --check, then pnpm site:deploy -- never wrangler deploy by
+// hand, which can take live work off the site. See docs/deploying.md.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mark",
