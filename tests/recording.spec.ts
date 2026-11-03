@@ -834,6 +834,20 @@ test('a recording made without zooming in on clicks opens with no zooms, though 
   await expect(page.locator('.zoom-band')).toHaveCount(1);
 });
 
+test('the style panel stays in its column beside the recording when the window is resized', async ({ page }) => {
+  await editing(page);
+  const panel = page.locator('.frame-panel');
+  await expect(panel).toBeVisible();
+  // Mark sizes its window to each recording; the panel stays put and in view.
+  await page.setViewportSize({ width: 1000, height: 640 });
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+  const [box, canvas] = [(await panel.boundingBox())!, (await page.locator('.canvas').boundingBox())!];
+  expect(box.x).toBeGreaterThanOrEqual(canvas.x + canvas.width);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(1000);
+  await expect(panel.getByRole('radio', { name: 'Phone', exact: true })).toBeInViewport();
+});
+
 test('no pointer menu for a recording whose pointer wasn\'t followed', async ({ page }) => {
   await followed(page, { pointer: 'touch', clicks: 'ripple' }, []);
   await waitFor(page, 'video_pointer');

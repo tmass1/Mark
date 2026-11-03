@@ -2763,6 +2763,8 @@ function dockFramePanel(docked: boolean) {
 }
 
 function placeFramePanel() {
+  // Docked, it is laid out in its column, not placed over anything.
+  if (framePanel.classList.contains('docked')) return;
   const button = frameButton.getBoundingClientRect(), box = framePanel.getBoundingClientRect();
   const left = Math.min(Math.max(8, button.right - box.width), innerWidth - box.width - 8);
   Object.assign(framePanel.style, { left: `${left}px`, bottom: `${innerHeight - button.top + 10}px` });
