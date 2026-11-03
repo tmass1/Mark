@@ -870,3 +870,27 @@ test('a delayed shot counts down over what it will take, by the clock, and is go
   await page.goto(`/recording.html?countdown&until=${Date.now() + 5000}`);
   await expect(page.getByRole('timer').locator('.what')).toHaveText('Screenshot');
 });
+
+test('the bar beside a recording can be dragged by all but its buttons, and has room for its shadow', async ({ page }) => {
+  await installBridge(page);
+  await page.setViewportSize({ width: 256, height: 88 });
+  await page.goto('/recording.html');
+  for (const part of ['.bar', '.time', '.live', '.gap']) await expect(page.locator(part)).toHaveAttribute('data-tauri-drag-region', '');
+  for (const button of ['.stop', '.discard']) await expect(page.locator(button)).not.toHaveAttribute('data-tauri-drag-region');
+  // The bar stops short of the window's edges, below most of all, where its shadow falls.
+  const bar = (await page.locator('.bar').boundingBox())!;
+  expect(bar.y).toBeGreaterThanOrEqual(12);
+  expect(88 - (bar.y + bar.height)).toBeGreaterThanOrEqual(30);
+  expect(bar.x).toBeGreaterThanOrEqual(20);
+});
+
+test('the web view’s own menu never shows over a capture or Recent, only where text is typed', async ({ page }) => {
+  await editing(page);
+  const prevented = (selector: string) => page.locator(selector).first().evaluate(element => {
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(await prevented('.capture')).toBe(true);
+  expect(await prevented('.stage')).toBe(true);
+});

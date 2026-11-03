@@ -24,12 +24,12 @@ if (asked.has('outline')) {
   countdown(Number(asked.get('until')), asked.has('video'));
 } else {
   root.innerHTML = `
-    <div class="bar" role="toolbar" aria-label="Recording">
-      <span class="live" aria-hidden="true"></span>
-      <span class="time" role="timer" aria-live="off">0:00</span>
-      <svg class="mic" viewBox="0 0 20 20" aria-label="With the microphone" hidden>
+    <div class="bar" role="toolbar" aria-label="Recording" data-tauri-drag-region>
+      <span class="live" aria-hidden="true" data-tauri-drag-region></span>
+      <span class="time" role="timer" aria-live="off" data-tauri-drag-region>0:00</span>
+      <svg class="mic" viewBox="0 0 20 20" aria-label="With the microphone" data-tauri-drag-region hidden>
         <rect x="7.4" y="2.8" width="5.2" height="9.2" rx="2.6"/><path d="M4.6 9.6a5.4 5.4 0 0 0 10.8 0M10 15v2.4"/></svg>
-      <span class="gap"></span>
+      <span class="gap" data-tauri-drag-region></span>
       <button class="stop" type="button" title="Stop and keep the recording">
         <span class="square" aria-hidden="true"></span>Stop
       </button>

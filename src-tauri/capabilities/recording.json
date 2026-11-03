@@ -1,10 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "recording",
-  "description": "The bar beside a recording, and the line round it, may read how long it has run and stop it, keeping it or not.",
+  "description": "The bar beside a recording, and the line round it, may read how long it has run and stop it, keeping it or not; the bar can be dragged.",
   "windows": ["recording", "recording-outline", "recording-countdown"], "platforms": ["macOS"],
   "permissions": [
     "allow-recording-status", "allow-stop-recording", "allow-discard-recording",
-    "core:event:allow-listen", "core:event:allow-unlisten"
+    "core:event:allow-listen", "core:event:allow-unlisten", "core:window:allow-start-dragging"
   ]
 }

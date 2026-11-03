@@ -2358,6 +2358,16 @@ rail.addEventListener('pointerleave', letToolMenuGo);
 toolMenu.addEventListener('pointerenter', () => window.clearTimeout(slotTimer));
 toolMenu.addEventListener('pointerleave', letToolMenuGo);
 
+// The web view's own menu -- Open Image in New Window, Download Image -- is a
+// browser's, not Mark's: nowhere but where text is typed, which keeps Cut,
+// Copy and Paste.
+document.addEventListener('contextmenu', event => {
+  const target = event.target as HTMLElement | null;
+  const typing = target instanceof HTMLTextAreaElement || target?.isContentEditable === true
+    || (target instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'button'].includes(target.type));
+  if (!typing) event.preventDefault();
+}, { signal: abort.signal });
+
 rail.addEventListener('contextmenu', event => {
   const button = (event.target as Element).closest<HTMLButtonElement>('.tool');
   if (!button || Number.isNaN(Number(button.dataset.slot))) return;

@@ -28,7 +28,7 @@ pub const LONGEST: Duration = Duration::from_secs(300);
 /// clear when the window is fitted to it. Mirrors .trim in style.css.
 pub const STRIP: f64 = 12.0 + 52.0;
 /// The bar's window, its shadow's room included. Mirrors recording.css.
-const BAR_SIZE: (f64, f64) = (232.0, 64.0);
+const BAR_SIZE: (f64, f64) = (256.0, 88.0);
 /// Between what is recorded and the bar.
 const GAP: f64 = 6.0;
 /// The outline sits this far outside the area, so it never covers an edge of it.

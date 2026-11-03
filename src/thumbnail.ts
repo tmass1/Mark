@@ -111,6 +111,9 @@ image.addEventListener('dragstart', event => {
 // A swipe to the right sends it away, as macOS's does: the fingers moving
 // right, whichever way this Mac scrolls. It follows the fingers until then,
 // and springs back if they stop short.
+// The web view's own menu -- Download Image and the like -- is a browser's, not Mark's.
+document.addEventListener('contextmenu', event => event.preventDefault());
+
 root.addEventListener('wheel', event => {
   if (!shown || dragging) return;
   event.preventDefault();

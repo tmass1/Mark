@@ -1,7 +1,8 @@
 /* The bar beside a recording, and the line round it. Dark whatever the
    appearance, like the overlay's panel: it sits over whatever is on screen.
-   The 12 round the bar is BAR_SIZE's room for its shadow in recording.rs, and
-   the 3 the outline sits out by is OUTSET there; change both. */
+   The room round the bar -- more below, where its shadow falls -- is
+   BAR_SIZE's in recording.rs, and the 3 the outline sits out by is OUTSET
+   there; change both. */
 
 :root {
   font: 13px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
@@ -22,13 +23,16 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 body { cursor: default; user-select: none; -webkit-user-select: none; color: var(--ink); }
 [hidden] { display: none !important; }
 
-#recording { position: fixed; inset: 12px; }
+#recording { position: fixed; inset: 14px 24px 34px; }
 
 .bar {
   display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 5px 0 14px;
   border-radius: 999px; background: var(--panel);
-  box-shadow: 0 10px 28px #00000073, 0 1px 3px #0000004d, inset 0 0 0 .5px var(--control-line);
+  box-shadow: 0 8px 22px #00000066, 0 1px 3px #0000004d, inset 0 0 0 .5px var(--control-line);
 }
+/* It can be dragged anywhere by all but its buttons: out of the way of what
+   is being recorded, though it is never in the recording. */
+.bar, .bar .live, .bar .time, .bar .mic, .bar .gap { cursor: grab; }
 .live { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--record); }
 .time { font-variant-numeric: tabular-nums; font-weight: 500; letter-spacing: .01em; }
 .time.ending { color: var(--warn); }
