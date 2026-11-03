@@ -963,6 +963,11 @@ fn decode_png_sized(png: &str) -> Result<(Vec<u8>, u32, u32), String> {
 #[tauri::command]
 fn quit_app(app: AppHandle) { app.exit(0); }
 
+/// Whether macOS lets Mark see the screen, for Settings to say so. Asks
+/// nothing: a Mac that hasn't been asked yet reads as not allowed.
+#[tauri::command]
+fn screen_access_granted() -> bool { macos::screen_access_granted() }
+
 #[tauri::command]
 fn open_screen_settings() -> Result<(), String> {
     std::process::Command::new("/usr/bin/open")
@@ -1219,7 +1224,7 @@ fn set_login(app: AppHandle, enabled: bool) -> Result<bool, String> {
 fn open_settings(app: AppHandle) -> Result<(), String> {
     let window = match app.get_webview_window(SETTINGS) {
         Some(window) => window,
-        None => panel(&app, SETTINGS, "settings.html", "Mark Settings", 460.0, 716.0, true)?,
+        None => panel(&app, SETTINGS, "settings.html", "Mark Settings", 540.0, 560.0, true)?,
     };
     macos::activate_self();
     window.show().and_then(|_| window.set_focus()).map_err(|e| e.to_string())
@@ -1283,7 +1288,7 @@ pub fn run() {
             if let Err(e) = way.start(app) { report(app, e); }
         }).build())
         .invoke_handler(tauri::generate_handler![current_capture, capture_region, capture_display, capture_rect, capture_window, cancel_selection, take_copied,
-            copy_capture, copy_edited, copy_text, recognize_text, scan_image, save_image, share_image, dismiss_editor, open_screen_settings, glass_available, set_glass,
+            copy_capture, copy_edited, copy_text, recognize_text, scan_image, save_image, share_image, dismiss_editor, open_screen_settings, screen_access_granted, glass_available, set_glass,
             send_capture, decline_request, mcp_setup, add_to_agent, open_guide,
             thumbnail::thumbnail_image, thumbnail::open_thumbnail, thumbnail::close_thumbnail, thumbnail::drag_thumbnail,
             recording::recording_supported, recording::recording_status, recording::stop_recording, recording::discard_recording,

@@ -431,6 +431,7 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         return;
       }
       case 'open_screen_settings': return;
+      case 'screen_access_granted': return true;
       case 'quit_app': {
         editorWanted = false; showEditor(false); settingsWin.hidden = true; endSelection(); stopTips();
         showHint('Mark quit. Click its icon in the menu bar to open it again.'); return;
@@ -494,10 +495,18 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
         throw 'Recording the screen is in the Mac app.';
       case 'recognize_text': throw 'Copy Text reads the image with the Mac\'s own text recognition, so it works in the Mac app.';
       case 'scan_image': throw 'Hide Sensitive reads the image with the Mac\'s own text and face recognition, so it works in the Mac app.';
+      // The web demo is always the newest Mark.
+      case 'pending_update': case 'check_for_update': return null;
       case 'open_updates': showHint('The Mac app checks for updates and installs them. This web demo is always the newest version.'); return;
       // The window plugin, as the settings page uses it.
       case 'plugin:window|close': settingsWin.hidden = true; return;
-      case 'plugin:window|set_size': { const size = args.value as { height: number }; settingsFrame.style.height = `${Math.round(size.height)}px`; return; }
+      // A size arrives as Tauri sends it: { Logical: { width, height } }, or Physical.
+      case 'plugin:window|set_size': {
+        const size = JSON.parse(JSON.stringify(args.value)) as { Logical?: { height: number }; Physical?: { height: number } };
+        const height = size.Logical?.height ?? (size.Physical ? size.Physical.height / devicePixelRatio : NaN);
+        if (Number.isFinite(height)) settingsFrame.style.height = `${Math.round(height)}px`;
+        return;
+      }
       case 'plugin:window|inner_size': return { width: settingsFrame.clientWidth * devicePixelRatio, height: settingsFrame.clientHeight * devicePixelRatio };
       case 'plugin:window|scale_factor': return devicePixelRatio;
       case 'plugin:app|version': return `${pkg.version} (web demo)`;
@@ -508,12 +517,15 @@ export const host: DemoHost & { display(): { x: number; y: number; width: number
 };
 (window as Window & { __markDemo?: DemoHost }).__markDemo = host;
 
+/** As wide as lib.rs opens the settings window. */
+const SETTINGS_WIDTH = 540;
+
 function openSettings() {
   if (!settingsFrame.src) settingsFrame.src = './demo/settings.html';
   settingsWin.hidden = false;
-  settingsWin.style.width = '460px';
+  settingsWin.style.width = `${SETTINGS_WIDTH}px`;
   if (!settingsWin.dataset.moved) {
-    settingsWin.style.left = `${Math.round((stage.offsetWidth - 460) / 2 + 40)}px`;
+    settingsWin.style.left = `${Math.round((stage.offsetWidth - SETTINGS_WIDTH) / 2 + 40)}px`;
     settingsWin.style.top = `${Math.round(Math.max(60, stage.offsetHeight / 2 - 160))}px`;
   }
   raise(settingsWin);

@@ -3,11 +3,14 @@ import { command, isTauri } from './platform';
 import { fitWindowTo } from './fit';
 import { DEFAULT_SHORTCUT, prettyShortcut, shortcutFromEvent, shortcutProblem } from './shortcut';
 import { CLICKS, POINTERS, lookOf, type ClickLook, type PointerLook } from './look';
+import pkg from '../package.json';
 
 /** Mark's settings window: each thing applied the moment it changes, with
- *  nothing to save. Appearance, the shortcuts, what follows a capture, AI
- *  tools and updates are Mark's own; login is read from and written to macOS,
- *  which is the only source of truth for it. */
+ *  nothing to save, in tabs -- General, Capture, Recording, AI tools -- of
+ *  rows, each with what it is on the left and its control on the right.
+ *  Appearance, the shortcuts, what follows a capture, AI tools and updates are
+ *  Mark's own; login and Screen Recording are read from macOS, which is the
+ *  only source of truth for them. */
 
 type Way = 'region' | 'window' | 'display' | 'timed' | 'record';
 interface Settings {
@@ -46,96 +49,109 @@ const WAYS: { way: Way; name: string }[] = [
 ];
 const shortcutOf = (settings: Settings, way: Way) => way === 'region' ? settings.shortcut : settings.shortcuts?.[way] ?? '';
 
-/** The ▾ in a pill that opens a list. */
+/** What each way in does, under its name. */
+const WAY_DETAILS: Record<Way, string> = {
+  region: 'Drag over what you want.', window: 'Click the window you want.', display: 'Everything on one screen.',
+  timed: 'Counts down first, to catch a menu or a hover.', record: 'Choose what to record, then press Record.',
+};
+
+/** The ▾ beside a list's choice. */
 const CHEVRON = '<svg class="chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 8.4 10 11.8l3.4-3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const APPEARANCES: { id: Settings['appearance']; name: string }[] = [
   { id: 'dark', name: 'Dark' }, { id: 'light', name: 'Light' }, { id: 'system', name: 'Match System' },
 ];
 
+/** The tabs, each a page of rows. Recording shows only on a Mac that can record. */
+type Tab = 'general' | 'capture' | 'recording' | 'ai';
+const TABS: { tab: Tab; name: string }[] = [
+  { tab: 'general', name: 'General' }, { tab: 'capture', name: 'Capture' },
+  { tab: 'recording', name: 'Recording' }, { tab: 'ai', name: 'AI tools' },
+];
+
+/** A row: its name and what it does on the left, the control on the right.
+ *  One with a checkbox is a label, so the whole row turns it on and off. */
+const row = (title: string, id: string, control: string, detail = '', note = '') => `
+  <div class="row">
+    <div class="row-text"><span class="row-title" id="${id}">${title}</span>
+      ${detail ? `<p class="row-detail" id="${id}-detail">${detail}</p>` : ''}${note}</div>
+    ${control}
+  </div>`;
+const checkRow = (title: string, id: string, input: string, detail = '', note = '') => `
+  <label class="row">
+    <span class="row-text"><span class="row-title" id="${id}">${title}</span>
+      ${detail ? `<span class="row-detail" id="${id}-detail">${detail}</span>` : ''}${note}</span>
+    <input ${input} type="checkbox" aria-labelledby="${id}"${detail ? ` aria-describedby="${id}-detail"` : ''} />
+  </label>`;
+const menu = (select: string) => `<span class="menu">${select}${CHEVRON}</span>`;
+
 const root = document.querySelector<HTMLDivElement>('#settings')!;
 root.className = 'prefs';
 root.innerHTML = `
-  <section class="pref">
-    <h2 class="pref-label">Appearance</h2>
-    <div class="pref-control">
-      <div class="segments" role="radiogroup" aria-label="Appearance">
+  <nav class="tabs" role="tablist" aria-label="Settings">
+    ${TABS.map(({ tab, name }) => `<button class="tab" type="button" role="tab" id="tab-${tab}" aria-controls="pane-${tab}" aria-selected="false" data-tab="${tab}"${tab === 'recording' ? ' data-records hidden' : ''}>${name}</button>`).join('')}
+  </nav>
+  <div class="panes">
+    <section class="pane" role="tabpanel" id="pane-general" aria-labelledby="tab-general" data-pane="general">
+      ${row('Appearance', 'appearance-title', `<div class="segments" role="radiogroup" aria-labelledby="appearance-title">
         ${APPEARANCES.map(a => `<button class="segment" type="button" role="radio" aria-checked="${a.id === 'dark'}" data-appearance="${a.id}">${a.name}</button>`).join('')}
-      </div>
-    </div>
-  </section>
-  <section class="pref">
-    <h2 class="pref-label">Capture</h2>
-    <div class="pref-control">
-      <div class="ways">
-        ${WAYS.map(({ way, name }) => `<span class="way-name" id="way-${way}"${way === 'record' ? ' data-records hidden' : ''}>${name}</span>
-          <button class="recorder glassy" type="button" data-way="${way}" aria-labelledby="way-${way}" aria-describedby="recorder-hint"${way === 'record' ? ' data-records hidden' : ''}><kbd>${way === 'region' ? prettyShortcut(DEFAULT_SHORTCUT) : 'None'}</kbd></button>`).join('')}
-      </div>
-      <p class="pref-hint" id="recorder-hint">Click one, then press the keys you want. ⌫ clears it; Region’s goes back to ${prettyShortcut(DEFAULT_SHORTCUT)}.</p>
+      </div>`)}
+      ${row('Screen Recording', 'screen-title', `<span class="status screen-allowed"><i></i>Allowed</span>
+        <button class="quiet screen-open" type="button" aria-describedby="screen-title" hidden>Open System Settings…</button>`,
+        'Mark needs it to capture anything.')}
+      ${checkRow('Show Mark in the Dock', 'dock-title', 'class="dock" checked',
+        'Its icon opens the editor, and ⌘-Tab finds it. Off, Mark is in the menu bar alone.',
+        '<span class="pref-note dock-note" role="status" hidden></span>')}
+      ${checkRow('Open Mark at login', 'login-title', 'class="login"', '', '<span class="pref-note login-note" role="status" hidden></span>')}
+      ${row('Mark', 'version-title', '<button class="quiet check-now" type="button" aria-describedby="version-title">Check for updates</button>', '',
+        '<p class="row-detail update-state" role="status" hidden></p>')}
+      ${checkRow('Check for updates automatically', 'auto-update-title', 'class="auto-update" checked', 'Once a day, and shortly after Mark opens.')}
+      ${checkRow('Install updates automatically', 'auto-install-title', 'class="auto-install"',
+        'Mark installs one while you’re not using it, then reopens in the background.')}
+    </section>
+    <section class="pane" role="tabpanel" id="pane-capture" aria-labelledby="tab-capture" data-pane="capture">
+      <p class="pane-intro" id="recorder-hint">Click a shortcut, then press the keys you want.</p>
+      ${WAYS.map(({ way, name }) => `<div class="row"${way === 'record' ? ' data-records hidden' : ''}>
+        <div class="row-text"><span class="row-title way-name" id="way-${way}">${name}</span><p class="row-detail">${WAY_DETAILS[way]}</p></div>
+        <span class="recorder-keys" aria-hidden="true">esc cancels · ⌫ ${way === 'region' ? `resets to ${prettyShortcut(DEFAULT_SHORTCUT)}` : 'clears'}</span>
+        <button class="recorder" type="button" data-way="${way}" aria-labelledby="way-${way}" aria-describedby="recorder-hint"><kbd>${way === 'region' ? prettyShortcut(DEFAULT_SHORTCUT) : 'None'}</kbd></button>
+      </div>`).join('')}
       <p class="pref-note shortcut-note" role="status" hidden></p>
-      <label class="check"><input class="thumbnail-after" type="checkbox" aria-describedby="thumbnail-hint" /> Show a thumbnail instead of the editor</label>
-      <p class="pref-hint" id="thumbnail-hint">Copied at once, it waits in the corner: click it to mark it up, or drag it into any app.</p>
-      <p class="pref-note after-note" role="status" hidden></p>
-    </div>
-  </section>
-  <section class="pref" data-records hidden>
-    <h2 class="pref-label">Recording</h2>
-    <div class="pref-control">
-      <label class="check"><input class="record-mic" type="checkbox" aria-describedby="record-mic-hint" /> Record the microphone too</label>
-      <p class="pref-hint" id="record-mic-hint">macOS asks the first time. The microphone button beside Record turns it on and off too.</p>
-      <div class="look-picks">
-        <label class="look-pick">Pointer <span class="agent-pick"><select class="record-pointer pill-select" aria-describedby="record-look-hint">
-          ${POINTERS.map(choice => `<option value="${choice.id}">${choice.name}</option>`).join('')}</select>${CHEVRON}</span></label>
-        <label class="look-pick">Clicks <span class="agent-pick"><select class="record-clicks pill-select" aria-describedby="record-look-hint">
-          ${CLICKS.map(choice => `<option value="${choice.id}">${choice.name}</option>`).join('')}</select>${CHEVRON}</span></label>
-      </div>
-      <p class="pref-hint" id="record-look-hint">Touch shows a fingertip, for a phone prototype; Halo a soft glow round the arrow. The bar beside Record changes them too, and the editor changes Halo, Touch and Ripple afterwards.</p>
-      <label class="check"><input class="record-zoom" type="checkbox" aria-describedby="record-zoom-hint" /> Zoom in on clicks</label>
-      <p class="pref-hint" id="record-zoom-hint">A recording opens with the picture moving in gently round each burst of clicks. The bar beside Record turns it on and off too, and the editor changes or removes each zoom.</p>
+      ${checkRow('Show a thumbnail instead of the editor', 'thumbnail-title', 'class="thumbnail-after"',
+        'Copied at once, it waits in the corner: click it to mark it up, or drag it into any app.',
+        '<span class="pref-note after-note" role="status" hidden></span>')}
+    </section>
+    <section class="pane" role="tabpanel" id="pane-recording" aria-labelledby="tab-recording" data-pane="recording" data-records hidden>
+      ${checkRow('Record the microphone too', 'record-mic-title', 'class="record-mic"',
+        'macOS asks the first time. The microphone button beside Record turns it on and off too.')}
+      ${row('Pointer', 'record-pointer-title', menu(`<select class="record-pointer" aria-labelledby="record-pointer-title" aria-describedby="record-pointer-title-detail">
+        ${POINTERS.map(choice => `<option value="${choice.id}">${choice.name}</option>`).join('')}</select>`),
+        'Touch shows a fingertip, for a phone prototype; Halo a soft glow round the arrow.')}
+      ${row('Clicks', 'record-clicks-title', menu(`<select class="record-clicks" aria-labelledby="record-clicks-title" aria-describedby="record-clicks-title-detail">
+        ${CLICKS.map(choice => `<option value="${choice.id}">${choice.name}</option>`).join('')}</select>`),
+        'Rings are macOS’s own; Ripple grows and fades where you tap.')}
+      ${checkRow('Zoom in on clicks', 'record-zoom-title', 'class="record-zoom"',
+        'A recording opens with the picture moving in gently round each burst of clicks.')}
+      <p class="pane-outro">The bar beside Record changes these too, and the editor changes Halo, Touch, Ripple and each zoom afterwards.</p>
       <p class="pref-note record-note" role="status" hidden></p>
-    </div>
-  </section>
-  <section class="pref">
-    <h2 class="pref-label">AI tools</h2>
-    <div class="pref-control">
-      <label class="check"><input class="mcp" type="checkbox" checked aria-describedby="mcp-hint" /> Let AI tools ask for screenshots</label>
-      <p class="pref-hint" id="mcp-hint">Claude, ChatGPT, Cursor, Copilot and other AI tools can ask; nothing is sent until you press Send.</p>
-      <span class="add-label" id="agent-label">Add Mark to</span>
-      <div class="add-to">
-        <span class="agent-pick"><select class="agent" aria-labelledby="agent-label" disabled></select>
-          ${CHEVRON}</span>
-        <button class="add-agent glassy" type="button" disabled>Copy Command</button>
+    </section>
+    <section class="pane" role="tabpanel" id="pane-ai" aria-labelledby="tab-ai" data-pane="ai">
+      ${checkRow('Let AI tools ask for screenshots', 'mcp-title', 'class="mcp" checked',
+        'Claude, ChatGPT, Cursor, Copilot and other AI tools can ask; nothing is sent until you press Send.')}
+      <div class="row stacked">
+        <div class="row-text"><span class="row-title" id="agent-label">Add Mark to</span>
+          <p class="row-detail agent-hint">Pick the AI tool you use.</p></div>
+        <div class="add-to">
+          ${menu('<select class="agent" aria-labelledby="agent-label" disabled></select>')}
+          <button class="quiet add-agent" type="button" disabled>Copy Command</button>
+        </div>
+        <div class="add-after">
+          <p class="pref-note mcp-note" role="status" hidden></p>
+          <button class="guide" type="button">How to set it up and use it</button>
+        </div>
       </div>
-      <p class="pref-hint agent-hint" hidden></p>
-      <p class="pref-note mcp-note" role="status" hidden></p>
-      <button class="guide" type="button">How to set it up and use it</button>
-    </div>
-  </section>
-  <section class="pref">
-    <h2 class="pref-label">Dock</h2>
-    <div class="pref-control">
-      <label class="check"><input class="dock" type="checkbox" checked aria-describedby="dock-hint" /> Show Mark in the Dock</label>
-      <p class="pref-hint" id="dock-hint">Its icon opens the editor, and ⌘-Tab finds it. Off, Mark is in the menu bar alone.</p>
-      <p class="pref-note dock-note" role="status" hidden></p>
-    </div>
-  </section>
-  <section class="pref">
-    <h2 class="pref-label">Login</h2>
-    <div class="pref-control">
-      <label class="check"><input class="login" type="checkbox" /> Open Mark at login</label>
-      <p class="pref-note login-note" role="status" hidden></p>
-    </div>
-  </section>
-  <section class="pref">
-    <h2 class="pref-label">Updates</h2>
-    <div class="pref-control">
-      <label class="check"><input class="auto-update" type="checkbox" checked /> Check for updates automatically</label>
-      <label class="check"><input class="auto-install" type="checkbox" aria-describedby="auto-install-hint" /> Download and install updates automatically</label>
-      <p class="pref-hint" id="auto-install-hint">Mark installs one while you're not using it, then reopens in the background.</p>
-      <button class="check-now glassy" type="button">Check Now</button>
-    </div>
-  </section>
-  <p class="pref-preview" hidden>Browser preview: settings apply in the Mac app.</p>
-  <p class="pref-version" hidden></p>`;
+    </section>
+  </div>
+  <p class="pref-preview" hidden>Browser preview: settings apply in the Mac app.</p>`;
 
 const recorders = [...root.querySelectorAll<HTMLButtonElement>('.recorder')];
 const shortcutNote = root.querySelector<HTMLElement>('.shortcut-note')!;
@@ -208,6 +224,83 @@ function placeLens() {
   lens.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
   if (snap) { void lens.offsetWidth; lens.style.transition = ''; lens.dataset.placed = ''; }
 }
+
+/** The tab shown, kept for the next time Settings opens. Every page stays laid
+ *  out, the others hidden, so the window is as tall as the tallest and keeps
+ *  its size from tab to tab. */
+const TAB_KEY = 'mark.settings.tab';
+const tabs = [...root.querySelectorAll<HTMLButtonElement>('.tab')];
+const savedTab = (): string | null => { try { return localStorage.getItem(TAB_KEY); } catch { return null; } };
+function choose(tab: string | null, focus = false, remember = true) {
+  const chosen = tabs.find(button => button.dataset.tab === tab && !button.hidden) ?? tabs[0];
+  for (const button of tabs) {
+    const on = button === chosen;
+    button.setAttribute('aria-selected', String(on));
+    button.tabIndex = on ? 0 : -1;
+    root.querySelector(`#pane-${button.dataset.tab}`)!.classList.toggle('active', on);
+  }
+  if (recording) stopRecording();
+  if (focus) chosen.focus();
+  if (remember) try { localStorage.setItem(TAB_KEY, chosen.dataset.tab!); } catch { /* remembered for this visit only */ }
+}
+const tabList = root.querySelector<HTMLElement>('.tabs')!;
+tabList.addEventListener('click', event => {
+  const tab = (event.target as Element).closest<HTMLButtonElement>('.tab');
+  if (tab) choose(tab.dataset.tab!);
+});
+// Left and right move along the tabs, as in any tab list.
+tabList.addEventListener('keydown', event => {
+  const shown = tabs.filter(button => !button.hidden);
+  const at = shown.indexOf(event.target as HTMLButtonElement);
+  const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+  if (at < 0 || !step) return;
+  event.preventDefault();
+  choose(shown[(at + step + shown.length) % shown.length].dataset.tab!, true);
+});
+choose(savedTab(), false, false);
+
+/** Screen Recording, as macOS has it: allowed, or a way to System Settings to
+ *  allow it. Looked at again whenever the window comes forward, which is when
+ *  someone has just been there. */
+const screenAllowed = root.querySelector<HTMLElement>('.screen-allowed')!;
+const screenOpen = root.querySelector<HTMLButtonElement>('.screen-open')!;
+const screenDetail = root.querySelector<HTMLElement>('#screen-title-detail')!;
+function showScreenAccess(allowed: boolean) {
+  screenAllowed.hidden = !allowed;
+  screenOpen.hidden = allowed;
+  screenDetail.hidden = allowed;
+}
+const lookAtScreenAccess = () => command<boolean>('screen_access_granted').then(allowed => showScreenAccess(allowed !== false)).catch(() => {});
+screenOpen.addEventListener('click', () => { void command('open_screen_settings').catch(() => {}); });
+window.addEventListener('focus', () => { if (isTauri) void lookAtScreenAccess(); });
+
+/** Which Mark this is, and whether there's a newer one: looked for here, and
+ *  shown in Software Update once there is. */
+interface Offer { version: string }
+const versionTitle = root.querySelector<HTMLElement>('#version-title')!;
+const updateState = root.querySelector<HTMLElement>('.update-state')!;
+const checkNow = root.querySelector<HTMLButtonElement>('.check-now')!;
+let offered: Offer | null = null;
+function showOffer(offer: Offer | null, text: string | null, failed = false) {
+  offered = offer;
+  note(updateState, text);
+  updateState.classList.toggle('failed', failed);
+  checkNow.textContent = offer ? 'Update…' : 'Check for updates';
+  checkNow.classList.toggle('strong', Boolean(offer));
+}
+checkNow.addEventListener('click', async () => {
+  if (offered) { void command('open_updates').catch(() => {}); return; }
+  checkNow.disabled = true;
+  showOffer(null, 'Checking…');
+  try {
+    const offer = await command<Offer | null>('check_for_update');
+    showOffer(offer, offer ? `Mark ${offer.version} is available.` : 'Up to date');
+  } catch (error) {
+    showOffer(null, String(error).replace(/^Error: /, ''), true);
+  } finally {
+    checkNow.disabled = false;
+  }
+});
 
 root.addEventListener('click', event => {
   const segment = (event.target as Element).closest<HTMLButtonElement>('.segment');
@@ -311,12 +404,18 @@ const chosenAgent = () => agents.find(agent => agent.name === agentPick.value);
 
 const agentHint = root.querySelector<HTMLElement>('.agent-hint')!;
 
-/** The button says what it will do for the tool chosen, and a line under it
+/** What the button does for each kind of tool, said above it where the tool
+ *  has nothing more particular to say. */
+const DOES: Record<Agent['kind'], string> = {
+  command: 'Copies a command to paste into Terminal.', link: 'Opens the tool, which asks whether to add Mark.',
+  config: 'Copies the lines for the tool’s settings file.', form: 'Copies Mark’s path, for the tool’s own settings.',
+};
+
+/** The button says what it will do for the tool chosen, and the line above it
  *  which of the tool's agents that is for, where it could be mistaken. */
 function labelAdd() {
   const agent = chosenAgent();
-  agentHint.textContent = agent?.hint ?? '';
-  agentHint.hidden = !agent?.hint;
+  agentHint.textContent = agent ? agent.hint ?? DOES[agent.kind] : 'Pick the AI tool you use.';
   addAgent.disabled = !agent;
   addAgent.textContent = agent?.kind === 'link' ? `Add to ${agent.name}` : agent?.kind === 'config' ? 'Copy Config'
     : agent?.kind === 'form' ? 'Copy Path' : 'Copy Command';
@@ -374,10 +473,6 @@ autoInstall.addEventListener('change', () => {
   void command<Settings>('set_install_updates', { enabled: autoInstall.checked }).then(show)
     .catch(() => { autoInstall.checked = current.installUpdates === true; });
 });
-root.querySelector<HTMLButtonElement>('.check-now')!.addEventListener('click', () => {
-  void command('open_updates').catch(() => {});
-});
-
 async function closeWindow() {
   if (!isTauri) return;
   const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -390,19 +485,25 @@ async function init() {
   if (!isTauri) {
     root.querySelector<HTMLElement>('.pref-preview')!.hidden = false;
     document.documentElement.classList.add('browser');
+    for (const element of root.querySelectorAll<HTMLElement>('[data-records]')) element.hidden = false;
+    versionTitle.textContent = `Mark ${pkg.version}`;
+    showScreenAccess(true);
     show(current);
+    choose(savedTab(), false, false);
     return;
   }
   const [settings, enabled, records] = await Promise.all([command<Settings>('get_settings'), command<boolean>('login_enabled'),
     command<boolean>('recording_supported').catch(() => false)]);
   for (const element of root.querySelectorAll<HTMLElement>('[data-records]')) element.hidden = !records;
   show(settings);
+  choose(savedTab(), false, false);
   void loadAgents();
+  void lookAtScreenAccess();
   login.checked = enabled;
+  // An update a check already found, ready to show.
+  void command<Offer | null>('pending_update').then(offer => { if (offer) showOffer(offer, `Mark ${offer.version} is available.`); }).catch(() => {});
   // The first thing anyone testing a build is asked is which build.
   const { getVersion } = await import('@tauri-apps/api/app');
-  const version = root.querySelector<HTMLElement>('.pref-version')!;
-  version.textContent = `Mark ${await getVersion()}`;
-  version.hidden = false;
+  versionTitle.textContent = `Mark ${await getVersion()}`;
 }
 void init();

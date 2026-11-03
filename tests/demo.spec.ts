@@ -98,7 +98,7 @@ test('settings open from the gear, and the appearance switches every frame and t
   await expect(win).toBeVisible();
   const settings = page.frameLocator('.win.settings iframe');
   await expect(settings.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true');
-  await expect(settings.locator('.pref-version')).toContainText('web demo');
+  await expect(settings.locator('#version-title')).toContainText('web demo');
 
   await settings.getByRole('radio', { name: 'Light' }).click();
   await expect(settings.getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true');
@@ -141,6 +141,7 @@ test('⌘4 starts a capture, as in the app, and the shortcut is recordable', asy
 
   await editor.getByRole('button', { name: 'Settings' }).click();
   const settings = page.frameLocator('.win.settings iframe');
+  await settings.getByRole('tab', { name: 'Capture' }).click();
   await settings.locator('.recorder[data-way="region"]').click();
   await page.keyboard.press('Meta+Shift+m');
   await expect(settings.locator('.recorder[data-way="region"] kbd')).toHaveText('⇧⌘M');

@@ -1048,57 +1048,120 @@ h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -.45px; line-
 
 /* ---- settings ------------------------------------------------------------- */
 
-/* Its own window, on the same material: a label column on the left, controls
-   on the right, in the shape macOS gives its own settings. Nothing here is
-   saved by a button; each control applies as it changes. */
-.prefs { padding: 20px 26px 28px; display: flex; flex-direction: column; gap: 4px; }
-.pref { display: grid; grid-template-columns: 96px 1fr; gap: 0 18px; align-items: start; padding: 12px 0; }
-.pref + .pref { border-top: 1px solid var(--hairline); }
-.pref-label { margin: 0; padding-top: 6px; font-size: 13px; font-weight: 500; text-align: right; color: var(--ink); }
-.pref-control { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
-.pref-hint { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
-.pref-note { margin: 0; color: var(--brand); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
-.pref-note.done { color: var(--muted); }
-/* Add Mark to: the tool, picked from a list, and what to do for it. */
-.add-label { margin-top: 2px; color: var(--ink); font-size: 13px; }
-.add-to { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
-.agent-pick { position: relative; flex: 1 1 140px; min-width: 0; display: flex; }
-.agent, .pill-select {
-  width: 100%; height: 30px; padding: 0 30px 0 14px; border: 1px solid var(--control-line); border-radius: 999px;
-  font: inherit; font-size: 13px; color: var(--ink); background: var(--control);
-  box-shadow: inset 0 1px 0 var(--rim), 0 1px 2px #00000012; -webkit-appearance: none; appearance: none;
+/* Its own window, on the same material, in the shape Tidy gives its settings:
+   tabs along the top, then rows, each with what it is and a line on what it
+   does on the left, its control on the right, and a hairline under it.
+   Controls here are quiet -- a tint, not a pane -- since every row has one.
+   Nothing is saved by a button; each control applies as it changes. */
+.prefs {
+  --layer: color-mix(in srgb, var(--ink) 7%, transparent);
+  --layer-hover: color-mix(in srgb, var(--ink) 11%, transparent);
+  --blue-soft: color-mix(in srgb, var(--blue) 16%, transparent);
+  padding: 8px 30px 26px; display: flex; flex-direction: column;
 }
-.agent:hover:not(:disabled), .pill-select:hover { background: var(--control-hover); }
-.agent:disabled { opacity: .5; }
-.agent-pick .chevron { position: absolute; right: 10px; top: 50%; width: 14px; height: 14px; margin-top: -7px; color: var(--muted); pointer-events: none; }
-.add-agent { flex: none; }
-/* A recording's pointer and clicks: two lists side by side, each named. */
-.look-picks { display: flex; flex-wrap: wrap; gap: 8px 14px; width: 100%; }
-.look-pick { display: flex; align-items: center; gap: 8px; flex: 1 1 150px; color: var(--ink); font-size: 13px; }
+.tabs { display: flex; gap: 15px; padding: 2px 0 6px; }
+.tab {
+  padding: 5px 0; border: 0; border-bottom: 1px solid transparent; background: none;
+  color: var(--muted); font-size: 12px; line-height: 14px;
+}
+.tab:hover, .tab[aria-selected="true"] { color: var(--ink); }
+.tab[aria-selected="true"] { border-bottom-color: var(--ink); }
+/* Every page laid out in the one place, the others hidden: the window is as
+   tall as the tallest and keeps its size from tab to tab. */
+.panes { display: grid; }
+.pane { grid-area: 1 / 1; min-width: 0; display: flex; flex-direction: column; }
+.pane:not(.active) { visibility: hidden; }
+
+.row { display: flex; align-items: center; gap: 14px; padding: 16px 0 17px; border-bottom: 1px solid var(--hairline); }
+.row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.row-title { color: var(--ink); font-size: 13px; line-height: 16px; }
+.row-detail { margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; }
+.row-detail.failed { color: var(--brand); }
+.pref-note { margin: 0; color: var(--brand); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.pref-note.done { color: var(--muted); }
+.pane-intro, .pane-outro { margin: 0; color: var(--muted); font-size: 12px; line-height: 16px; }
+.pane-intro { padding-top: 12px; }
+.pane-outro { padding-top: 14px; }
+.pane > .pref-note { padding-top: 10px; }
+
+/* A checkbox: 17pt, rounded, filled with the control blue and ticked when on. */
+.prefs input[type="checkbox"] {
+  flex: none; display: grid; place-content: center; width: 17px; height: 17px; margin: 0;
+  border: 1px solid var(--muted); border-radius: 4px; background: transparent; -webkit-appearance: none; appearance: none;
+}
+.prefs input[type="checkbox"]:checked { border-color: var(--blue); background: var(--blue); }
+.prefs input[type="checkbox"]:checked::after {
+  content: ""; width: 10px; height: 10px; background: #fff;
+  -webkit-mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M1.6 5.3 4 7.6l4.4-5.2" fill="none" stroke="black" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>') center / contain no-repeat;
+  mask: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M1.6 5.3 4 7.6l4.4-5.2" fill="none" stroke="black" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>') center / contain no-repeat;
+}
+.prefs input:focus-visible, .prefs select:focus-visible { outline: 2.5px solid var(--blue); outline-offset: 2px; }
+
+/* A button: a tint with the label in a medium weight. One that moves things
+   on -- Update… -- is the control blue. */
+.quiet {
+  flex: none; height: 26px; padding: 0 13px; border: 0; border-radius: 9px;
+  background: var(--layer); color: var(--ink); font-size: 12px; font-weight: 590; white-space: nowrap;
+}
+.quiet:hover:not(:disabled) { background: var(--layer-hover); }
+.quiet.strong { background: var(--blue); color: #fff; }
+.quiet.strong:hover { background: var(--hover); }
+
+/* A list: the choice in the same tint, with its chevron. */
+.menu { position: relative; flex: none; display: flex; }
+.menu select {
+  height: 26px; padding: 0 26px 0 10px; border: 0; border-radius: 8px;
+  background: var(--layer); color: var(--ink); font: inherit; font-size: 13px; -webkit-appearance: none; appearance: none;
+}
+.menu select:hover:not(:disabled) { background: var(--layer-hover); }
+.menu select:disabled { opacity: .5; }
+.menu .chevron { position: absolute; right: 7px; top: 50%; width: 14px; height: 14px; margin-top: -7px; color: var(--muted); pointer-events: none; }
+
+/* Allowed: a small green dot and the word, as Tidy's Accessibility row has it. */
+.status { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.status i { width: 5px; height: 5px; border-radius: 50%; background: #34c759; }
+
+/* The appearance choice: the editor's sliding pill, on the row's tint. */
+.prefs .segments { flex: none; background: var(--layer); box-shadow: none; }
+.prefs .segment { padding: 4px 11px; font-size: 12px; }
+
+/* The recorder is a key cap: it shows the shortcut, and while recording it
+   turns blue, with how to get out of it beside it. One not chosen reads None,
+   quietly. */
+.recorder {
+  flex: none; min-width: 110px; height: 28px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: var(--layer); color: var(--ink); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.recorder:hover { background: var(--layer-hover); }
+.recorder kbd { margin: 0; opacity: 1; font-size: 13px; letter-spacing: .5px; }
+.recorder.unset kbd { color: var(--muted); font-size: 12px; letter-spacing: 0; }
+.recorder.recording { background: var(--blue-soft); color: var(--blue); }
+.recorder.recording kbd { color: var(--blue); letter-spacing: 0; }
+.recorder-keys { display: none; flex: none; color: var(--muted); font-size: 11px; }
+.row:has(.recorder.recording) .recorder-keys { display: inline; }
+
+/* Add Mark to: the tool and what to do for it on a line of their own, then
+   what was done and the guide. */
+.row.stacked { flex-direction: column; align-items: stretch; gap: 10px; }
+.add-to { display: flex; gap: 10px; }
+.add-to .menu { flex: 1; min-width: 0; }
+.add-to select { width: 100%; }
+.add-after { display: flex; align-items: flex-start; gap: 14px; }
+.add-after .pref-note { flex: 1; }
 /* The guide is a page on the web, so it reads as a link rather than a button. */
 .guide {
   padding: 0; border: 0; background: none; color: var(--blue); font: inherit; font-size: 12px; cursor: pointer;
 }
+.add-after .guide { margin-left: auto; flex: none; }
 .guide:hover { text-decoration: underline; }
-.pref-preview, .pref-version { margin: 8px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
-.pref-version { margin-top: 4px; opacity: .8; font-variant-numeric: tabular-nums; }
+.pref-preview { margin: 14px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
 
-/* The appearance choice is a segmented control with the editor's sliding pill. */
+/* Shared with the editor's pickers. */
 .segments { position: relative; display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); box-shadow: inset 0 1px 1px #0000000f; }
 .segment { position: relative; z-index: 1; border: none; border-radius: 999px; padding: 5px 13px; background: transparent; color: var(--muted); font-size: 12.5px; white-space: nowrap; transition: color .15s; }
 .segment:hover, .segment.active { color: var(--ink); }
 
-/* The recorder is a key cap: it shows the shortcut, and while recording it
-   lights up and shows what it is waiting for. */
-.recorder { min-width: 88px; padding: 0 14px; font-variant-numeric: tabular-nums; }
-.recorder kbd { margin: 0; opacity: 1; font-size: 13px; letter-spacing: .5px; }
-.recorder.recording { border-color: var(--blue); box-shadow: 0 0 0 3px #007aff33, inset 0 1px 0 var(--rim); }
-.recorder.recording kbd { color: var(--muted); letter-spacing: 0; }
-/* The four ways in, each beside its shortcut; one not chosen reads None, quietly. */
-.ways { display: grid; grid-template-columns: auto auto; justify-content: start; align-items: center; gap: 8px 14px; }
-.way-name { color: var(--ink); font-size: 13px; }
-.recorder.unset kbd { color: var(--muted); font-size: 12px; letter-spacing: 0; }
-
+/* A checkbox with its label beside it, as Software Update has one. */
 .check { display: inline-flex; align-items: center; gap: 8px; padding-top: 6px; font-size: 13px; }
 .check input { margin: 0; width: 15px; height: 15px; accent-color: var(--blue); }
 

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { installBridge, waitFor, clear, sent } from './bridge';
 
 /** The settings window, against the real invoke path: each control sends the
@@ -6,14 +6,17 @@ import { installBridge, waitFor, clear, sent } from './bridge';
  *  answers rather than what was asked for. */
 
 const SAVED = { appearance: 'light', shortcut: 'Super+Alt+Digit4' };
+/** Settings is in tabs; a row can be used once its tab is showing. */
+const tab = (page: Page, name: string) => page.getByRole('tab', { name }).click();
 
 test('opens showing what is saved, not the defaults', async ({ page }) => {
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: true } });
   await page.goto('/settings.html');
   await expect(page.getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'false');
-  await expect(page.locator('.recorder[data-way="region"] kbd')).toHaveText('⌥⌘4');
   await expect(page.locator('.login')).toBeChecked();
+  await tab(page, 'Capture');
+  await expect(page.locator('.recorder[data-way="region"] kbd')).toHaveText('⌥⌘4');
   await expect(page.locator('.pref-preview')).toBeHidden();   // not the browser path
 });
 
@@ -34,6 +37,7 @@ test('choosing an appearance sends it and shows the reply', async ({ page }) => 
 test('recording a shortcut refuses a bare key, then sends a proper chord', async ({ page }) => {
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false, set_shortcut: { ...SAVED, shortcut: 'Shift+Super+KeyM' } } });
   await page.goto('/settings.html');
+  await tab(page, 'Capture');
   await page.locator('.recorder[data-way="region"]').click();
   await expect(page.locator('.recorder[data-way="region"]')).toHaveClass(/recording/);
   await expect(page.locator('.recorder[data-way="region"] kbd')).toHaveText('Press keys…');
@@ -49,6 +53,7 @@ test('recording a shortcut refuses a bare key, then sends a proper chord', async
 test('a shortcut Rust cannot take is reported and the old one stays', async ({ page }) => {
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false }, fails: { set_shortcut: 'Something else on this Mac already uses that shortcut.' } });
   await page.goto('/settings.html');
+  await tab(page, 'Capture');
   await page.locator('.recorder[data-way="region"]').click();
   await page.keyboard.press('Meta+Alt+k');
   await expect(page.locator('.shortcut-note')).toContainText('already uses');
@@ -60,6 +65,7 @@ test('each way in can have its own shortcut, cleared again with ⌫', async ({ p
   const window = { ...SAVED, shortcuts: { window: 'Alt+Super+Digit5' } };
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false, set_shortcut: window } });
   await page.goto('/settings.html');
+  await tab(page, 'Capture');
   const recorder = (way: string) => page.locator(`.recorder[data-way="${way}"]`);
   await expect(recorder('window')).toHaveAccessibleName('Window');
   for (const way of ['window', 'display', 'timed']) await expect(recorder(way).locator('kbd')).toHaveText('None');
@@ -79,6 +85,7 @@ test('each way in can have its own shortcut, cleared again with ⌫', async ({ p
 test('a key another way already has is refused, and says which', async ({ page }) => {
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false }, fails: { set_shortcut: 'Capture Region already uses ⌥⌘4.' } });
   await page.goto('/settings.html');
+  await tab(page, 'Capture');
   await page.locator('.recorder[data-way="timed"]').click();
   await page.keyboard.press('Meta+Alt+4');
   await expect(page.locator('.shortcut-note')).toHaveText('Capture Region already uses ⌥⌘4.');
@@ -93,10 +100,10 @@ test('login follows what macOS says, not the checkbox', async ({ page }) => {
   await expect(page.locator('.login')).not.toBeChecked();   // macOS said no
 });
 
-test('updates: the automatic check shows what Rust saved, and Check Now asks for a check', async ({ page }) => {
+test('updates: the automatic check shows what Rust saved, and Check for updates looks right there', async ({ page }) => {
   await installBridge(page, { returns: {
     get_settings: { ...SAVED, checkUpdates: true }, login_enabled: false,
-    set_auto_update: { ...SAVED, checkUpdates: false },
+    set_auto_update: { ...SAVED, checkUpdates: false }, check_for_update: null,
   } });
   await page.goto('/settings.html');
   const automatic = page.getByRole('checkbox', { name: 'Check for updates automatically' });
@@ -104,8 +111,34 @@ test('updates: the automatic check shows what Rust saved, and Check Now asks for
   await automatic.click();
   expect((await waitFor(page, 'set_auto_update')).args).toEqual({ enabled: false });
   await expect(automatic).not.toBeChecked();
-  await page.getByRole('button', { name: 'Check Now' }).click();
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await waitFor(page, 'check_for_update');
+  await expect(page.locator('.update-state')).toHaveText('Up to date');
+});
+
+test('updates: a newer Mark found is said, and Update… opens Software Update to install it', async ({ page }) => {
+  await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false, check_for_update: { version: '9.9.9', notes: '' } } });
+  await page.goto('/settings.html');
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await expect(page.locator('.update-state')).toHaveText('Mark 9.9.9 is available.');
+  await clear(page);
+  await page.getByRole('button', { name: 'Update…' }).click();
   await waitFor(page, 'open_updates');
+});
+
+test('updates: one a check already found is offered as Settings opens', async ({ page }) => {
+  await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false, pending_update: { version: '9.9.9', notes: '' } } });
+  await page.goto('/settings.html');
+  await expect(page.getByRole('button', { name: 'Update…' })).toBeVisible();
+  await expect(page.locator('.update-state')).toHaveText('Mark 9.9.9 is available.');
+});
+
+test('updates: a check that fails says why', async ({ page }) => {
+  await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false }, fails: { check_for_update: 'The network is down.' } });
+  await page.goto('/settings.html');
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await expect(page.locator('.update-state')).toHaveText('The network is down.');
+  await expect(page.locator('.update-state')).toHaveClass(/failed/);
 });
 
 test('updates can install themselves: turning it on turns on looking, and turning looking off turns it off', async ({ page }) => {
@@ -115,7 +148,7 @@ test('updates can install themselves: turning it on turns on looking, and turnin
     set_auto_update: { ...SAVED, checkUpdates: false, installUpdates: false },
   } });
   await page.goto('/settings.html');
-  const install = page.getByRole('checkbox', { name: 'Download and install updates automatically' });
+  const install = page.getByRole('checkbox', { name: 'Install updates automatically' });
   const look = page.getByRole('checkbox', { name: 'Check for updates automatically' });
   await expect(install).not.toBeChecked();
   await install.click();
@@ -168,6 +201,7 @@ test('the editor offers a way into settings: a gear in the title row, and ⌘,',
 test('the thumbnail choice is sent, and shows what Rust answers', async ({ page }) => {
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false, set_after_capture: { ...SAVED, afterCapture: 'thumbnail' } } });
   await page.goto('/settings.html');
+  await tab(page, 'Capture');
   const thumbnail = page.getByLabel('Show a thumbnail instead of the editor');
   await expect(thumbnail).not.toBeChecked();
   await thumbnail.check();
@@ -178,6 +212,7 @@ test('the thumbnail choice is sent, and shows what Rust answers', async ({ page 
 test('a refused thumbnail choice says why and puts the box back', async ({ page }) => {
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false }, fails: { set_after_capture: 'Not here.' } });
   await page.goto('/settings.html');
+  await tab(page, 'Capture');
   const thumbnail = page.getByLabel('Show a thumbnail instead of the editor');
   await thumbnail.check();
   await expect(page.getByText('Not here.')).toBeVisible();
@@ -197,6 +232,7 @@ test('AI tools: the switch is sent, and the tool picked is added its own way', a
   ];
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false, set_mcp: { ...SAVED, mcp: false }, mcp_setup: agents } });
   await page.goto('/settings.html');
+  await tab(page, 'AI tools');
   const allow = page.getByLabel('Let AI tools ask for screenshots');
   await expect(allow).toBeChecked();
   await allow.uncheck();
@@ -230,7 +266,7 @@ test('AI tools: the switch is sent, and the tool picked is added its own way', a
   // A settings file: its lines are copied, and the note says where they go.
   await pick.selectOption('Claude Desktop');
   await expect(add).toHaveText('Copy Config');
-  await expect(page.locator('.agent-hint')).toBeHidden();
+  await expect(page.locator('.agent-hint')).toHaveText('Copies the lines for the tool’s settings file.');
   await clear(page);
   await add.click();
   expect((await waitFor(page, 'copy_text')).args).toEqual({ text: agents[1].text });
@@ -254,6 +290,7 @@ test('a Mark running from a temporary copy says to move it first, and offers not
   await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false },
     fails: { mcp_setup: 'Move Mark to your Applications folder first: macOS is running it from a temporary copy.' } });
   await page.goto('/settings.html');
+  await tab(page, 'AI tools');
   await expect(page.getByText(/Move Mark to your Applications folder first/)).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'Add Mark to' })).toBeDisabled();
   await expect(page.locator('.add-agent')).toBeDisabled();
@@ -269,4 +306,43 @@ test('Mark is in the Dock unless Settings says otherwise', async ({ page }) => {
   await dock.uncheck();
   expect((await waitFor(page, 'set_show_in_dock')).args).toEqual({ show: false });
   await expect(dock).not.toBeChecked();
+});
+
+test('tabs: one page at a time, the window the same height on each, and the tab kept for next time', async ({ page }) => {
+  await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false, recording_supported: true } });
+  await page.goto('/settings.html');
+  const general = page.getByRole('tab', { name: 'General' });
+  await expect(general).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Recording' })).toBeVisible();
+  const height = async () => (await page.locator('#settings').boundingBox())!.height;
+  const first = await height();
+  for (const name of ['Capture', 'Recording', 'AI tools']) {
+    await tab(page, name);
+    await expect(page.getByRole('tabpanel')).toHaveCount(1);
+    await expect(page.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', `tab-${name === 'AI tools' ? 'ai' : name.toLowerCase()}`);
+    expect(await height()).toBe(first);
+  }
+  await expect(page.locator('.dock')).toBeHidden();
+  // Left and right step along the tabs.
+  await page.getByRole('tab', { name: 'AI tools' }).focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('tab', { name: 'Recording' })).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'Recording' })).toHaveAttribute('aria-selected', 'true');
+  await page.reload();
+  await expect(page.getByRole('tab', { name: 'Recording' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.record-mic')).toBeVisible();
+});
+
+test('Screen Recording: allowed is said; not allowed offers System Settings, and is looked at again on coming back', async ({ page }) => {
+  await installBridge(page, { returns: { get_settings: SAVED, login_enabled: false, screen_access_granted: false } });
+  await page.goto('/settings.html');
+  const open = page.getByRole('button', { name: 'Open System Settings…' });
+  await expect(open).toBeVisible();
+  await expect(page.locator('.screen-allowed')).toBeHidden();
+  await open.click();
+  await waitFor(page, 'open_screen_settings');
+  // Allowed in System Settings, then back to Settings.
+  await page.evaluate(() => { (window as any).__bridge.returns.screen_access_granted = true; window.dispatchEvent(new Event('focus')); });
+  await expect(page.locator('.screen-allowed')).toHaveText('Allowed');
+  await expect(open).toBeHidden();
 });
