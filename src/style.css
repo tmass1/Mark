@@ -304,19 +304,21 @@ footer > * { flex: none; }
   display: grid; place-items: center; }
 .frame-fold svg { width: 16px; height: 16px; }
 .frame-fold:hover { background: var(--sunken); color: var(--ink); }
-/* Folded beside a recording: a slim tab, lit while the frame is on. */
-.frame-tab { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px; border: none; border-radius: 10px;
-  background: transparent; color: var(--muted); font-size: 11px; font-weight: 500; }
-.frame-tab svg { width: 20px; height: 20px; }
-.frame-tab:hover { background: var(--sunken); color: var(--ink); }
-.frame-tab.on { color: var(--blue); }
-.frame-panel.docked.folded { width: 60px; padding: 8px 6px; gap: 0; }
-.frame-panel.folded > :not(.frame-tab) { display: none !important; }
+/* Folded beside a recording, it is gone, and Frame under the video brings
+   it back -- lit, as Frame in a screenshot's footer is, while there is one. */
+.frame-panel.docked.folded { display: none; }
+.trim .frame-toggle svg { width: 17px; height: 17px; }
+.frame-toggle.on { color: var(--blue); }
+.frame-toggle[aria-pressed="true"] { background: var(--lens); }
 /* Beside a recording, the panel is a column of its own, always in view, as
    wide as STYLE in recording.rs, less the gap; change both. */
 .frame-panel.docked {
   position: relative; z-index: auto; flex: none; width: 260px; align-self: stretch; overflow-y: auto; margin-bottom: 4px;
-  box-shadow: 0 0 0 .5px var(--control-line);
+  border-radius: 22px; padding: 14px 16px 16px;
+  /* The same pane as the toolbar and the rail, not a menu's: it is part of
+     the window, beside the video, rather than something over it. */
+  background: var(--sheen), var(--panel); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 14px 34px -16px var(--shadow);
 }
 @media (prefers-reduced-motion: reduce) { .frame-switch, .frame-switch::after { transition: none; } }
 
@@ -739,6 +741,12 @@ footer > * { flex: none; }
 .trim-divider { flex: none; align-self: center; width: 1px; height: 22px; background: var(--hairline); }
 .trim .labelled { flex: none; height: 34px; padding: 0 13px 0 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px;
   font-size: 12.5px; font-weight: 500; }
+/* In a narrow window the timeline keeps its room: the tools say what they are
+   in their tooltips rather than in words. */
+@media (max-width: 960px) {
+  .trim .labelled { width: 34px; padding: 0; justify-content: center; }
+  .trim .labelled span { display: none; }
+}
 .trim.trimmed .trim-time { color: var(--ink); }
 /* A recording saves as a video, in words, with its ▾ for a GIF ending the
    exports' pill where Copy Text would. */

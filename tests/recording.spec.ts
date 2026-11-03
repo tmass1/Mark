@@ -40,7 +40,7 @@ test('a recording opens in a player with its trim, and the tools to mark it up',
   await expect(page.locator('.overlay')).toBeVisible();
   // What a recording goes without: cropping, reading its text, zoom. It can be framed.
   await expect(page.locator('.tool[data-slot="9"]')).toBeHidden();
-  await expect(page.locator('.frame-panel')).toBeVisible();
+  await expect(page.locator('.trim .frame-toggle')).toBeVisible();
   await expect(page.locator('.copy-text')).toBeHidden();
   await expect(page.locator('.zoom')).toBeHidden();
   // Save says it saves the video; a GIF is the other way, in the menu beside it.
@@ -745,14 +745,13 @@ test('a recording made with Touch shows a fingertip, pressed while the button wa
 
 test('a recording can be framed too, in a phone, and every copy is sent the frame to set it in', async ({ page }) => {
   await editing(page);
-  // Beside a recording, its style is a column of its own -- folded to a tab
-  // while there is no frame, opened with it.
+  // Beside a recording, its style is a column of its own -- folded away while
+  // there is no frame, and opened by Frame under the video.
   const panel = page.locator('.frame-panel');
   await expect(panel).toHaveClass(/docked/);
-  await expect(panel).toHaveClass(/folded/);
-  await expect(page.getByRole('button', { name: 'Frame', exact: true })).toBeHidden();
-  await page.getByRole('button', { name: 'Show Frame' }).click();
-  await expect(panel).not.toHaveClass(/folded/);
+  await expect(panel).toBeHidden();
+  await page.locator('.trim .frame-toggle').click();
+  await expect(panel).toBeVisible();
   // A movie can't be see-through.
   await expect(panel.getByRole('radio', { name: 'No background', exact: true })).toBeDisabled();
   await panel.getByRole('radio', { name: 'Lagoon', exact: true }).click();
@@ -840,7 +839,7 @@ test('a recording made without zooming in on clicks opens with no zooms, though 
 test('the style panel stays in its column beside the recording when the window is resized', async ({ page }) => {
   await editing(page);
   const panel = page.locator('.frame-panel');
-  await page.getByRole('button', { name: 'Show Frame' }).click();
+  await page.locator('.trim .frame-toggle').click();
   await expect(panel).toBeVisible();
   // Mark sizes its window to each recording; the panel stays put and in view.
   await page.setViewportSize({ width: 1000, height: 640 });
@@ -915,27 +914,29 @@ test('the web view’s own menu never shows over a capture or Recent, only where
   expect(await prevented('.stage')).toBe(true);
 });
 
-test('the panel beside a recording folds to a tab when the frame goes off, and by hand, and opens with it', async ({ page }) => {
+test('the panel beside a recording folds away when the frame goes off, and by hand, and Frame under the video opens it', async ({ page }) => {
   await editing(page);
   const panel = page.locator('.frame-panel');
-  const tab = page.getByRole('button', { name: 'Show Frame' });
-  // No frame yet: folded out of the way, the canvas the wider for it.
-  await expect(tab).toBeVisible();
-  const narrow = (await page.locator('.canvas').boundingBox())!.width;
-  await tab.click();
+  const toggle = page.locator('.trim .frame-toggle');
+  // No frame yet: folded away, the canvas the wider for it.
+  await expect(panel).toBeHidden();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  const wide = (await page.locator('.canvas').boundingBox())!.width;
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect(panel.getByRole('radio', { name: 'Phone', exact: true })).toBeVisible();
-  expect((await page.locator('.canvas').boundingBox())!.width).toBeLessThan(narrow);
-  // Choosing anything frames it; folding by hand keeps the frame, and the tab says so.
+  expect((await page.locator('.canvas').boundingBox())!.width).toBeLessThan(wide);
+  // Choosing anything frames it; folding by hand keeps the frame, and Frame says so.
   await panel.getByRole('radio', { name: 'Phone', exact: true }).click();
   await expect(page.locator('.canvas')).toHaveClass(/framed/);
   await page.getByRole('button', { name: 'Fold the Frame panel' }).click();
-  await expect(tab).toBeVisible();
-  await expect(tab).toHaveClass(/\bon\b/);
+  await expect(panel).toBeHidden();
+  await expect(toggle).toHaveClass(/\bon\b/);
   await expect(page.locator('.canvas')).toHaveClass(/framed/);
-  // Turning the frame off folds it; on again, it opens.
-  await tab.click();
+  // Turning the frame off folds it.
+  await toggle.click();
   await page.getByRole('switch', { name: 'Frame the image' }).click();
-  await expect(tab).toBeVisible();
+  await expect(panel).toBeHidden();
   await expect(page.locator('.canvas')).not.toHaveClass(/framed/);
 });
 
@@ -946,8 +947,12 @@ test('Play sits against the timeline, the time just after it, then the tools', a
   expect([...order].sort((a, b) => a - b)).toEqual(order);
   const [play, strip] = [(await page.locator('.play').boundingBox())!, (await page.locator('.strip').boundingBox())!];
   expect(strip.x - (play.x + play.width)).toBeLessThanOrEqual(14);
+  // Named in a window wide enough; icons alone in a narrow one, where the timeline needs the room.
+  await expect(page.locator('.cut-out span')).toBeHidden();
+  await page.setViewportSize({ width: 1200, height: 700 });
   await expect(page.locator('.cut-out')).toContainText('Cut');
   await expect(page.locator('.zoom-in')).toContainText('Zoom');
+  await expect(page.locator('.trim .frame-toggle')).toContainText('Frame');
   await seek(page, 0.25);
   await expect(page.locator('.now-time')).toHaveText('0:03 /');
 });

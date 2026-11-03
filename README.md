@@ -474,9 +474,10 @@ notarization; an Apple Development certificate is only good for this Mac.
 
     Under it, Play sits against the timeline, with where the playhead is and
     how long the part kept runs just after it, then the tools: Cut and Zoom,
-    and how fast it plays and how the pointer shows. Beside it, its Frame
-    panel folds to a tab while there is no frame, and by its ›, and opens again
-    from the tab or as soon as anything in it is chosen.
+    how fast it plays and how the pointer shows, and **Frame**, lit while it is
+    framed, which opens the Frame panel beside it. The panel folds away while
+    there is no frame, and by its ›; in a narrow window the tools show their
+    icons alone, so the timeline keeps its room.
     The editor then plays it, over a strip of its frames: drag the yellow
     handles to keep only part of it, or press **I** and **O** to trim to the
     playhead, and Space to play and pause; playing loops the part kept. To

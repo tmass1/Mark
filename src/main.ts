@@ -411,6 +411,11 @@ app.innerHTML = `
     <span class="trim-divider" aria-hidden="true"></span>
     <button class="speed glassy" type="button" aria-label="Speed" title="Play and copy it twice as fast">1×</button>
     <button class="pointer-look glassy icon" type="button" aria-label="Pointer and clicks" aria-haspopup="menu" aria-expanded="false" hidden></button>
+    <span class="trim-divider" aria-hidden="true"></span>
+    <button class="frame-toggle glassy labelled" type="button" aria-pressed="false" title="Frame: a background and a device round it">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3.4" ${STROKE}/><rect x="6.4" y="6.4" width="7.2" height="7.2" rx="1.4" ${STROKE}/></svg>
+      <span>Frame</span>
+    </button>
   </div>
   <aside class="message" role="status" aria-live="polite" hidden><span></span><button class="settings" hidden>Open System Settings</button></aside>
   <aside class="steps" hidden aria-label="Steps">
@@ -515,11 +520,6 @@ app.innerHTML = `
   <!-- Paused, where the camera is looking at the playhead. -->
   <div class="camera-view" aria-hidden="true" hidden></div>
   <aside class="frame-panel" role="dialog" aria-label="Frame" hidden>
-    <!-- Beside a recording, folded: a tab to open it by. -->
-    <button class="frame-tab" type="button" aria-label="Show Frame" hidden>
-      <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3.4" ${STROKE}/><rect x="6.4" y="6.4" width="7.2" height="7.2" rx="1.4" ${STROKE}/></svg>
-      <span>Frame</span>
-    </button>
     <div class="frame-head">
       <span class="frame-title">Frame</span>
       <span class="frame-head-end">
@@ -625,6 +625,7 @@ const ripples = stage.querySelector<HTMLElement>('.pointer-ripples')!;
 const playhead = strip.querySelector<HTMLElement>('.playhead')!;
 const trimTime = trimBar.querySelector<HTMLElement>('.trim-time')!;
 const nowTime = trimBar.querySelector<HTMLElement>('.now-time')!;
+const frameToggle = trimBar.querySelector<HTMLButtonElement>('.frame-toggle')!;
 const markAt = strip.querySelector<HTMLElement>('.mark-at')!;
 const markUntil = strip.querySelector<HTMLElement>('.mark-until')!;
 /** The crop tool's own group at the foot of the rail. */
@@ -2726,7 +2727,7 @@ on(image, 'load', () => { barDark = darkTop(image, image.naturalWidth, image.nat
 /** The panel says what the frame is; the footer button says whether there is one. */
 function syncFramePanel() {
   if (framePanel.classList.contains('docked') && framePanel.classList.contains('folded') !== frameFolded) foldFramePanel(frameFolded);
-  framePanel.querySelector<HTMLElement>('.frame-tab')!.classList.toggle('on', frame.on);
+  frameToggle.classList.toggle('on', frame.on);
   frameSwitch.setAttribute('aria-checked', String(frame.on));
   frameButton.classList.toggle('on', frame.on);
   const style = framing();
@@ -2768,15 +2769,15 @@ function setFrame(change: Partial<FrameStyle>, keep = true) {
   if (keep && isTauri) void command('set_frame', { frame }).catch(report);
 }
 
-/** Whether the panel beside a recording is folded to a tab: when the frame
- *  is off, or folded by hand, until opened again. */
+/** Whether the panel beside a recording is folded away: when the frame is
+ *  off, or folded by hand, until Frame under the video opens it again. */
 let frameFolded = false;
 function foldFramePanel(folded: boolean) {
   frameFolded = folded;
   const docked = framePanel.classList.contains('docked');
   framePanel.classList.toggle('folded', docked && folded);
-  framePanel.querySelector<HTMLElement>('.frame-tab')!.hidden = !(docked && folded);
-  framePanel.querySelector<HTMLElement>('.frame-tab')!.classList.toggle('on', frame.on);
+  frameToggle.setAttribute('aria-pressed', String(docked && !folded));
+  frameToggle.classList.toggle('on', frame.on);
   framePanel.querySelector<HTMLElement>('.frame-fold')!.hidden = !docked;
   // The canvas is wider or narrower for it.
   if (capture) applyZoom();
@@ -2801,7 +2802,7 @@ function dockFramePanel(docked: boolean) {
   foldFramePanel(docked && !frame.on);
 }
 on(framePanel.querySelector<HTMLButtonElement>('.frame-fold')!, 'click', () => foldFramePanel(true));
-on(framePanel.querySelector<HTMLButtonElement>('.frame-tab')!, 'click', () => foldFramePanel(false));
+on(frameToggle, 'click', () => foldFramePanel(!frameFolded));
 
 function placeFramePanel() {
   // Docked, it is laid out in its column, not placed over anything.
