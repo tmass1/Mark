@@ -188,10 +188,13 @@ async function invoke(command: string, args?: Record<string, unknown>) {
   await call(command, args);
 }
 
+/** A selection begun on this display: another's gives way. An event comes back
+ *  to the window that sent it too, so it says whose it is. */
+const selectionOf = `${display.x},${display.y}`;
 async function announce() {
   if (!inTauri) return;
   const { emit } = await import('@tauri-apps/api/event');
-  await emit('selection-started', {});
+  await emit('selection-started', { display: selectionOf });
 }
 
 /** Full-width and full-height guides through the pointer, so an edge can be
@@ -643,7 +646,7 @@ document.addEventListener('keydown', event => {
 // and a switch between region and window made on one is made on all of them.
 if (inTauri) {
   void import('@tauri-apps/api/event').then(({ listen }) => Promise.all([
-    listen('selection-started', () => { if (!drag) { rect = null; show(); } }),
+    listen<{ display?: string }>('selection-started', event => { if (!drag && event.payload?.display !== selectionOf) { rect = null; show(); } }),
     listen<{ mode: Mode }>('selection-mode', event => setMode(event.payload.mode, false)),
     listen<Look>('selection-look', event => setLook(lookOf(event.payload), false)),
     listen<{ zoom: boolean }>('selection-zoom', event => setZoom(event.payload.zoom === true, false)),
