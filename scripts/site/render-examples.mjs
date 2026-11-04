@@ -98,10 +98,10 @@ async function editorWith({ capture, view, request = null, frames = [] }) {
 // How it works: a checkout, mocked up with three changes, the notes on the picture.
 if (!only || only === 'checkout') {
   const e = await editorWith({ capture: await still('checkout', 1100, 640), view: { width: 938, height: 616 } });
-  await e.size(0.8); await e.numbered();
-  await e.note([50, 612], [204, 574], 'Show the date, not the days');
-  await e.note([380, 612], [588, 560], 'Make Express free over $75');
-  await e.note([745, 612], [906, 553], 'Make Pay now full width');
+  await e.size(0.65); await e.numbered();
+  await e.note([300, 466], [250, 503], 'Show the date, not the days');
+  await e.note([290, 556], [592, 556], 'Make Express free over $75');
+  await e.note([640, 612], [893, 566], 'Make Pay now full width');
   await e.deselect(); await e.framed(); await e.lights(); await e.rest();
   await shot(e.page, 'checkout');
   await e.context.close();
@@ -184,8 +184,8 @@ if (!only || only === 'phone') {
 // A browser: the checkout, and one change to make.
 if (!only || only === 'browser') {
   const e = await editorWith({ capture: await still('checkout', 1100, 640), view: { width: 1400, height: 1000 } });
-  await e.size(0.8); await e.numbered();
-  await e.note([745, 612], [906, 553], 'Make Pay now full width');
+  await e.size(0.65); await e.numbered();
+  await e.note([640, 612], [893, 566], 'Make Pay now full width');
   await e.deselect(); await e.framed();
   await inFrame(e, 'browser', { background: 'Aurora', device: 'Browser', width: 1200 });
 }

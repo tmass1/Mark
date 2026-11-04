@@ -18,7 +18,7 @@ writes each note beside its number, or frames the two together in one pill. A
 **Style** menu dresses the notes and Mark's own arrow together, in **Smoked
 glass**, **Soft solid**, **Card** or **Icon glass**.
 
-![Three notes framed with their numbers in red pills, each with a white border and a soft shadow, pointing at a dashboard](docs/framed-steps.png)
+![Three notes framed with their numbers in dark, slightly see-through pills, each with a curved arrow pointing at a dashboard](docs/framed-steps.png)
 
 **Or let an AI ask.** Claude Code and Claude Desktop can ask Mark for a
 screenshot: Mark shows you what they want to see, you capture it and mark it up

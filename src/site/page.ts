@@ -5,7 +5,8 @@
 import './page.css';
 import pkg from '../../package.json';
 import markIcon from '../mark-icon.png';
-import { arrowPolygon, arrowStrokes, arrowStrokeWidth, polygonPath, strokePath, type Arrow, type ArrowStyle } from '../annotations';
+import { arrowPolygon, arrowStrokes, arrowStrokeWidth, polygonPath, strokePath, styledArrow, type Arrow, type ArrowStyle } from '../annotations';
+import { DEFAULT_NOTE_STYLE } from '../note-style';
 import { CLICKS, POINTERS } from '../look';
 import { DEFAULT_SHORTCUT, prettyShortcut } from '../shortcut';
 
@@ -104,7 +105,7 @@ for (const slot of all('[data-arrows]')) {
     const arrow: Arrow = { kind: 'arrow', id: i, style, x1: 20, y1: 94, x2: 84, y2: 22, color: '', weight: 10 };
     const art = style === 'line'
       ? `<path d="${strokePath(arrowStrokes(arrow))}" fill="none" stroke="currentColor" stroke-width="${arrowStrokeWidth(arrow.weight)}" stroke-linecap="round" stroke-linejoin="round"/>`
-      : `<path d="${polygonPath(arrowPolygon(arrow))}" fill="currentColor"/>`;
+      : `<path d="${polygonPath(style === 'mark' ? styledArrow({ ...arrow, weight: 15 }, DEFAULT_NOTE_STYLE)!.polygon : arrowPolygon(arrow))}" fill="currentColor"/>`;
     return `<figure><svg viewBox="0 0 104 110" aria-label="${name} arrow">${art}</svg><figcaption>${name}</figcaption></figure>`;
   }).join('');
 }
