@@ -156,6 +156,7 @@ export function onto(boxes: readonly Rect[], width: number, height: number): Poi
 export function blockSize(weight: number): number { return Math.max(7, weight * 1.5); }
 export type Point = [number, number];
 
+import { DEFAULT_NOTE_STYLE, DISC, DISC_INSET, UNITS_HIGH, courseAlone, courseFrom, curvedArrow, noteLook, type ArrowLook, type Cast, type NoteLook, type NoteStyle, type Stop } from './note-style';
 import { clampRect, ratioInside, ratioRect, type Rect } from './region';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -192,9 +193,12 @@ export function baseWeight(width: number, height: number): number {
 export function textSize(weight: number): number { return weight * 2; }
 /** A badge is sized off it too, so a step reads the same on a small region and
  *  a Retina full-screen grab. */
-export function stepRadius(weight: number): number { return weight * 1.45; }
-/** The numeral inside a badge, big enough to read at two digits. */
-export function stepTextSize(weight: number): number { return stepRadius(weight) * 1.25; }
+export function stepRadius(weight: number): number { return weight * 1.93; }
+/** A note style's unit in the image's pixels: all of a note scales from this. */
+export function noteUnit(weight: number): number { return stepRadius(weight) * 2 / UNITS_HIGH; }
+/** The words in a pill, and the numeral in its disc, a little smaller to fit two digits. */
+export function stepTextSize(weight: number, size = 15.5): number { return noteUnit(weight) * size; }
+export function stepNumeralSize(weight: number, number: string): number { return noteUnit(weight) * (number.length > 1 ? 11.5 : 12.5); }
 /** A measure is drawn finer than its weight -- a dimension line, not a stroke
  *  of ink -- with its ticks and label scaled to the same weight. */
 export function measureWidth(weight: number): number { return Math.max(1, weight * 0.3); }
@@ -402,21 +406,54 @@ export interface Pill {
   x: number; y: number; width: number; height: number;
   /** The centre of the pill's left end, where the number is centred. */
   numeral: Point;
-  text: string; textX: number; font: string;
+  /** The number and the words, apart: each has a look of its own. */
+  number: string; text: string; textX: number; font: string;
 }
-export function pillAt(item: Numbered, n: number, measure: Measure, width = Infinity, height = Infinity): Pill | null {
+export function pillAt(item: Numbered, n: number, measure: Measure, width = Infinity, height = Infinity, style: NoteStyle = DEFAULT_NOTE_STYLE): Pill | null {
   const note = item.note?.trim();
   if (!note) return null;
   const [bx, by] = badgeAt(item, width, height);
-  const r = stepRadius(item.weight);
-  const font = `700 ${stepTextSize(item.weight)}px ${FONT}`;
-  const text = `${n} ${note}`;
-  // The same space before the number as after the words, and just enough to
-  // centre the number on the end's centre.
-  const pad = r - measure(String(n), font) / 2;
-  const pillWidth = Math.max(r * 2, measure(text, font) + pad * 2);
+  const r = stepRadius(item.weight), u = noteUnit(item.weight), look = noteLook(style, item.color, inkOn(item.color));
+  const font = `${look.weight} ${stepTextSize(item.weight, look.wordsSize)}px ${FONT}`;
+  const lead = (DISC_INSET + DISC + look.gap) * u;
+  const pillWidth = lead + measure(note, font) + look.end * u;
   const x = Math.max(0, Math.min(bx - r, width - pillWidth));
-  return { x, y: by - r, width: pillWidth, height: r * 2, numeral: [x + r, by], text, textX: x + pad, font };
+  return { x, y: by - r, width: pillWidth, height: r * 2, numeral: [x + r, by], number: String(n), text: note, textX: x + lead, font };
+}
+
+/** The frame a numbered mark's arrow leaves: its pill, or its badge. */
+function frameOf(step: Step, pill: Pill | null) {
+  if (pill) return { x: pill.x, y: pill.y, width: pill.width, height: pill.height };
+  const r = stepRadius(step.weight);
+  return { x: step.x - r, y: step.y - r, width: r * 2, height: r * 2 };
+}
+/** What an arrow in Mark's own style draws, in the note style: its polygon, and the
+ *  course its fill runs along. A step's leaves its pill or badge, the arrow's look
+ *  sized by the step; an arrow on its own bows gently between its ends. Null when
+ *  it is too short to draw. */
+export interface StyledArrow { polygon: Point[]; from: Point; to: Point; look: ArrowLook; unit: number }
+export function styledArrow(mark: Arrow | Step, style: NoteStyle, pill: Pill | null = null): StyledArrow | null {
+  const unit = noteUnit(mark.weight), look = noteLook(style, mark.color, inkOn(mark.color)).arrow;
+  let course;
+  if (mark.kind === 'step') {
+    if (!mark.to) return null;
+    course = courseFrom(frameOf(mark, pill), mark.to, look.tuck * unit);
+  } else course = courseAlone([mark.x1, mark.y1], [mark.x2, mark.y2]);
+  const polygon = course && curvedArrow(course, look, unit);
+  return polygon && course ? { polygon, from: course.from, to: course.to, look, unit } : null;
+}
+export const isStyled = (mark: Arrow | Step) => styleOf(mark) === 'mark';
+
+/** A rounded rectangle, clockwise on screen, as stadiumOps is. */
+export function roundedOps(x: number, y: number, width: number, height: number, radius: number): PathOp[] {
+  const r = Math.min(radius, width / 2, height / 2), q = Math.PI / 2;
+  return [
+    { op: 'arc', x: x + r, y: y + r, r, from: 2 * q, to: 3 * q, ccw: false },
+    { op: 'arc', x: x + width - r, y: y + r, r, from: 3 * q, to: 4 * q, ccw: false },
+    { op: 'arc', x: x + width - r, y: y + height - r, r, from: 0, to: q, ccw: false },
+    { op: 'arc', x: x + r, y: y + height - r, r, from: q, to: 2 * q, ccw: false },
+    { op: 'close' },
+  ];
 }
 
 /** How far the pill's edge is from its number going (ux, uy): where an arrow
@@ -791,12 +828,105 @@ function lifted(ctx: CanvasRenderingContext2D, shadow: Shadow | null, scale: num
   ctx.restore();
 }
 
+/** A gradient along a line, or the one colour when there is no change to run. */
+function paintOf(ctx: CanvasRenderingContext2D, stops: readonly Stop[], x1: number, y1: number, x2: number, y2: number): string | CanvasGradient {
+  if (stops.length === 1) return stops[0][1];
+  const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+  for (const [at, color] of stops) gradient.addColorStop(at, color);
+  return gradient;
+}
+/** How far off the canvas a shape is drawn to cast only its shadow. */
+const AWAY = 50000;
+/** A shape's shadows and nothing else, so that a pane going over them can let the
+ *  screen show through. A canvas casts only from what it draws, so the shape is
+ *  drawn well off the canvas and its shadow thrown back into place. */
+function casting(ctx: CanvasRenderingContext2D, casts: readonly Cast[], unit: number, scale: number, ops: readonly PathOp[]): void {
+  for (const cast of casts) {
+    ctx.save();
+    ctx.translate(-AWAY, 0);
+    ctx.shadowColor = cast.color;
+    ctx.shadowBlur = cast.sigma * 2 * unit * scale;
+    ctx.shadowOffsetX = AWAY * scale;
+    ctx.shadowOffsetY = cast.y * unit * scale;
+    ctx.fillStyle = '#000000';
+    tracePath(ctx, ops);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+/** An arrow in the note style: its shadows, its edge, its fill along it, its light. */
+function paintStyledArrow(ctx: CanvasRenderingContext2D, arrow: StyledArrow, scale: number): void {
+  const { polygon, from, to, look, unit } = arrow, ops = polygonOps(polygon);
+  casting(ctx, look.casts, unit, scale, look.edge ? outsetOps(polygon, look.edge.width * unit) : ops);
+  if (look.edge) { ctx.fillStyle = look.edge.color; tracePath(ctx, outsetOps(polygon, look.edge.width * unit)); ctx.fill(); }
+  ctx.fillStyle = paintOf(ctx, look.fill, from[0], from[1], to[0], to[1]);
+  tracePath(ctx, ops);
+  ctx.fill();
+  if (look.lit) {
+    ctx.save();
+    ctx.strokeStyle = paintOf(ctx, look.lit, from[0], from[1], to[0], to[1]);
+    ctx.lineWidth = unit;
+    ctx.lineJoin = 'round';
+    tracePath(ctx, ops);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+/** A numbered mark in the note style: a pill holding the number and the words,
+ *  or, with nothing to say, the same frame round the number alone. */
+function paintNote(ctx: CanvasRenderingContext2D, look: NoteLook, weight: number, scale: number, frame: { x: number; y: number; width: number; height: number },
+                   number: string, centre: Point, pill: Pill | null): void {
+  const { x, y, width, height } = frame, unit = noteUnit(weight), radius = (height / 2) * look.corner;
+  const ops = roundedOps(x, y, width, height, radius);
+  casting(ctx, look.casts, unit, scale, ops);
+  if (look.ring) {
+    const out = look.ring.width * unit;
+    ctx.fillStyle = look.ring.color;
+    tracePath(ctx, roundedOps(x - out, y - out, width + out * 2, height + out * 2, radius + out));
+    ctx.fill();
+  }
+  ctx.fillStyle = paintOf(ctx, look.frame, x, y, x, y + height);
+  tracePath(ctx, ops);
+  ctx.fill();
+  if (look.gloss) { ctx.fillStyle = paintOf(ctx, look.gloss, x, y, x, y + height); tracePath(ctx, ops); ctx.fill(); }
+  if (look.rim) {
+    const inset = (look.rim.width * unit) / 2;
+    ctx.strokeStyle = paintOf(ctx, look.rim.stops, x, y, x, y + height);
+    ctx.lineWidth = look.rim.width * unit;
+    tracePath(ctx, roundedOps(x + inset, y + inset, width - inset * 2, height - inset * 2, Math.max(0, radius - inset)));
+    ctx.stroke();
+  }
+  const disc = (DISC / 2) * unit, discOps = roundedOps(centre[0] - disc, centre[1] - disc, disc * 2, disc * 2, disc * look.numberCorner);
+  ctx.fillStyle = paintOf(ctx, look.numberFill, x, centre[1] - disc, x, centre[1] + disc);
+  tracePath(ctx, discOps);
+  ctx.fill();
+  if (look.numberRim) {
+    ctx.strokeStyle = look.numberRim.color;
+    ctx.lineWidth = look.numberRim.width * unit;
+    tracePath(ctx, discOps);
+    ctx.stroke();
+  }
+  const size = stepNumeralSize(weight, number);
+  ctx.fillStyle = look.numberInk;
+  ctx.font = `700 ${size}px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.fillText(number, centre[0], centredBaseline(centre[1], size));
+  if (pill) {
+    ctx.fillStyle = look.wordsInk;
+    ctx.font = pill.font;
+    ctx.textAlign = 'left';
+    ctx.fillText(pill.text, pill.textX, centredBaseline(centre[1], stepTextSize(weight, look.wordsSize)));
+  }
+}
+
 export interface DrawOptions {
   /** The capture, which a redaction samples. */
   source?: CanvasImageSource;
   /** How notes are written on the image, if at all. Off by default: a note is
    *  for the message, and words in a picture have to be read back out of it. */
   notes?: NoteMode;
+  /** How numbered marks and Mark's own arrow look. */
+  style?: NoteStyle;
   /** The image's own size, which badges and pills are kept inside. The canvas's
    *  by default; a canvas drawn at another scale, as a thumbnail is, says. */
   width?: number;
@@ -815,28 +945,22 @@ export interface DrawOptions {
 export function drawAnnotations(
   ctx: CanvasRenderingContext2D, items: readonly Annotation[], options: DrawOptions = {},
 ): void {
-  const { source, notes = 'off', density = 1 } = options;
+  const { source, notes = 'off', density = 1, style = DEFAULT_NOTE_STYLE } = options;
   const width = options.width ?? ctx.canvas?.width ?? Infinity;
   const height = options.height ?? ctx.canvas?.height ?? Infinity;
   const scale = ctx.getTransform?.().a ?? 1;
   const measure = measurer(ctx);
   const numbers = stepNumbers(items);
   const pillOf = (item: Numbered) =>
-    notes === 'framed' ? pillAt(item, numbers.get(item.id) ?? 1, measure, width, height) : null;
-  /** The badge: a disc and its numeral, with the note beside it when notes are
-   *  written there -- or, framed, the one pill holding both. */
-  const badge = (item: Numbered, pill: Pill | null, shadow: Shadow | null) => {
+    notes === 'framed' ? pillAt(item, numbers.get(item.id) ?? 1, measure, width, height, style) : null;
+  /** The badge: the number in the note style, with the note beside it when notes
+   *  are written there -- or, framed, the one pill holding both. */
+  const badge = (item: Numbered, pill: Pill | null) => {
     ctx.textBaseline = 'alphabetic';
+    const look = noteLook(style, item.color, inkOn(item.color));
+    const number = String(numbers.get(item.id) ?? 1), r = stepRadius(item.weight);
     if (pill) {
-      lifted(ctx, shadow, scale, () => {
-        ctx.fillStyle = item.color;
-        tracePath(ctx, stadiumOps(pill.x, pill.y, pill.width, pill.height));
-        ctx.fill();
-      });
-      ctx.fillStyle = inkOn(item.color);
-      ctx.font = pill.font;
-      ctx.textAlign = 'left';
-      ctx.fillText(pill.text, pill.textX, centredBaseline(pill.numeral[1], stepTextSize(item.weight)));
+      paintNote(ctx, look, item.weight, scale, pill, pill.number, pill.numeral, pill);
     } else {
       const [x, y] = badgeAt(item, width, height);
       // The note first, as the overlay draws it, so wherever the two meet they
@@ -848,16 +972,7 @@ export function drawAnnotations(
         ctx.textAlign = note.anchor === 'end' ? 'right' : 'left';
         ctx.fillText(note.text, note.x, centredBaseline(note.y, note.size));
       }
-      lifted(ctx, shadow, scale, () => {
-        ctx.fillStyle = item.color;
-        ctx.beginPath();
-        ctx.arc(x, y, stepRadius(item.weight), 0, Math.PI * 2);
-        ctx.fill();
-      });
-      ctx.fillStyle = inkOn(item.color);
-      ctx.font = `700 ${stepTextSize(item.weight)}px ${FONT}`;
-      ctx.textAlign = 'center';
-      ctx.fillText(String(numbers.get(item.id) ?? 1), x, centredBaseline(y, stepTextSize(item.weight)));
+      paintNote(ctx, look, item.weight, scale, { x: x - r, y: y - r, width: r * 2, height: r * 2 }, number, [x, y], null);
     }
     ctx.textAlign = 'start';
     ctx.textBaseline = 'alphabetic';
@@ -867,16 +982,19 @@ export function drawAnnotations(
     ctx.fillStyle = item.color;
     if (takesLooks(item)) {
       const pill = item.kind === 'step' ? pillOf(item) : null;
-      const arrow = item.kind === 'step' ? stepArrow(item, pill) : item;
-      const shadow = hasLook(item, 'shadow') ? markShadow(item.weight) : null;
-      // With a border, the border is the whole of the mark's outline, so it
-      // casts the one shadow; without, each coloured shape casts its own.
-      const bordered = hasLook(item, 'border');
-      if (bordered) lifted(ctx, shadow, scale, () => paintUnderlay(ctx, underlay(item, arrow, pill)));
-      const own = bordered ? null : shadow;
-      // The arrow goes down before the badge, so the badge covers its tail.
-      if (arrow) lifted(ctx, own, scale, () => paintArrow(ctx, arrow));
-      if (item.kind === 'step') badge(item, pill, own);
+      if (isStyled(item)) {
+        const arrow = styledArrow(item, style, pill);
+        if (arrow) paintStyledArrow(ctx, arrow, scale);
+      } else {
+        // Tapered, solid or thin: flat, with the looks chosen for it.
+        const arrow = item.kind === 'step' ? stepArrow(item, pill) : item;
+        const shadow = hasLook(item, 'shadow') ? markShadow(item.weight) : null;
+        const bordered = hasLook(item, 'border');
+        if (bordered && arrow) lifted(ctx, shadow, scale, () => paintUnderlay(ctx, underlay(item.kind === 'step' ? { ...arrow, weight: item.weight } : item, arrow, null)));
+        // The arrow goes down before the badge, so the badge covers its tail.
+        if (arrow) lifted(ctx, bordered ? null : shadow, scale, () => paintArrow(ctx, arrow));
+      }
+      if (item.kind === 'step') badge(item, pill);
       continue;
     }
     if (item.kind === 'measure') {
@@ -899,7 +1017,7 @@ export function drawAnnotations(
     if (isShape(item)) {
       const { x, y, width, height } = item;
       // The badge goes on last whichever way the shape itself was drawn.
-      const finish = () => { if (item.numbered) badge(item, pillOf(item), null); };
+      const finish = () => { if (item.numbered) badge(item, pillOf(item)); };
       if (item.kind === 'redact') { if (source) pixelateRegion(ctx, source, item); finish(); continue; }
       if (item.kind === 'highlight') {
         ctx.save();
@@ -1111,6 +1229,8 @@ export class AnnotationLayer {
   live = false;
   tool: Tool = 'arrow';
   base = 12;
+  /** How numbered marks and Mark's own arrow look, for the whole capture. */
+  noteStyle: NoteStyle = DEFAULT_NOTE_STYLE;
   style: LayerStyle = { color: COLORS[0].value, scale: 1, arrow: DEFAULT_ARROW, fill: 'outline', numbered: false,
                         shadow: false, border: false };
 
@@ -1959,36 +2079,86 @@ export class AnnotationLayer {
     return path;
   }
 
-  /** The badge a numbered mark carries: a disc and its numeral, with the note
-   *  beside it when notes are written there -- or, framed, one pill holding the
-   *  number and the words. The number is drawn here rather than stored, from
+  /** A gradient for the overlay, along a line, or the one colour when there is no change to run. */
+  private paintOf(stops: readonly Stop[], x1: number, y1: number, x2: number, y2: number, key: string): string {
+    if (stops.length === 1) return stops[0][1];
+    if (!this.defs) { this.defs = document.createElementNS(SVG, 'defs'); this.svg.prepend(this.defs); }
+    const gradient = document.createElementNS(SVG, 'linearGradient');
+    gradient.setAttribute('id', `mark-paint-${key}`);
+    gradient.setAttribute('gradientUnits', 'userSpaceOnUse');
+    for (const [name, value] of [['x1', x1], ['y1', y1], ['x2', x2], ['y2', y2]] as const) gradient.setAttribute(name, String(value));
+    for (const [at, color] of stops) {
+      const stop = document.createElementNS(SVG, 'stop');
+      stop.setAttribute('offset', String(at));
+      stop.setAttribute('stop-color', color);
+      gradient.append(stop);
+    }
+    this.defs.append(gradient);
+    return `url(#mark-paint-${key})`;
+  }
+  /** A shape's shadows and nothing else, as the export has them. */
+  private castNodes(casts: readonly Cast[], unit: number, d: string, box: Box, key: string): SVGElement[] {
+    return casts.map((cast, i) => {
+      const path = document.createElementNS(SVG, 'path');
+      path.setAttribute('class', 'cast');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', '#000000');
+      this.liftWith(path, { dy: cast.y * unit, sigma: cast.sigma * unit, color: cast.color }, box, `${key}-${i}`);
+      return path;
+    });
+  }
+  /** Room for a look's shadows round what casts them. */
+  private castBox(box: Box, casts: readonly Cast[], unit: number, spare = 0): Box {
+    const reach = Math.max(0, ...casts.map(cast => (cast.sigma * 3 + cast.y) * unit)) + spare;
+    return { x: box.x - reach, y: box.y - reach, width: box.width + reach * 2, height: box.height + reach * 2 };
+  }
+  /** An arrow in the note style: its shadows, its edge, its fill along it, its light. */
+  private styledArrowNodes(arrow: StyledArrow, key: string): SVGElement[] {
+    const { polygon, from, to, look, unit } = arrow, d = polygonPath(polygon);
+    const xs = polygon.map(point => point[0]), ys = polygon.map(point => point[1]);
+    const left = Math.min(...xs), top = Math.min(...ys);
+    const box = this.castBox({ x: left, y: top, width: Math.max(...xs) - left, height: Math.max(...ys) - top }, look.casts, unit, (look.edge?.width ?? 0) * unit);
+    const edged = look.edge ? pathData(outsetOps(polygon, look.edge.width * unit)) : d;
+    const nodes = this.castNodes(look.casts, unit, edged, box, `${key}-arrow`);
+    if (look.edge) {
+      const edge = document.createElementNS(SVG, 'path');
+      edge.setAttribute('class', 'edge');
+      edge.setAttribute('d', edged);
+      edge.setAttribute('fill', look.edge.color);
+      nodes.push(edge);
+    }
+    const body = document.createElementNS(SVG, 'path');
+    body.setAttribute('d', d);
+    body.setAttribute('fill', this.paintOf(look.fill, from[0], from[1], to[0], to[1], `${key}-arrow`));
+    nodes.push(body);
+    if (look.lit) {
+      const lit = document.createElementNS(SVG, 'path');
+      lit.setAttribute('class', 'lit');
+      lit.setAttribute('d', d);
+      lit.setAttribute('fill', 'none');
+      lit.setAttribute('stroke', this.paintOf(look.lit, from[0], from[1], to[0], to[1], `${key}-lit`));
+      lit.setAttribute('stroke-width', String(unit));
+      lit.setAttribute('stroke-linejoin', 'round');
+      nodes.push(lit);
+    }
+    return nodes;
+  }
+  /** The body of a mark's arrow, whichever it is, to find it by. */
+  private static markBody(nodes: SVGElement[]): SVGElement {
+    return nodes.filter(node => !node.getAttribute('class')).pop() ?? nodes[nodes.length - 1];
+  }
+
+  /** The badge a numbered mark carries: the number in the note style, with the
+   *  note beside it when notes are written there -- or, framed, one pill holding
+   *  the number and the words. The number is drawn here rather than stored, from
    *  the mark's place in the sequence. */
-  private badgeNode(item: Numbered, number: number, pill: Pill | null = null,
-                    shadow: Shadow | null = null, box?: Box): SVGElement {
+  private badgeNode(item: Numbered, number: number, pill: Pill | null = null): SVGElement {
     const group = document.createElementNS(SVG, 'g');
     group.setAttribute('class', 'badge');
-    if (pill) {
-      const frame = document.createElementNS(SVG, 'rect');
-      frame.setAttribute('class', 'pill');
-      frame.setAttribute('x', String(pill.x)); frame.setAttribute('y', String(pill.y));
-      frame.setAttribute('width', String(pill.width)); frame.setAttribute('height', String(pill.height));
-      frame.setAttribute('rx', String(pill.height / 2)); frame.setAttribute('ry', String(pill.height / 2));
-      frame.setAttribute('fill', item.color);
-      if (shadow && box) this.lift(frame, shadow, box, `${item.id}-badge`);
-      const text = document.createElementNS(SVG, 'text');
-      text.setAttribute('x', String(pill.textX));
-      text.setAttribute('y', String(centredBaseline(pill.numeral[1], stepTextSize(item.weight))));
-      text.setAttribute('fill', inkOn(item.color));
-      text.setAttribute('font-family', FONT);
-      text.setAttribute('font-size', String(stepTextSize(item.weight)));
-      text.setAttribute('font-weight', '700');
-      text.setAttribute('text-anchor', 'start');
-      text.setAttribute('xml:space', 'preserve');
-      text.textContent = pill.text;
-      group.append(frame, text);
-      return group;
-    }
-    const written = this.notes === 'beside' ? noteAt(item, this.width, this.height) : null;
+    const look = noteLook(this.noteStyle, item.color, inkOn(item.color));
+    const r = stepRadius(item.weight), unit = noteUnit(item.weight), key = `${item.id}-note`;
+    const [bx, by] = badgeAt(item, this.width, this.height);
+    const written = !pill && this.notes === 'beside' ? noteAt(item, this.width, this.height) : null;
     if (written) {
       const label = document.createElementNS(SVG, 'text');
       label.setAttribute('x', String(written.x));
@@ -2002,57 +2172,133 @@ export class AnnotationLayer {
       label.textContent = written.text;
       group.append(label);
     }
-    const [x, y] = badgeAt(item, this.width, this.height);
-    const disc = document.createElementNS(SVG, 'circle');
-    disc.setAttribute('cx', String(x)); disc.setAttribute('cy', String(y));
-    disc.setAttribute('r', String(stepRadius(item.weight)));
-    disc.setAttribute('fill', item.color);
-    if (shadow && box) this.lift(disc, shadow, box, `${item.id}-badge`);
-    const text = document.createElementNS(SVG, 'text');
-    text.setAttribute('x', String(x)); text.setAttribute('y', String(centredBaseline(y, stepTextSize(item.weight))));
-    text.setAttribute('fill', inkOn(item.color));
-    text.setAttribute('font-family', FONT);
-    text.setAttribute('font-size', String(stepTextSize(item.weight)));
-    text.setAttribute('font-weight', '700');
-    text.setAttribute('text-anchor', 'middle');
-    text.textContent = String(number);
-    group.append(disc, text);
+    const frame = pill ?? { x: bx - r, y: by - r, width: r * 2, height: r * 2 };
+    const [cx, cy] = pill ? pill.numeral : [bx, by];
+    const radius = (frame.height / 2) * look.corner, ops = roundedOps(frame.x, frame.y, frame.width, frame.height, radius);
+    const out = look.ring ? look.ring.width * unit : 0;
+    group.append(...this.castNodes(look.casts, unit, pathData(ops), this.castBox(frame, look.casts, unit, out), key));
+    if (look.ring) {
+      const ring = document.createElementNS(SVG, 'path');
+      ring.setAttribute('class', 'ring');
+      ring.setAttribute('d', pathData(roundedOps(frame.x - out, frame.y - out, frame.width + out * 2, frame.height + out * 2, radius + out)));
+      ring.setAttribute('fill', look.ring.color);
+      group.append(ring);
+    }
+    const body = document.createElementNS(SVG, 'rect');
+    body.setAttribute('class', pill ? 'pill' : 'frame');
+    body.setAttribute('x', String(frame.x)); body.setAttribute('y', String(frame.y));
+    body.setAttribute('width', String(frame.width)); body.setAttribute('height', String(frame.height));
+    body.setAttribute('rx', String(radius)); body.setAttribute('ry', String(radius));
+    body.setAttribute('fill', this.paintOf(look.frame, frame.x, frame.y, frame.x, frame.y + frame.height, `${key}-frame`));
+    group.append(body);
+    if (look.gloss) {
+      const gloss = document.createElementNS(SVG, 'path');
+      gloss.setAttribute('class', 'gloss');
+      gloss.setAttribute('d', pathData(ops));
+      gloss.setAttribute('fill', this.paintOf(look.gloss, frame.x, frame.y, frame.x, frame.y + frame.height, `${key}-gloss`));
+      group.append(gloss);
+    }
+    if (look.rim) {
+      const inset = (look.rim.width * unit) / 2;
+      const rim = document.createElementNS(SVG, 'path');
+      rim.setAttribute('class', 'rim');
+      rim.setAttribute('d', pathData(roundedOps(frame.x + inset, frame.y + inset, frame.width - inset * 2, frame.height - inset * 2, Math.max(0, radius - inset))));
+      rim.setAttribute('fill', 'none');
+      rim.setAttribute('stroke', this.paintOf(look.rim.stops, frame.x, frame.y, frame.x, frame.y + frame.height, `${key}-rim`));
+      rim.setAttribute('stroke-width', String(look.rim.width * unit));
+      group.append(rim);
+    }
+    const disc = (DISC / 2) * unit;
+    const seat = document.createElementNS(SVG, 'path');
+    seat.setAttribute('class', 'number');
+    seat.setAttribute('d', pathData(roundedOps(cx - disc, cy - disc, disc * 2, disc * 2, disc * look.numberCorner)));
+    seat.setAttribute('fill', this.paintOf(look.numberFill, frame.x, cy - disc, frame.x, cy + disc, `${key}-number`));
+    if (look.numberRim) {
+      seat.setAttribute('stroke', look.numberRim.color);
+      seat.setAttribute('stroke-width', String(look.numberRim.width * unit));
+    }
+    group.append(seat);
+    const numeral = String(pill ? pill.number : number), size = stepNumeralSize(item.weight, numeral);
+    const figure = document.createElementNS(SVG, 'text');
+    figure.setAttribute('class', 'numeral');
+    figure.setAttribute('x', String(cx)); figure.setAttribute('y', String(centredBaseline(cy, size)));
+    figure.setAttribute('fill', look.numberInk);
+    figure.setAttribute('font-family', FONT);
+    figure.setAttribute('font-size', String(size));
+    figure.setAttribute('font-weight', '700');
+    figure.setAttribute('text-anchor', 'middle');
+    figure.textContent = numeral;
+    group.append(figure);
+    if (pill) {
+      const words = document.createElementNS(SVG, 'text'), wordsSize = stepTextSize(item.weight, look.wordsSize);
+      words.setAttribute('class', 'words');
+      words.setAttribute('x', String(pill.textX));
+      words.setAttribute('y', String(centredBaseline(cy, wordsSize)));
+      words.setAttribute('fill', look.wordsInk);
+      words.setAttribute('font-family', FONT);
+      words.setAttribute('font-size', String(wordsSize));
+      words.setAttribute('font-weight', String(look.weight));
+      words.setAttribute('text-anchor', 'start');
+      words.setAttribute('xml:space', 'preserve');
+      words.textContent = pill.text;
+      group.append(words);
+    }
     return group;
   }
 
-  /** A step: its border when it has one, the arrow it points with, and its
-   *  badge. With a border, the border casts the step's one shadow, being the
-   *  whole of its outline; without, the arrow and the badge each cast their
-   *  own -- the same shapes, in the same order, as the export's. */
+  /** A step: the arrow it points with, under its badge -- in the note style when it
+   *  is Mark's own arrow, otherwise flat with its looks -- the same shapes, in the
+   *  same order, as the export's. */
   private stepNode(item: Step, number: number): SVGElement {
     const group = document.createElementNS(SVG, 'g');
     group.setAttribute('data-item', String(item.id));
     group.setAttribute('class', 'step');
     const pill = this.pillFor(item, number);
     this.pills.set(item.id, pill);
-    const arrow = stepArrow(item, pill);
-    const shadow = hasLook(item, 'shadow') ? markShadow(item.weight) : null;
-    const bordered = hasLook(item, 'border');
-    const box = this.liftBox(item, pill);
-    if (bordered) {
-      const under = this.underlayNode(underlay(item, arrow, pill));
-      if (shadow) this.lift(under, shadow, box, `${item.id}-border`);
-      group.append(under);
+    if (isStyled(item)) {
+      const arrow = styledArrow(item, this.noteStyle, pill);
+      if (arrow) {
+        const nodes = this.styledArrowNodes(arrow, `${item.id}`);
+        AnnotationLayer.markBody(nodes).setAttribute('class', 'pointing');
+        group.append(...nodes);
+      }
+    } else {
+      const arrow = stepArrow(item, pill);
+      const shadow = hasLook(item, 'shadow') ? markShadow(item.weight) : null;
+      const bordered = hasLook(item, 'border');
+      const box = this.liftBox(item, pill);
+      if (bordered && arrow) {
+        const under = this.underlayNode(underlay({ ...arrow, weight: item.weight }, arrow, null));
+        if (shadow) this.lift(under, shadow, box, `${item.id}-border`);
+        group.append(under);
+      }
+      if (arrow) {
+        const path = this.arrowNode(arrow);
+        path.setAttribute('class', 'pointing');
+        if (!bordered && shadow) this.lift(path, shadow, box, `${item.id}-arrow`);
+        group.append(path);
+      }
     }
-    const own = bordered ? null : shadow;
-    if (arrow) {
-      const path = this.arrowNode(arrow);
-      if (own) this.lift(path, own, box, `${item.id}-arrow`);
-      group.append(path);
-    }
-    group.append(this.badgeNode(item, number, pill, own, box));
+    group.append(this.badgeNode(item, number, pill));
     return group;
   }
 
-  /** An arrow on its own. Without looks, the one coloured path it has always
-   *  been. With a border, the border goes under it and a group carries the
-   *  arrow's identity instead, so a press on either takes hold of the arrow. */
+  /** An arrow on its own. In Mark's own style, as the note style draws it; otherwise
+   *  flat: without looks, the one coloured path it has always been, and with a
+   *  border, the border goes under it and a group carries the arrow's identity
+   *  instead, so a press on either takes hold of the arrow. */
   private plainArrowNode(item: Arrow): SVGElement {
+    if (isStyled(item)) {
+      const group = document.createElementNS(SVG, 'g');
+      group.setAttribute('data-item', String(item.id));
+      const arrow = styledArrow(item, this.noteStyle);
+      if (arrow) {
+        const nodes = this.styledArrowNodes(arrow, `${item.id}`);
+        AnnotationLayer.markBody(nodes).setAttribute('class', 'arrow');
+        group.append(...nodes);
+      }
+      return group;
+    }
     const path = this.arrowNode(item);
     path.setAttribute('class', 'arrow');
     const shadow = hasLook(item, 'shadow') ? markShadow(item.weight) : null;
@@ -2110,6 +2356,32 @@ export class AnnotationLayer {
     element.setAttribute('filter', `url(#${id})`);
   }
 
+  /** A shadow of any colour, with none of the shape that casts it. */
+  private liftWith(element: SVGElement, shadow: { dy: number; sigma: number; color: string }, box: Box, key: string): void {
+    if (!this.defs) { this.defs = document.createElementNS(SVG, 'defs'); this.svg.prepend(this.defs); }
+    const id = `mark-cast-${key}`;
+    const filter = document.createElementNS(SVG, 'filter');
+    filter.setAttribute('id', id);
+    filter.setAttribute('filterUnits', 'userSpaceOnUse');
+    filter.setAttribute('x', String(box.x)); filter.setAttribute('y', String(box.y));
+    filter.setAttribute('width', String(box.width)); filter.setAttribute('height', String(box.height));
+    filter.setAttribute('color-interpolation-filters', 'sRGB');
+    const blur = document.createElementNS(SVG, 'feGaussianBlur');
+    blur.setAttribute('in', 'SourceAlpha');
+    blur.setAttribute('stdDeviation', String(shadow.sigma));
+    const offset = document.createElementNS(SVG, 'feOffset');
+    offset.setAttribute('dy', String(shadow.dy));
+    offset.setAttribute('result', 'cast');
+    const flood = document.createElementNS(SVG, 'feFlood');
+    flood.setAttribute('flood-color', shadow.color);
+    const only = document.createElementNS(SVG, 'feComposite');
+    only.setAttribute('in2', 'cast');
+    only.setAttribute('operator', 'in');
+    filter.append(blur, offset, flood, only);
+    this.defs.append(filter);
+    element.setAttribute('filter', `url(#${id})`);
+  }
+
   /** Room for a mark's shadow: the mark with its head, border and badge, and
    *  as far again as the shadow reaches. */
   private liftBox(item: Arrow | Step, pill: Pill | null): Box {
@@ -2121,7 +2393,7 @@ export class AnnotationLayer {
   /** A numbered mark's pill, when notes are framed and it has one to say. */
   private pillFor(item: Numbered, number: number): Pill | null {
     if (this.notes !== 'framed') return null;
-    return pillAt(item, number, this.textMeasure, this.width, this.height);
+    return pillAt(item, number, this.textMeasure, this.width, this.height, this.noteStyle);
   }
 
   /** Text measured as the export measures it, on a canvas of its own. */

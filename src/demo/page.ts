@@ -271,6 +271,7 @@ const RECORD_HINT = 'This browser can’t record a video. The Mac app can: up to
 const TIPS = [
   'Drag to draw. The tip of an arrow lands exactly where you let go.',
   'Four arrow styles sit beside the colours: Mark’s own, tapered, solid and thin.',
+  'The Style button dresses numbers, notes and Mark’s arrow four ways: smoked glass, soft solid, card and icon glass.',
   'Drag an arrow\'s end to reshape it, or its body to move it.',
   '⌘Z takes the last thing back, a crop included.',
   'Redact pixelates rather than blurs: a blur can be undone.',

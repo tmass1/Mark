@@ -14,9 +14,9 @@ and the words stay text.
 ![Three numbered steps pointing at a dashboard, with the Steps panel listing what each one is for](docs/numbered-steps.png)
 
 **Or put the words on the picture.** The Steps panel's **On the image** switch
-writes each note beside its number, or frames the two together in one pill. From
-the toolbar, a soft **shadow** and a white **border** lift an arrow off a busy
-screenshot.
+writes each note beside its number, or frames the two together in one pill. A
+**Style** menu dresses the notes and Mark's own arrow together, in **Smoked
+glass**, **Soft solid**, **Card** or **Icon glass**.
 
 ![Three notes framed with their numbers in red pills, each with a white border and a soft shadow, pointing at a dashboard](docs/framed-steps.png)
 
@@ -159,15 +159,26 @@ notarization; an Apple Development certificate is only good for this Mac.
      the toolbar cannot answer while you are looking at the image. The
      crosshair stays, because the tail lands exactly where you press.
 
-     Beside the styles, **Shadow and border** opens two finishing touches an
-     arrow can wear: a soft **shadow** lifting it off the screenshot, and a
-     **border** setting it apart from whatever is underneath — white, or dark
-     round a white arrow, where white would be no border at all. They belong to
-     the mark, like its colour: the menu puts them on the selection and on the
-     next arrow, stays open while you try them, and they stay on until turned
-     off. A numbered arrow's badge wears them too. The border is one shape under
-     the whole mark, so a badge's rim never cuts into its own arrow, and with a
-     border on it is the border that casts the mark's shadow.
+     With the Mark arrow in hand, or anything numbered, the **Style** button
+     beside them offers four looks for the whole capture, one for the numbers,
+     notes and Mark's own arrow together: **Smoked glass**, a dark, slightly
+     see-through pane with colour on the number and arrow, which is what a new
+     capture starts in; **Soft
+     solid**, bold colour with a fine outline; **Card**, a small white card, like a
+     comment; and **Icon glass**, the icon's glow and heavier arrow. In a style the
+     arrow is curved rather than straight, tucked under the frame it leaves, and
+     comes with its own edge and shadow. The choice is kept for the next capture.
+     The menu is in the Steps panel too, and each row is the real thing drawn
+     small, so a row cannot misrepresent what it picks.
+
+     The other three arrows stay straight and flat, and for those **Shadow and
+     border** opens two finishing touches instead: a soft **shadow** lifting the
+     arrow off the screenshot, and a **border** setting it apart from whatever is
+     underneath — white, or dark round a white arrow, where white would be no
+     border at all. They belong to the mark, like its colour: the menu puts them on
+     the selection and on the next arrow, stays open while you try them, and they
+     stay on until turned off. With a border on, it is the border that casts the
+     arrow's shadow.
 
      The rail is slots rather than tools: a slot holds one tool, or a few that
      are the same tool done differently, and wears whichever was last chosen
@@ -667,8 +678,10 @@ default anyway.
   survives a resize and composites at full resolution. One routine paints each
   shape to SVG for display and to a canvas for export, so the copied image
   matches the screen. Shadows, borders and framed notes are geometry the two
-  share: a border is one path under the whole mark, and a pill is sized from
-  text measured by a canvas on both sides. Every shape that casts a shadow is
+  share: a border is one path under an arrow, and a pill is sized from text
+  measured by a canvas on both sides. `src/note-style.ts` holds the four note
+  styles as plain numbers, and the curve of Mark's own arrow as a polygon of short
+  edges, so both renderers draw the same shape. Every shape that casts a shadow is
   one canvas call and one SVG element with a filter of its own, since a canvas
   casts a shadow per call — which is what keeps the copy and the screen alike.
 - `src/platform.ts` is the only frontend boundary for native commands.
@@ -899,8 +912,10 @@ gathering, ungathering, moving, restyling and deleting together, and reordering
 for both the buttons and the shortcuts. Shadow, border and framed notes are
 covered for reaching the selection and the next arrow, for undo, for surviving
 duplication and numbering, for a dark border on a white arrow, and in the copied
-image itself: a white rim, a shade underneath, and a pill that is the mark's red
-with its words in it. Unit tests pin their geometry — outlines pushed out with
+image itself: a white rim, a shade underneath, and a pill with a red number and
+its words in it. The Style menu is covered for which marks offer it, the keyboard,
+being kept for the next capture, and each style reaching the copied image. Unit
+tests pin their geometry — outlines pushed out with
 rounded corners, the pill's layout, and where an arrow leaves it — and the order
 the export paints in. The numbering tests hold that picking up a tool, changing
 a colour, or choosing another slot's way never changes what a mark is. Recent captures are covered for round-tripping a

@@ -19,9 +19,10 @@ import { BACKGROUNDS, BODY_COLOURS, DEFAULT_FRAME, DEVICES, backgroundOf, cssBac
          paintFrame, sanitizeFrame, deviceFor, isTall, type BodyColour, type Device, type FrameStyle } from './frame';
 import { sampleCapture } from './sample';
 import { ARROW_STYLES, AnnotationLayer, COLORS, DEFAULT_ARROW, LOOKS, hexColour, NOTE_MODES, SHAPE_FILLS, arrowPolygon, arrowStrokes, arrowStrokeWidth,
-         FONT, arrowPaint, badgeAt, blockSize, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isShape, numbered,
+         FONT, arrowPaint, badgeAt, blockSize, describe, drawAnnotations, fillOf, fillable, hasLook, inkOn, isNumbered, isShape, numbered,
          outsetOps, pathData, polygonPath, showsAt, stepArrow, stepList, strokePath, styleOf, takesLooks, textSize,
          type Annotation, type ArrowStyle, type Look, type NoteMode, type Point, type Shape, type ShapeFill, type Tool } from './annotations';
+import { DEFAULT_NOTE_STYLE, NOTE_STYLES, NOTE_STYLE_NAMES, isNoteStyle, type NoteStyle } from './note-style';
 
 /** Each style's button previews itself, drawn from the geometry it will draw
  *  with, so a picker cannot come to misrepresent what it picks. */
@@ -54,13 +55,31 @@ function fillPreview(fill: ShapeFill): string {
  *  of a pixel deep, would be no picture at all. */
 const LOOK_NAMES: Record<Look, string> = { shadow: 'Shadow', border: 'Border' };
 function lookPreview(looks: readonly Look[]): string {
-  const sample = { kind: 'arrow', id: 0, x1: 4.4, y1: 14.6, x2: 15, y2: 4.6, color: '', weight: 2.2, style: DEFAULT_ARROW } as const;
+  const sample = { kind: 'arrow', id: 0, x1: 4.4, y1: 14.6, x2: 15, y2: 4.6, color: '', weight: 2.2, style: 'taper' } as const;
   const polygon = arrowPolygon(sample);
   const shadow = looks.includes('shadow')
     ? `<path d="${polygonPath(polygon.map(([x, y]) => [x + 0.5, y + 1.9] as Point))}" fill="currentColor" opacity=".3"/>` : '';
   const border = looks.includes('border')
     ? `<path d="${pathData(outsetOps(polygon, 1.5))}" fill="none" stroke="currentColor" stroke-width="1"/>` : '';
   return shadow + border + `<path d="${polygonPath(polygon)}" fill="currentColor"/>`;
+}
+
+/** The menu of note styles: in the bar beside the arrow picker, and in the Steps
+ *  panel beside what it styles. Each row is the real thing drawn small, painted
+ *  when the menu opens, so a row cannot come to misrepresent what it picks. */
+function noteStyleMenu(where: 'bar' | 'panel'): string {
+  return `<div class="note-styles" data-where="${where}"${where === 'bar' ? ' hidden' : ''}>
+    <button class="note-style-button" type="button" aria-haspopup="menu" aria-expanded="false"
+      aria-label="Note and arrow style" title="Note and arrow style">${where === 'bar'
+        ? `<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="5" width="18" height="10" rx="5" fill="currentColor" opacity=".3"/><circle cx="6" cy="10" r="3.1" fill="currentColor"/><rect x="11" y="9" width="5" height="2" rx="1" fill="currentColor"/></svg>`
+        : `<span class="note-style-name"></span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`}</button>
+    <div class="note-style-menu" role="menu" aria-label="Note and arrow style" hidden>
+      ${NOTE_STYLES.map(style => `<button type="button" role="menuitemradio" aria-checked="${style === DEFAULT_NOTE_STYLE}" data-note-style="${style}">
+        <canvas aria-hidden="true"></canvas><span>${NOTE_STYLE_NAMES[style]}</span>
+        <svg class="tick" viewBox="0 0 20 20" aria-hidden="true"><path d="M5.2 10.4 8.6 13.6 14.8 6.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>`).join('')}
+    </div>
+  </div>`;
 }
 
 /** How the notes go on the image, named as the three ways they look. */
@@ -306,6 +325,7 @@ app.innerHTML = `
         </button>`).join('')}
       </div>
     </div>
+    ${noteStyleMenu('bar')}
     <div class="fills" role="radiogroup" aria-label="Shape fill" hidden>
       ${SHAPE_FILLS.map(fill => `<button class="style" type="button" role="radio" data-fill="${fill}"
         aria-checked="${fill === 'outline'}" title="${FILL_NAMES[fill]} shape"><svg viewBox="0 0 20 20"
@@ -449,6 +469,7 @@ app.innerHTML = `
         <span class="segments">${NOTE_MODES.map(mode => `<button class="segment" type="button" role="radio"
           data-notes="${mode}" aria-checked="${mode === 'off'}">${NOTE_NAMES[mode]}</button>`).join('')}</span>
       </div>
+      <div class="steps-style"><span class="steps-show-label">Style</span>${noteStyleMenu('panel')}</div>
       <button class="steps-copy glassy" type="button">Copy list <kbd>⌘⇧L</kbd></button>
     </div>
   </aside>
@@ -584,6 +605,9 @@ const styles = app.querySelector<HTMLElement>('.styles')!;
 const looks = app.querySelector<HTMLElement>('.looks')!;
 const looksButton = app.querySelector<HTMLButtonElement>('.looks-button')!;
 const looksMenu = app.querySelector<HTMLElement>('.looks-menu')!;
+const noteStyles = app.querySelector<HTMLElement>('.note-styles[data-where="bar"]')!;
+const noteStyleButtons = [...app.querySelectorAll<HTMLButtonElement>('.note-style-button')];
+const noteStyleMenus = [...app.querySelectorAll<HTMLElement>('.note-style-menu')];
 const customSwatch = app.querySelector<HTMLButtonElement>('.swatch.custom')!;
 const colourMenu = app.querySelector<HTMLElement>('.colour-menu')!;
 const hexField = colourMenu.querySelector<HTMLInputElement>('.hex')!;
@@ -834,6 +858,7 @@ function wantTip(target: HTMLElement | null, now = false) {
   if (!target || target === tipFor) return;
   // A menu that is open already says what its button is for.
   if (target === looksButton && !looksMenu.hidden) { hideTip(); return; }
+  if (target.classList.contains('note-style-button') && target.getAttribute('aria-expanded') === 'true') { hideTip(); return; }
   window.clearTimeout(tipTimer);
   const wait = now ? 0 : performance.now() < tipWarmUntil || tipFor ? TIP_WAIT_WARM : TIP_WAIT;
   const showing = !!tipFor;
@@ -1157,12 +1182,16 @@ function syncTools() {
   const source = layer.styleSource;
   const pointing = source ? takesLooks(source) : layer.tool === 'arrow';
   styles.hidden = !pointing;
-  looks.hidden = !pointing;
   if (source && takesLooks(source)) {
     layer.style.arrow = styleOf(source);
     layer.style.shadow = hasLook(source, 'shadow');
     layer.style.border = hasLook(source, 'border');
   }
+  // Mark's own arrow wears the note style, which brings its edge and shadow with
+  // it, so the bar offers one or the other: never two controls for one thing.
+  const own = pointing && layer.style.arrow === 'mark';
+  looks.hidden = !pointing || own;
+  noteStyles.hidden = !own && !(source ? isNumbered(source) : layer.style.numbered);
   for (const button of app.querySelectorAll<HTMLButtonElement>('.style[data-style]')) {
     const active = button.dataset.style === layer.style.arrow;
     button.setAttribute('aria-checked', String(active));
@@ -1173,6 +1202,8 @@ function syncTools() {
     row.setAttribute('aria-checked', String(layer.style[row.dataset.look as Look]));
   }
   if (looks.hidden) closeLooksMenu();
+  if (noteStyles.hidden) closeNoteStyleMenu(noteStyles.querySelector('.note-style-menu')!);
+  syncNoteStyle();
   const shapes = picked.filter(fillable);
   const shaping = source ? fillable(source) : layer.tool === 'box' || layer.tool === 'ellipse';
   fills.hidden = !shaping;
@@ -1394,7 +1425,7 @@ async function openSettings() {
   if (settingsOpen) return;
   settingsPage ??= await import('./settings');
   if (!settingsPage.settingsRoot.isConnected) settingsView.querySelector('.settings-column')!.append(settingsPage.settingsRoot);
-  closeToolMenu(); closeSaveMenu(); closePointerMenu(); closeZoomMenu(); closeLooksMenu(); closeFramePanel(); closeCaptureMenu();
+  closeToolMenu(); closeSaveMenu(); closePointerMenu(); closeZoomMenu(); closeLooksMenu(); closeNoteStyleMenus(); closeFramePanel(); closeCaptureMenu();
   if (picking) stopPicking();
   if (layer.isEditing) layer.commit();
   movie.pause();
@@ -1461,7 +1492,7 @@ async function flatten(framed = frame.on, size?: { width: number; height: number
   const draw = () => {
     context.drawImage(source, 0, 0, width, height);
     // The image's own size, which badges are kept inside: not the frame's.
-    drawAnnotations(context, layer.annotations, { source, notes: layer.notes, density: layer.density, width, height });
+    drawAnnotations(context, layer.annotations, { source, notes: layer.notes, style: layer.noteStyle, density: layer.density, width, height });
   };
   if (geometry) paintFrame(context, geometry, style, { width, height, dark: darkTop(source, width, height) }, draw);
   else draw();
@@ -2126,7 +2157,7 @@ function videoMarks(): VideoMarks | null {
     const canvas = document.createElement('canvas');
     canvas.width = width; canvas.height = height;
     drawAnnotations(canvas.getContext('2d')!, drawn, {
-      notes: layer.notes, density: layer.density, width, height, showing: item => showsAt(item, at),
+      notes: layer.notes, style: layer.noteStyle, density: layer.density, width, height, showing: item => showsAt(item, at),
     });
     return { at, png: canvas.toDataURL('image/png').split(',')[1] };
   });
@@ -2547,6 +2578,77 @@ on(looksMenu, 'keydown', event => {
 document.addEventListener('pointerdown', event => {
   if (!looksMenu.hidden && !looks.contains(event.target as Node)) closeLooksMenu();
 }, { signal: abort.signal });
+// ---- the note style ---------------------------------------------------------------
+/** One choice for the whole capture, as how the notes go on the image is, and kept
+ *  for the next: it is how someone likes their marks to look. The menu stays open
+ *  while you try them, as the looks' does, since trying them is the point. */
+const NOTE_STYLE = 'mark.note.style';
+layer.noteStyle = (() => {
+  try { const kept = localStorage.getItem(NOTE_STYLE); return isNoteStyle(kept) ? kept : DEFAULT_NOTE_STYLE; } catch { return DEFAULT_NOTE_STYLE; }
+})();
+function chooseNoteStyle(style: NoteStyle) {
+  if (style === layer.noteStyle) return;
+  layer.noteStyle = style;
+  try { localStorage.setItem(NOTE_STYLE, style); } catch { /* kept for this window only */ }
+  layer.render(); syncTools();
+}
+function syncNoteStyle() {
+  for (const row of app.querySelectorAll<HTMLButtonElement>('[data-note-style]')) {
+    row.setAttribute('aria-checked', String(row.dataset.noteStyle === layer.noteStyle));
+  }
+  for (const name of app.querySelectorAll<HTMLElement>('.note-style-name')) name.textContent = NOTE_STYLE_NAMES[layer.noteStyle];
+}
+/** A row's picture: a real note and its arrow, in the colour in hand, through the
+ *  drawing the image itself gets. The canvas is wider than its place in the row, so
+ *  a shadow fades out as it does on the image rather than stopping at an edge. */
+function paintNoteStylePreview(row: HTMLButtonElement) {
+  const canvas = row.querySelector('canvas')!, density = window.devicePixelRatio || 1;
+  const width = 144, height = 68;
+  canvas.width = width * density; canvas.height = height * density;
+  canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
+  const context = canvas.getContext('2d')!;
+  context.scale(density, density);
+  drawAnnotations(context, [{ kind: 'step', id: 0, x: 34, y: 37, to: [119, 23], note: 'Note', style: 'mark', color: layer.style.color, weight: 5.6 }],
+    { notes: 'framed', style: row.dataset.noteStyle as NoteStyle, width, height });
+}
+function openNoteStyleMenu(menu: HTMLElement) {
+  closeNoteStyleMenus();
+  for (const row of menu.querySelectorAll<HTMLButtonElement>('[data-note-style]')) paintNoteStylePreview(row);
+  menu.hidden = false;
+  menu.parentElement!.querySelector('.note-style-button')!.setAttribute('aria-expanded', 'true');
+  hideTip();
+  menu.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
+}
+function closeNoteStyleMenu(menu: HTMLElement, refocus = false) {
+  if (menu.hidden) return;
+  menu.hidden = true;
+  const button = menu.parentElement!.querySelector<HTMLButtonElement>('.note-style-button')!;
+  button.setAttribute('aria-expanded', 'false');
+  if (refocus) button.focus();
+}
+function closeNoteStyleMenus() { for (const menu of noteStyleMenus) closeNoteStyleMenu(menu); }
+for (const button of noteStyleButtons) {
+  const menu = button.parentElement!.querySelector<HTMLElement>('.note-style-menu')!;
+  on(button, 'click', () => { if (menu.hidden) openNoteStyleMenu(menu); else closeNoteStyleMenu(menu); });
+}
+for (const menu of noteStyleMenus) {
+  on(menu, 'click', event => {
+    const style = (event.target as Element).closest<HTMLButtonElement>('[data-note-style]')?.dataset.noteStyle;
+    if (isNoteStyle(style)) chooseNoteStyle(style);
+  });
+  on(menu, 'keydown', event => {
+    const key = (event as KeyboardEvent).key;
+    if (key !== 'ArrowDown' && key !== 'ArrowUp') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rows = [...menu.querySelectorAll<HTMLButtonElement>('[data-note-style]')];
+    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+    rows[(at + (key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length]?.focus();
+  });
+}
+document.addEventListener('pointerdown', event => {
+  for (const menu of noteStyleMenus) if (!menu.hidden && !menu.parentElement!.contains(event.target as Node)) closeNoteStyleMenu(menu);
+}, { signal: abort.signal });
 // ---- any colour -------------------------------------------------------------------
 /** A colour that is none of the eight, used like a swatch and kept for the session. */
 function useColour(color: string) {
@@ -2936,7 +3038,7 @@ function thumbnail(source = image, annotations = layer.annotations, density = la
   context.drawImage(source, 0, 0, canvas.width, canvas.height);
   context.scale(scale, scale);
   // The image's own size, which badges are kept inside: the canvas is smaller.
-  drawAnnotations(context, annotations, { source, width: source.naturalWidth, height: source.naturalHeight, density });
+  drawAnnotations(context, annotations, { source, style: layer.noteStyle, width: source.naturalWidth, height: source.naturalHeight, density });
   return canvas.toDataURL('image/png');
 }
 
@@ -3156,6 +3258,12 @@ document.addEventListener('keydown', event => {
   if (key === 'escape' && !looksMenu.hidden) {
     event.preventDefault();
     closeLooksMenu(true);
+    return;
+  }
+  const openNoteMenu = noteStyleMenus.find(menu => !menu.hidden);
+  if (key === 'escape' && openNoteMenu) {
+    event.preventDefault();
+    closeNoteStyleMenu(openNoteMenu, true);
     return;
   }
   if (key === 'escape' && !framePanel.hidden) {

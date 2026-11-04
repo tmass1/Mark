@@ -193,6 +193,24 @@ test('a mark drawn on a recording appears from the moment it was drawn at', asyn
   expect(marks.redactions).toEqual([]);
 });
 
+test('a recording’s marks are drawn in the note style, so the movie wears what the editor shows', async ({ page }) => {
+  await editing(page);
+  await seek(page, 0.25);
+  await arrow(page, [0.2, 0.2], [0.6, 0.6]);
+  await page.keyboard.press('Escape');
+  const overlay = async () => {
+    await clear(page);
+    await page.keyboard.press('Meta+c');
+    const { marks } = (await waitFor(page, 'copy_video')).args as { marks: { overlays: { png: string }[] } };
+    return marks.overlays[0].png;
+  };
+  const smoked = await overlay();
+  await page.locator('.note-styles[data-where="bar"] .note-style-button').click();
+  await page.getByRole('menuitemradio', { name: 'Icon glass' }).click();
+  await page.keyboard.press('Escape');
+  expect(await overlay()).not.toBe(smoked);
+});
+
 test('the selected mark’s moment can be dragged along the strip, and undone', async ({ page }) => {
   await editing(page);
   await seek(page, 0.25);

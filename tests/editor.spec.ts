@@ -87,7 +87,9 @@ test('draws an arrow, then restyles, moves, deletes and undoes it', async ({ pag
   // Grab the fattened shaft and shift it down: one arrow, in a new place.
   const before = await arrow.getAttribute('d');
   const at = await stage(page);
-  const grab = at(550, 200), drop = at(550, 400);
+  // Mark's own arrow bows, so the shaft is at the top of its bow rather than on the line.
+  const top = await arrow.evaluate(path => (path as SVGGraphicsElement).getBBox().y);
+  const grab = at(550, top + 3), drop = at(550, top + 203);
   await page.mouse.move(grab.x, grab.y);
   await page.mouse.down();
   await page.mouse.move(drop.x, drop.y, { steps: 10 });
@@ -136,6 +138,7 @@ test('the copied image carries the arrow at full resolution', async ({ page }) =
     } } });
   });
   await page.goto('/');
+  await flatArrow(page);
   await drawArrow(page, [200, 200], [900, 200]);
   await page.getByRole('button', { name: /Copy and Close/ }).click();
   // Full capture size, and the shaft is on the pixel it was drawn over.
@@ -243,6 +246,10 @@ async function pick(page: import('@playwright/test').Page, tool: string) {
 async function variant(page: import('@playwright/test').Page, slot: number, name: string) {
   await page.locator(`.tool[data-slot="${slot}"]`).click({ button: 'right' });
   await page.locator('.tool-menu button', { hasText: name }).click();
+}
+/** A flat arrow in hand, straight and wearing its own looks, rather than Mark's own. */
+async function flatArrow(page: import('@playwright/test').Page, style = 'taper') {
+  await page.locator(`.style[data-style="${style}"]`).click();
 }
 /** The arrow slot wearing its numbered variant, which is what used to be a tool. */
 async function numbering(page: import('@playwright/test').Page) {
@@ -1594,8 +1601,8 @@ test('numbered steps count up, renumber when one goes, and a drag points with an
     await page.mouse.click(spot.x, spot.y);
   }
   await expect(numerals).toHaveText(['1', '2', '3']);
-  await expect(page.locator('.step circle')).toHaveCount(3);
-  await expect(page.locator('.step path')).toHaveCount(0);      // clicked, so none of them points
+  await expect(page.locator('.step .frame')).toHaveCount(3);
+  await expect(page.locator('.step .pointing')).toHaveCount(0);  // clicked, so none of them points
 
   // Deleting the middle one closes the gap rather than leaving a hole.
   const second = at(600, 200);
@@ -1609,13 +1616,13 @@ test('numbered steps count up, renumber when one goes, and a drag points with an
   await expect(page.locator('.steps')).toBeHidden();
   await drawArrow(page, [300, 500], [800, 620]);
   await expect(numerals).toHaveText(['1', '2', '3']);
-  await expect(page.locator('.step path')).toHaveCount(1);
+  await expect(page.locator('.step .pointing')).toHaveCount(1);
   await expect(page.locator('.handle')).toHaveCount(1);         // one grip, at the head
 
   // Undo takes the whole step back, arrow and all.
   await page.keyboard.press('Meta+z');
   await expect(numerals).toHaveText(['1', '2']);
-  await expect(page.locator('.step path')).toHaveCount(0);
+  await expect(page.locator('.step .pointing')).toHaveCount(0);
 });
 
 test('a numbered step travels as one, and reaches the copied image', async ({ page }) => {
@@ -1634,7 +1641,7 @@ test('a numbered step travels as one, and reaches the copied image', async ({ pa
   await page.goto('/');
   await numbering(page);
   await drawArrow(page, [300, 200], [700, 420]);
-  const before = await page.locator('.step path').getAttribute('d');
+  const before = await page.locator('.step .pointing').getAttribute('d');
 
   // Dragging the badge carries what it points at: the arrow moves, it does not stretch.
   const at = await stage(page);
@@ -1643,7 +1650,7 @@ test('a numbered step travels as one, and reaches the copied image', async ({ pa
   await page.mouse.down();
   await page.mouse.move(to.x, to.y, { steps: 8 });
   await page.mouse.up();
-  const after = await page.locator('.step path').getAttribute('d');
+  const after = await page.locator('.step .pointing').getAttribute('d');
   expect(after).not.toBe(before);
   const length = (d: string) => {
     const n = d.match(/-?\d+(\.\d+)?/g)!.map(Number);
@@ -1655,7 +1662,11 @@ test('a numbered step travels as one, and reaches the copied image', async ({ pa
   await page.keyboard.press('Meta+z');
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: /Copy and Close/ }).click();
-  await expect(page.locator('body')).toHaveAttribute('data-badge', '255,59,48');
+  await expect(page.locator('body')).toHaveAttribute('data-badge', /\d/);
+  const [r, g, b] = (await page.locator('body').getAttribute('data-badge'))!.split(',').map(Number);
+  expect(r).toBeGreaterThan(220);                                   // the number's red, lit from the top
+  expect(g).toBeLessThan(110);
+  expect(b).toBeLessThan(110);
 });
 
 test('a circle can be numbered, and the panel offers somewhere to say what it is for', async ({ page }) => {
@@ -1748,7 +1759,7 @@ test('a badge placed with a click can still be given an arrow afterwards', async
   const at = await stage(page);
   const spot = at(300, 400);
   await page.mouse.click(spot.x, spot.y);
-  await expect(page.locator('.step path')).toHaveCount(0);
+  await expect(page.locator('.step .pointing')).toHaveCount(0);
   await page.keyboard.press('Escape');                       // out of the note field
 
   // Selected, the badge offers one grip tucked beside it; pulling it makes the arrow.
@@ -1760,7 +1771,7 @@ test('a badge placed with a click can still be given an arrow afterwards', async
   await page.mouse.down();
   await page.mouse.move(head.x, head.y, { steps: 8 });
   await page.mouse.up();
-  await expect(page.locator('.step path')).toHaveCount(1);
+  await expect(page.locator('.step .pointing')).toHaveCount(1);
 
   // And pulling the head back onto the badge takes the arrow off again.
   const back = (await page.locator('.handle').boundingBox())!;
@@ -1768,7 +1779,7 @@ test('a badge placed with a click can still be given an arrow afterwards', async
   await page.mouse.down();
   await page.mouse.move(spot.x, spot.y, { steps: 8 });
   await page.mouse.up();
-  await expect(page.locator('.step path')).toHaveCount(0);
+  await expect(page.locator('.step .pointing')).toHaveCount(0);
 });
 
 test('the notes can be written on the image, and then they are in the copy too', async ({ page }) => {
@@ -1967,10 +1978,10 @@ test('a step points with whichever arrow the picker holds, and the picker follow
   await draw('taper', 180);
   await draw('straight', 380);
   await draw('line', 580);
-  await expect(page.locator('.step path')).toHaveCount(3);
+  await expect(page.locator('.step .pointing')).toHaveCount(3);
 
   // Three styles, three different arrows; the thin one is stroked, not filled.
-  const paths = await page.locator('.step path').evaluateAll(nodes =>
+  const paths = await page.locator('.step .pointing').evaluateAll(nodes =>
     nodes.map(n => ({ d: n.getAttribute('d'), fill: n.getAttribute('fill') })));
   expect(new Set(paths.map(p => p.d)).size).toBe(3);
   expect(paths[0].fill).not.toBe('none');
@@ -1983,10 +1994,10 @@ test('a step points with whichever arrow the picker holds, and the picker follow
   await expect(page.locator('.style[data-style="straight"]')).toHaveAttribute('aria-checked', 'true');
 
   // And restyling the selection restyles the step's arrow.
-  const before = await page.locator('.step path').nth(1).getAttribute('d');
+  const before = await page.locator('.step .pointing').nth(1).getAttribute('d');
   await page.locator('.style[data-style="line"]').click();
-  await expect(page.locator('.step path').nth(1)).toHaveAttribute('fill', 'none');
-  expect(await page.locator('.step path').nth(1).getAttribute('d')).not.toBe(before);
+  await expect(page.locator('.step .pointing').nth(1)).toHaveAttribute('fill', 'none');
+  expect(await page.locator('.step .pointing').nth(1).getAttribute('d')).not.toBe(before);
 });
 
 
@@ -2256,6 +2267,7 @@ test('a rail slot holds the ways of drawing one thing, and wears the one chosen'
   await expect(arrow).toHaveAccessibleName('Arrow');
 
   // Plain: a drag draws an arrow, a click leaves nothing.
+  await flatArrow(page);
   await drawArrow(page, [200, 200], [600, 280]);
   await page.keyboard.press('Escape');
   const at = await stage(page);
@@ -2281,7 +2293,7 @@ test('a rail slot holds the ways of drawing one thing, and wears the one chosen'
   await page.mouse.click(spot.x, spot.y);
   await page.keyboard.press('Escape');
   await expect(page.locator('.badge text')).toHaveText(['1', '2']);
-  await expect(page.locator('.step path')).toHaveCount(1);     // one of them points
+  await expect(page.locator('.step .pointing')).toHaveCount(1); // one of them points
 
   // Numbering is still a property, so the variant converts what is selected,
   // and selecting a plain arrow puts the slot back on the plain variant.
@@ -2365,7 +2377,7 @@ test('restyling a selected step never takes its number, whatever tool is in hand
   await expect(page.locator('.chosen')).toHaveText('Step selected');
   await page.getByRole('radio', { name: 'Blue' }).click();
   await expect(page.locator('.step')).toHaveCount(1);
-  await expect(page.locator('.step circle')).toHaveAttribute('fill', '#007aff');
+  await expect(page.locator('.step .pointing')).toHaveAttribute('fill', '#007aff');
 });
 
 test('choosing a way of drawing numbers only what that slot draws', async ({ page }) => {
@@ -2407,6 +2419,7 @@ async function looksOn(page: import('@playwright/test').Page, names: string[]) {
 
 test('shadow and border come from the toolbar, restyle the selection, and undo one at a time', async ({ page }) => {
   await page.goto('/');
+  await flatArrow(page);
   await drawArrow(page, [200, 200], [500, 300]);          // selected, once drawn
   const button = page.getByRole('button', { name: 'Shadow and border' });
   await button.click();
@@ -2437,6 +2450,7 @@ test('shadow and border come from the toolbar, restyle the selection, and undo o
 
 test('with nothing selected the looks wait for the next arrow, and stay for the one after', async ({ page }) => {
   await page.goto('/');
+  await flatArrow(page);
   await looksOn(page, ['Border']);
   await drawArrow(page, [200, 200], [500, 300]);
   await drawArrow(page, [200, 450], [500, 550]);
@@ -2446,6 +2460,7 @@ test('with nothing selected the looks wait for the next arrow, and stay for the 
 
 test('a copy keeps its looks, and so does a mark that gains its number', async ({ page }) => {
   await page.goto('/');
+  await flatArrow(page);
   await looksOn(page, ['Shadow', 'Border']);
   await drawArrow(page, [200, 200], [500, 300]);
   await page.keyboard.press('Meta+d');
@@ -2460,6 +2475,7 @@ test('a copy keeps its looks, and so does a mark that gains its number', async (
 test('a white arrow gets a dark border, since a white one would be no border at all', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('radio', { name: 'White' }).click();
+  await flatArrow(page);
   await looksOn(page, ['Border']);
   await drawArrow(page, [200, 200], [500, 300]);
   await expect(page.locator('.overlay .border')).toHaveAttribute('fill', '#1c1c1e');
@@ -2492,6 +2508,7 @@ test('the looks reach the copied image: a white rim for the border, a shade unde
     } });
   });
   await page.goto('/');
+  await flatArrow(page);
   await drawArrow(page, [90, 40], [290, 40]);
   await page.keyboard.press('Escape');
   await looksOn(page, ['Shadow']);
@@ -2515,6 +2532,200 @@ test('the looks reach the copied image: a white rim for the border, a shade unde
   expect(bordered[1]).toBe(0);
 });
 
+// ---- the note style --------------------------------------------------------------------
+
+const barStyle = (page: Page) => page.locator('.note-styles[data-where="bar"]');
+const panelStyle = (page: Page) => page.locator('.note-styles[data-where="panel"]');
+
+test('Mark’s own arrow offers the note style, a flat one its looks, and never both', async ({ page }) => {
+  await page.goto('/');
+  // Mark's own is what a new window starts with.
+  await expect(barStyle(page)).toBeVisible();
+  await expect(page.locator('.looks')).toBeHidden();
+  await flatArrow(page);
+  await expect(barStyle(page)).toBeHidden();
+  await expect(page.locator('.looks')).toBeVisible();
+  await flatArrow(page, 'mark');
+  await expect(barStyle(page)).toBeVisible();
+  await expect(page.locator('.looks')).toBeHidden();
+  // A numbered mark is always in the style, whatever points it, so it is offered there too.
+  await numbering(page);
+  await flatArrow(page);
+  await expect(barStyle(page)).toBeVisible();
+  await expect(page.locator('.looks')).toBeVisible();
+  await variant(page, 4, 'Numbered box');
+  await expect(barStyle(page)).toBeVisible();
+  await expect(page.locator('.looks')).toBeHidden();
+  await page.locator('.tool[data-slot="4"]').click({ button: 'right' });
+  await page.locator('.tool-menu button').filter({ has: page.locator('span', { hasText: /^Box$/ }) }).click();
+  await expect(barStyle(page)).toBeHidden();
+});
+
+test('the Style menu lists all four, Smoked glass first and chosen', async ({ page }) => {
+  await page.goto('/');
+  const button = barStyle(page).locator('.note-style-button');
+  const menu = barStyle(page).locator('.note-style-menu');
+  await button.click();
+  await expect(menu).toBeVisible();
+  await expect(button).toHaveAttribute('aria-expanded', 'true');
+  await expect(menu.getByRole('menuitemradio')).toHaveText(['Smoked glass', 'Soft solid', 'Card', 'Icon glass']);
+  await expect(menu.getByRole('menuitemradio', { name: 'Smoked glass' })).toHaveAttribute('aria-checked', 'true');
+  await expect(menu.getByRole('menuitemradio', { name: 'Smoked glass' })).toBeFocused();
+  // Each row is the real thing drawn small, so each picture is painted, and differently.
+  const pictures = await menu.locator('canvas').evaluateAll(canvases => canvases.map(c => (c as HTMLCanvasElement).toDataURL()));
+  expect(new Set(pictures).size).toBe(4);
+  // The arrow keys walk it, and go no further than the menu.
+  await page.keyboard.press('ArrowDown');
+  await expect(menu.getByRole('menuitemradio', { name: 'Soft solid' })).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowUp');
+  await expect(menu.getByRole('menuitemradio', { name: 'Icon glass' })).toBeFocused();
+  // Escape closes it and hands focus back; the editor behind it stays open.
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(button).toBeFocused();
+  await expect(page.locator('.capture')).toBeVisible();
+  // A press elsewhere closes it too.
+  await button.click();
+  await page.locator('footer').click({ position: { x: 4, y: 4 } });
+  await expect(menu).toBeHidden();
+});
+
+test('choosing a style redraws every note and Mark’s arrow, stays open to try them, and is remembered', async ({ page }) => {
+  await page.goto('/');
+  await numbering(page);
+  await drawArrow(page, [150, 150], [600, 300]);
+  await page.keyboard.type('fix');
+  await page.getByRole('radio', { name: 'Framed' }).click();
+  const words = page.locator('.badge .words');
+  const pointing = page.locator('.step .pointing');
+  await expect(words).toHaveAttribute('fill', '#f5f5f7');
+  const smoked = await pointing.getAttribute('d');
+  // The Steps panel holds the same choice, and says which is chosen.
+  await expect(panelStyle(page).locator('.note-style-name')).toHaveText('Smoked glass');
+  await panelStyle(page).locator('.note-style-button').click();
+  const menu = panelStyle(page).locator('.note-style-menu');
+  await menu.getByRole('menuitemradio', { name: 'Card' }).click();
+  await expect(menu).toBeVisible();                                // try them, one after another
+  await expect(words).toHaveAttribute('fill', '#1c1c1e');
+  await expect(pointing).not.toHaveAttribute('d', smoked!);
+  await expect(panelStyle(page).locator('.note-style-name')).toHaveText('Card');
+  await menu.getByRole('menuitemradio', { name: 'Soft solid' }).click();
+  await expect(words).toHaveAttribute('fill', '#ffffff');
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(panelStyle(page).locator('.note-style-name')).toHaveText('Soft solid', { useInnerText: false });
+});
+
+test('a mark’s own place never moves when the style changes: the badge stays put, the arrow’s tip stays on target', async ({ page }) => {
+  await page.goto('/');
+  await numbering(page);
+  await drawArrow(page, [300, 200], [700, 420]);
+  await page.keyboard.press('Escape');
+  const place = () => page.locator('.badge .numeral').evaluate(text => [text.getAttribute('x'), text.getAttribute('text-anchor')]);
+  const first = await place();
+  const tip = /L?700(\.00)? 420(\.00)?\b/;
+  await expect(page.locator('.step .pointing')).toHaveAttribute('d', tip);
+  for (const name of ['Soft solid', 'Card', 'Icon glass']) {
+    await barStyle(page).locator('.note-style-button').click();
+    await barStyle(page).getByRole('menuitemradio', { name }).click();
+    await page.keyboard.press('Escape');
+    expect(await place()).toEqual(first);
+    await expect(page.locator('.step .pointing')).toHaveAttribute('d', tip);
+  }
+});
+
+test('the smoked pane lets a little of the screen through, in the copy as on screen', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: {
+      writeText: async () => {},
+      write: async (items: any[]) => {
+        const bitmap = await createImageBitmap(await items[0].getType('image/png'));
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(bitmap, 0, 0);
+        const y = Number(document.body.dataset.paneY);
+        const near = (x: number) => [...ctx.getImageData(x, y, 1, 1).data].slice(0, 3);
+        // The sample's blue button ends at 376 across, and white card follows.
+        document.body.dataset.pane = JSON.stringify({ blue: near(360), white: near(400) });
+      },
+    } });
+  });
+  await page.goto('/');
+  await numbering(page);
+  await drawArrow(page, [170, 453], [800, 640]);
+  await page.keyboard.type('a note long enough to run past the button');
+  await page.getByRole('radio', { name: 'Framed' }).click();
+  // High in the pane, clear of the words.
+  await page.locator('.step .pill').evaluate(rect => {
+    document.body.dataset.paneY = String(Math.round(Number(rect.getAttribute('y')) + Number(rect.getAttribute('height')) * 0.14));
+  });
+  await page.locator('footer .copy-only').click();
+  await expect(page.locator('body')).toHaveAttribute('data-pane', /blue/);
+  const { blue, white } = JSON.parse((await page.locator('body').getAttribute('data-pane'))!) as Record<string, number[]>;
+  expect(white[0] - blue[0]).toBeGreaterThan(15);                   // the white shows, and the blue has no red in it
+  expect(Math.max(...blue, ...white)).toBeLessThan(90);             // still, unmistakably, a dark pane
+});
+
+test('a flat arrow ignores the note style, but the number it points from wears it', async ({ page }) => {
+  await page.goto('/');
+  await numbering(page);
+  await flatArrow(page);
+  await drawArrow(page, [300, 200], [700, 420]);
+  await page.keyboard.press('Escape');
+  const arrow = await page.locator('.step .pointing').getAttribute('d');
+  const number = await page.locator('.step .frame').getAttribute('fill');
+  await barStyle(page).locator('.note-style-button').click();
+  await barStyle(page).getByRole('menuitemradio', { name: 'Card' }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.step .pointing')).toHaveAttribute('d', arrow!);
+  await expect(page.locator('.step .frame')).not.toHaveAttribute('fill', number!);
+});
+
+test('each style reaches the copied image as it looks on screen', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: {
+      writeText: async () => {},
+      write: async (items: any[]) => {
+        const bitmap = await createImageBitmap(await items[0].getType('image/png'));
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(bitmap, 0, 0);
+        const box = JSON.parse(document.body.dataset.pill!);
+        const near = (x: number, y: number) => [...ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data].slice(0, 3).join(',');
+        document.body.dataset.copied = JSON.stringify({ pane: near(box.x + box.width - box.height / 4, box.y + box.height / 2) });
+      },
+    } });
+  });
+  await page.goto('/');
+  await numbering(page);
+  await drawArrow(page, [150, 300], [700, 500]);
+  await page.keyboard.type('fix');
+  await page.getByRole('radio', { name: 'Framed' }).click();
+  const pane = async (name: string) => {
+    await barStyle(page).locator('.note-style-button').click();
+    await barStyle(page).getByRole('menuitemradio', { name }).click();
+    await page.keyboard.press('Escape');
+    await page.locator('.step .pill').evaluate(rect => {
+      document.body.dataset.pill = JSON.stringify(Object.fromEntries(['x', 'y', 'width', 'height'].map(key => [key, Number(rect.getAttribute(key))])));
+    });
+    await page.evaluate(() => delete document.body.dataset.copied);
+    await page.locator('footer .copy-only').click();
+    await expect(page.locator('body')).toHaveAttribute('data-copied', /pane/);
+    return JSON.parse((await page.locator('body').getAttribute('data-copied'))!).pane.split(',').map(Number) as number[];
+  };
+  const [sr, sg, sb] = await pane('Smoked glass');
+  expect(Math.max(sr, sg, sb)).toBeLessThan(70);                    // a dark pane
+  const [cr, cg, cb] = await pane('Card');
+  expect(Math.min(cr, cg, cb)).toBeGreaterThan(240);                // a white card
+  const [or, og, ob] = await pane('Soft solid');
+  expect(or).toBeGreaterThan(200);                                  // the mark's own red
+  expect(Math.max(og, ob)).toBeLessThan(110);
+  const [ir, ig, ib] = await pane('Icon glass');
+  expect(ir).toBeGreaterThan(200);
+  expect(Math.max(ig, ib)).toBeLessThan(130);
+});
+
 // ---- framed notes ------------------------------------------------------------------
 
 test('framed, a note goes in with its number, in one pill the arrow leaves from', async ({ page }) => {
@@ -2528,12 +2739,13 @@ test('framed, a note goes in with its number, in one pill the arrow leaves from'
         ctx.drawImage(bitmap, 0, 0);
         const box = JSON.parse(document.body.dataset.pill!);
         const { data } = ctx.getImageData(box.x, box.y, box.width, box.height);
-        let red = 0, white = 0;
+        let dark = 0, red = 0, white = 0;
         for (let i = 0; i < data.length; i += 4) {
+          if (data[i] < 70 && data[i + 1] < 70 && data[i + 2] < 70) dark++;
           if (data[i] > 200 && data[i + 1] < 110 && data[i + 2] < 110) red++;
-          if (data[i] > 245 && data[i + 1] > 245 && data[i + 2] > 245) white++;
+          if (data[i] >= 240 && data[i + 1] >= 240 && data[i + 2] >= 240) white++;
         }
-        document.body.dataset.inPill = `${red}/${white}/${data.length / 4}`;
+        document.body.dataset.inPill = `${dark}/${red}/${white}/${data.length / 4}`;
       },
     } });
   });
@@ -2544,22 +2756,25 @@ test('framed, a note goes in with its number, in one pill the arrow leaves from'
   await page.getByRole('radio', { name: 'Framed' }).click();
   const pill = page.locator('.step .pill');
   await expect(pill).toHaveCount(1);
-  await expect(page.locator('.badge text')).toHaveText(['1 fix']);
+  await expect(page.locator('.badge .numeral')).toHaveText(['1']);
+  await expect(page.locator('.badge .words')).toHaveText(['fix']);
   const box = await pill.evaluate(rect => ['x', 'y', 'width', 'height']
     .map(name => Number(rect.getAttribute(name))));
   // The number sits where the badge's would: the pill's left end is the badge.
   expect(Math.abs(box[0] + box[3] / 2 - 150)).toBeLessThan(2);
-  // The arrow starts past the pill rather than under it.
-  const arrowLeft = await page.locator('.step path:not(.border)').evaluate(path => (path as SVGGraphicsElement).getBBox().x);
-  expect(arrowLeft).toBeGreaterThan(box[0] + box[2]);
-  // And in the copy: mostly the mark's red, with white words in it.
+  // The arrow leaves by the pill's far end, tucked under it so the two read as one.
+  const arrowLeft = await page.locator('.step .pointing').evaluate(path => (path as SVGGraphicsElement).getBBox().x);
+  expect(arrowLeft).toBeGreaterThan(box[0] + box[2] - box[3]);
+  expect(arrowLeft).toBeLessThan(box[0] + box[2]);
+  // And in the copy: mostly the dark pane, with a red number and light words in it.
   await page.evaluate(([x, y, width, height]) => {
     document.body.dataset.pill = JSON.stringify({ x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) });
   }, box);
   await page.locator('footer .copy-only').click();
   await expect(page.locator('body')).toHaveAttribute('data-in-pill', /\d/);
-  const [red, white, area] = (await page.locator('body').getAttribute('data-in-pill'))!.split('/').map(Number);
-  expect(red / area).toBeGreaterThan(0.55);
+  const [dark, red, white, area] = (await page.locator('body').getAttribute('data-in-pill'))!.split('/').map(Number);
+  expect(dark / area).toBeGreaterThan(0.45);
+  expect(red).toBeGreaterThan(60);
   expect(white).toBeGreaterThan(40);
 });
 
@@ -2570,7 +2785,7 @@ test('framed, a mark with nothing to say keeps its badge, and a pill stays insid
   const quiet = at(300, 300);
   await page.mouse.click(quiet.x, quiet.y);
   await page.getByRole('radio', { name: 'Framed' }).click();
-  await expect(page.locator('.step circle')).toHaveCount(1);
+  await expect(page.locator('.step .frame')).toHaveCount(1);
   await expect(page.locator('.step .pill')).toHaveCount(0);
   // Near the right edge the pill slides back in rather than running off.
   const edge = at(1180, 60);
@@ -2586,6 +2801,13 @@ test('framed, a mark with nothing to say keeps its badge, and a pill stays insid
 test('the looks menu and the notes switch stay inside a small window', async ({ page }) => {
   await page.setViewportSize({ width: 380, height: 600 });
   await page.goto('/');
+  // Mark's own arrow is in hand, so it is the note style that the bar offers.
+  await page.locator('.note-styles[data-where="bar"] .note-style-button').click();
+  const styled = await page.locator('.note-styles[data-where="bar"] .note-style-menu').boundingBox();
+  expect(styled!.x).toBeGreaterThanOrEqual(0);
+  expect(styled!.x + styled!.width).toBeLessThanOrEqual(380);
+  await page.keyboard.press('Escape');
+  await flatArrow(page);
   await page.getByRole('button', { name: 'Shadow and border' }).click();
   const menu = await page.locator('.looks-menu').boundingBox();
   expect(menu!.x).toBeGreaterThanOrEqual(0);
@@ -2600,7 +2822,7 @@ test('the looks menu and the notes switch stay inside a small window', async ({ 
   await page.locator('.steps').evaluate(panel => { (panel as HTMLElement).style.width = '250px'; });
   const clipped = await page.locator('.steps-foot').evaluate(foot => {
     const box = foot.getBoundingClientRect();
-    return [...foot.querySelectorAll('button')].filter(el => {
+    return [...foot.querySelectorAll('button')].filter(el => !el.closest('.note-style-menu')).filter(el => {
       const r = el.getBoundingClientRect();
       return r.right > box.right + 1 || r.left < box.left - 1;
     }).map(el => el.textContent);

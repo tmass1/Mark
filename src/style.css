@@ -370,7 +370,7 @@ footer > * { flex: none; }
 /* Nothing in the bar scrolls or shrinks: a control that does not fit must be
    hidden by a breakpoint below, so it is never silently clipped out of reach. */
 .swatches { display: flex; gap: 7px; }
-.tool, .swatch, .styles, .looks, .fills, .exports { flex: none; }
+.tool, .swatch, .styles, .looks, .note-styles, .fills, .exports { flex: none; }
 /* Each swatch is a bead of colour: lit from above, resting on a shadow. */
 .swatch { width: 20px; height: 20px; padding: 0; border: 1px solid #00000029; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 1.5px 1px #ffffff66, inset 0 -1px 1px #0000001a, 0 1px 2px #0000001f; }
 .swatch.active { box-shadow: inset 0 1.5px 1px #ffffff66, 0 0 0 2px var(--glass), 0 0 0 3.5px var(--blue); }
@@ -1023,6 +1023,42 @@ h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -.45px; line-
 .looks-menu [aria-checked="true"] .tick { visibility: visible; }
 .looks-menu button:hover, .looks-menu button:focus-visible { background: var(--blue); color: #fff; outline: none; }
 .looks-menu button:hover svg, .looks-menu button:focus-visible svg { opacity: 1; color: #fff; }
+
+/* The note style: one menu, from the bar beside the arrow picker and from the
+   Steps panel beside the notes it styles. Each row is the real thing drawn small,
+   so it is the row that lights rather than turning blue: a blue note would vanish
+   into a blue highlight. */
+.note-styles { position: relative; display: flex; }
+.note-style-button {
+  display: flex; align-items: center; border: none; border-radius: 999px; padding: 6px 7px;
+  background: var(--sunken); box-shadow: inset 0 1px 1px #0000000f;
+  color: var(--muted); transition: color .15s;
+}
+.note-style-button svg { display: block; width: 17px; height: 17px; }
+.note-style-button:hover, .note-style-button[aria-expanded="true"] { color: var(--ink); }
+.note-style-menu {
+  position: absolute; top: 100%; right: 0; margin-top: 8px; z-index: 10;
+  display: flex; flex-direction: column; gap: 1px; width: 244px; max-width: calc(100vw - 24px); padding: 5px;
+  border-radius: 12px; background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: 0 12px 34px var(--shadow), 0 0 0 .5px var(--control-line);
+}
+.note-style-menu[hidden] { display: none; }
+.note-style-menu button { display: flex; align-items: center; gap: 8px; padding: 3px 8px 3px 4px; border: none; border-radius: 8px; background: transparent; font-size: 12px; text-align: left; }
+.note-style-menu canvas { flex: none; display: block; margin: -16px -20px; pointer-events: none; }
+.note-style-menu button span { flex: 1; min-width: 0; }
+.note-style-menu .tick { flex: none; width: 16px; height: 16px; color: var(--blue); visibility: hidden; }
+.note-style-menu [aria-checked="true"] .tick { visibility: visible; }
+.note-style-menu button:hover, .note-style-menu button:focus-visible { background: var(--sunken); outline: none; }
+/* A numbered flat arrow is the one thing that wants the looks and the style both.
+   The bar cannot hold the two in a narrower window; the Steps panel holds the
+   style as well, so it is this one that gives way. */
+@media (max-width: 790px) { .looks:not([hidden]) + .note-styles { display: none; } }
+/* In the panel, it opens upward from the foot and says what is chosen. */
+.steps-style { flex: 0 1 auto; display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.note-styles[data-where="panel"] .note-style-button { gap: 2px; padding: 3px 5px 3px 10px; font-size: 11.5px; color: var(--ink); }
+.note-styles[data-where="panel"] .note-style-button svg { width: 14px; height: 14px; color: var(--muted); }
+.note-styles[data-where="panel"] .note-style-menu { top: auto; bottom: 100%; margin: 0 0 8px; }
 
 /* After .subtle.icon, and as specific: that rule sets display and would
    otherwise win, leaving these buttons visible where the bar cannot hold them. */

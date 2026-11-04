@@ -4,9 +4,10 @@ import { showsAt,
   ARROW_STYLES, COLORS, DEFAULT_ARROW, arrowPaint, arrowStrokeWidth, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
   noteAt, offsetBy, onto, penPath, scaledNote, stretchedStroke, polygonPath, snapAngle, stepArrow, stepList, stepNumbers, stepRadius, styleOf,
   textSize, thin, borderColor, borderWidth, markShadow, outsetOps, pathData, pillAt, pillExit, restyled,
-  shadowReach, stepTextSize, underlay, withNumbering, centredBaseline, measureLabel, measureRuns, measureWidth, hexColour,
+  shadowReach, noteUnit, stepNumeralSize, stepTextSize, underlay, withNumbering, centredBaseline, measureLabel, measureRuns, measureWidth, hexColour,
   type Arrow, type Note, type PathOp, type Point, type Shape, type Step,
 } from './annotations';
+import { DISC, DISC_INSET, NOTE_STYLES, noteLook, shade, type NoteStyle } from './note-style';
 
 const arrow = (over: Partial<Arrow> = {}): Arrow =>
   ({ kind: 'arrow', id: 1, x1: 0, y1: 0, x2: 100, y2: 0, color: '#ff3b30', weight: 10, ...over });
@@ -99,7 +100,7 @@ describe('text notes', () => {
 /** How the export records a badge's numeral: at the badge's centre across, and
  *  on the baseline that centres it down. */
 const numeral = (n: number, [x, y]: readonly number[], weight: number) =>
-  `text!:${n}@${x},${centredBaseline(y, stepTextSize(weight))}`;
+  `text!:${n}@${x},${centredBaseline(y, stepNumeralSize(weight, String(n)))}`;
 const shape = (over: Partial<Shape> = {}): Shape =>
   ({ kind: 'box', id: 3, x: 10, y: 20, width: 200, height: 100, color: '#34c759', weight: 8, ...over });
 const step = (over: Partial<Step> = {}): Step =>
@@ -127,7 +128,7 @@ function recorder(width = 1200, height = 740) {
     measureText: (text: string) => ({ width: text.length * fontSize * 0.5 }),
     lineCap: '', lineJoin: '',
     textBaseline: '', imageSmoothingEnabled: true,
-    save: () => calls.push('save'), restore: () => calls.push('restore'),
+    save: () => calls.push('save'), restore: () => calls.push('restore'), translate: () => {},
     beginPath: () => calls.push('begin'), closePath: () => {}, stroke: () => calls.push('stroke!'),
     fill: () => calls.push('fill!'), moveTo: () => {}, lineTo: () => {},
     fillRect: (x: number, y: number, w: number, h: number) => calls.push(`rect!:${x},${y},${w},${h}`),
@@ -136,6 +137,8 @@ function recorder(width = 1200, height = 740) {
     fillText: (text: string, x: number, y: number) => calls.push(`text!:${text}@${x},${y}`),
     arc: (x: number, y: number, r: number) => calls.push(`arc:${x},${y},${r}`),
     textAlign: '', drawImage: () => calls.push('image'),
+    /** A gradient stands for its colours, top to bottom. */
+    createLinearGradient: () => ({ addColorStop: (_: number, color: string) => calls.push(`stop:${color}`) }),
   } as unknown as CanvasRenderingContext2D;
   return { ctx, calls };
 }
@@ -461,13 +464,15 @@ describe('numbered steps', () => {
   it('exports the disc, the numeral and the arrow, with the numeral drawn last', () => {
     const { ctx, calls } = recorder();
     drawAnnotations(ctx, [step({ to: [300, 100] }), step({ id: 5, x: 50, y: 50 })]);
-    expect(calls).toContain('arc:100,100,14.5');
-    expect(calls).toContain(numeral(1, [100, 100], 10));
+    const first = calls.indexOf(numeral(1, [100, 100], 10));
+    expect(first).toBeGreaterThan(-1);
     expect(calls).toContain(numeral(2, [50, 50], 10));
-    // The numeral is painted over its own disc, not under it.
-    expect(calls.indexOf('arc:100,100,14.5')).toBeLessThan(calls.indexOf(numeral(1, [100, 100], 10)));
-    // And the arrow goes down before the badge, so the disc covers the tail.
-    expect(calls.filter(call => call === 'fill!').length).toBeGreaterThanOrEqual(3);
+    // The frame goes down before its numeral, so the numeral is on top of it, and
+    // the arrow before them both, so the frame covers the tail.
+    const r = stepRadius(10);
+    const frame = calls.findIndex(call => call === `arc:${100 - r + r},${100 - r + r},${r}`);
+    expect(calls.indexOf('fill:#ff3b30')).toBeLessThan(frame);
+    expect(frame).toBeLessThan(first);
   });
 });
 
@@ -637,23 +642,31 @@ describe('framed notes', () => {
   });
 
   it('sits the number where the badge’s would be, and sizes the pill to its words', () => {
-    const r = stepRadius(10), size = stepTextSize(10);
+    const r = stepRadius(10), unit = noteUnit(10), size = stepTextSize(10);
     const pill = pillAt(step({ note: 'fix it' }), 3, measure)!;
     expect(pill.height).toBe(r * 2);
     expect(pill.numeral).toEqual([100, 100]);                // the badge's own centre
     expect(pill.x).toBe(100 - r);
-    expect(pill.text).toBe('3 fix it');
-    // As wide as the badge, plus whatever the words add beyond the number.
-    expect(pill.width).toBeCloseTo(r * 2 + ('3 fix it'.length - 1) * size * 0.5);
-    // The number is centred on the end's centre.
-    expect(pill.textX + (size * 0.5) / 2).toBeCloseTo(100);
+    expect(pill.number).toBe('3');
+    expect(pill.text).toBe('fix it');
+    // The number's disc in from the end, a gap, the words, and the end's own room.
+    const { gap, end } = noteLook('smoked', '#ff3b30', '#ffffff');
+    expect(pill.textX).toBeCloseTo(pill.x + (DISC_INSET + DISC + gap) * unit);
+    expect(pill.width).toBeCloseTo((DISC_INSET + DISC + gap + end) * unit + 'fix it'.length * size * 0.5);
+  });
+
+  it('fits itself to the style it is drawn in', () => {
+    const widths = NOTE_STYLES.map(style => pillAt(step({ note: 'fix it' }), 1, measure, Infinity, Infinity, style)!.width);
+    expect(new Set(widths).size).toBeGreaterThan(1);
+    const r = stepRadius(10);
+    for (const style of NOTE_STYLES) expect(pillAt(step({ note: 'fix it' }), 1, measure, Infinity, Infinity, style)!.height).toBe(r * 2);
   });
 
   it('slides back inside the image at the edge, still reading number first', () => {
     const pill = pillAt(step({ x: 1180, y: 100, note: 'make this one bigger' }), 1, measure, 1200, 740)!;
     expect(pill.x + pill.width).toBeLessThanOrEqual(1200);
     expect(pill.numeral[0]).toBe(pill.x + pill.height / 2);
-    expect(pill.text.startsWith('1 ')).toBe(true);
+    expect(pill.number).toBe('1');
     // Wider than the whole image, it holds to the left edge.
     expect(pillAt(step({ note: 'x'.repeat(400) }), 1, measure, 1200, 740)!.x).toBe(0);
   });
@@ -705,24 +718,23 @@ describe('restyling and numbering', () => {
 describe('the looks in the export', () => {
   it('draws nothing extra with the looks off', () => {
     const { ctx, calls } = recorder();
-    drawAnnotations(ctx, [arrow(), step({ to: [300, 100] })]);
+    drawAnnotations(ctx, [arrow()]);
     expect(calls).not.toContain('save');
     expect(calls.some(call => call.startsWith('shadow:'))).toBe(false);
   });
 
-  it('casts a shadow from the arrow and the disc, and never from the numeral', () => {
+  it('casts a flat arrow’s shadow from its looks, the note’s from its style, and never one from the numeral', () => {
     const { ctx, calls } = recorder();
     drawAnnotations(ctx, [step({ to: [300, 100], shadow: true })]);
-    expect(calls.filter(call => call.startsWith('shadow:'))).toHaveLength(2);   // the arrow, then the disc
-    const disc = calls.indexOf('arc:100,100,14.5');
-    expect(calls.lastIndexOf('save', disc)).toBeGreaterThan(-1);
-    expect(calls.indexOf('restore', disc)).toBeLessThan(calls.indexOf(numeral(1, [100, 100], 10)));
+    const casts = noteLook('smoked', '#ff3b30', '#ffffff').casts;
+    expect(calls.filter(call => call.startsWith('shadow:'))).toHaveLength(1 + casts.length);
     expect(calls).toContain(`blur:${markShadow(10).sigma * 2}`);
+    expect(calls.lastIndexOf('restore')).toBeLessThan(calls.indexOf(numeral(1, [100, 100], 10)));
   });
 
   it('draws a border first, as one shape that casts the mark’s one shadow', () => {
     const { ctx, calls } = recorder();
-    drawAnnotations(ctx, [step({ to: [300, 100], shadow: true, border: true })]);
+    drawAnnotations(ctx, [arrow({ shadow: true, border: true })]);
     expect(calls.filter(call => call.startsWith('shadow:'))).toHaveLength(1);
     const white = calls.indexOf('fill:#ffffff');
     expect(white).toBeGreaterThan(-1);
@@ -747,16 +759,48 @@ describe('the looks in the export', () => {
     const { ctx, calls } = recorder();
     drawAnnotations(ctx, [step({ note: 'say this' })], { notes: 'beside' });
     const words = calls.findIndex(call => call.startsWith('text!:say this@'));
-    expect(words).toBeLessThan(calls.indexOf('arc:100,100,14.5'));
-    expect(calls.indexOf('arc:100,100,14.5')).toBeLessThan(calls.indexOf(numeral(1, [100, 100], 10)));
+    const r = stepRadius(10);
+    const frame = calls.findIndex(call => call === `arc:${100 - r + r},${100 - r + r},${r}`);
+    expect(words).toBeLessThan(frame);
+    expect(frame).toBeLessThan(calls.indexOf(numeral(1, [100, 100], 10)));
   });
 
-  it('frames a note with its number in one pill', () => {
+  it('frames a note with its number in one pill, the number first', () => {
     const { ctx, calls } = recorder();
     drawAnnotations(ctx, [step({ note: 'say this' })], { notes: 'framed' });
-    expect(calls.filter(call => call.startsWith('arc:'))).toHaveLength(2);   // the pill's two ends
-    expect(calls.some(call => call.startsWith('text!:1 say this@'))).toBe(true);
-    expect(calls.some(call => call.startsWith('text!:1@'))).toBe(false);    // no numeral of its own
+    const figure = calls.findIndex(call => call.startsWith('text!:1@'));
+    const words = calls.findIndex(call => call.startsWith('text!:say this@'));
+    expect(figure).toBeGreaterThan(-1);
+    expect(words).toBeGreaterThan(figure);
+    expect(calls.some(call => call.startsWith('text!:1 say this@'))).toBe(false);
+  });
+
+  it('paints the style it is given, and the smoked one if not told', () => {
+    const fills = (style?: NoteStyle) => {
+      const { ctx, calls } = recorder();
+      drawAnnotations(ctx, [step({ note: 'say this', to: [500, 400], style: 'mark' })], { notes: 'framed', style });
+      return calls.join(' ');
+    };
+    expect(fills()).toBe(fills('smoked'));
+    // The card is white with a coloured number; the solid pill is its colour.
+    expect(fills('card')).toContain('fill:#ffffff');
+    expect(fills('solid')).toContain(`stop:${shade('#ff3b30', 0.14)}`);
+    expect(fills('icon')).toContain(`stop:${shade('#ff3b30', 0.3)}`);
+    expect(new Set([fills('smoked'), fills('solid'), fills('card'), fills('icon')]).size).toBe(4);
+  });
+
+  it('gives a flat arrow its old shape whatever the style, and only Mark’s own arrow a new one', () => {
+    const drawn = (style: NoteStyle, over: Partial<Arrow>) => {
+      const { ctx, calls } = recorder();
+      drawAnnotations(ctx, [arrow(over)], { style });
+      return calls.join(' ');
+    };
+    for (const flat of ['taper', 'straight', 'line'] as const) {
+      expect(drawn('smoked', { style: flat })).toBe(drawn('icon', { style: flat }));
+    }
+    expect(drawn('smoked', { style: 'mark' })).not.toBe(drawn('icon', { style: 'mark' }));
+    // An arrow from before there were styles stays as it was drawn.
+    expect(drawn('smoked', {})).toBe(drawn('icon', {}));
   });
 
   it('keeps a badge inside the image rather than the canvas, when the two differ', () => {

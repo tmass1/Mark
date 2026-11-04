@@ -73,15 +73,6 @@ async function editorWith({ capture, view, request = null, frames = [] }) {
   const numbered = async () => {
     await page.locator('.tool[data-slot="0"]').click({ button: 'right' });
     await page.locator('.tool-menu button', { hasText: 'Numbered arrow' }).click();
-    await dressed();
-  };
-  // The arrow in hand, in the shadow and the border every picture on the site shows
-  // it in. They are kept for the next arrow, and the menu stays open until asked.
-  const dressed = async () => {
-    await page.locator('.looks-button').click();
-    await page.locator('.looks-menu [data-look="shadow"]').click();
-    await page.locator('.looks-menu [data-look="border"]').click();
-    await page.locator('.looks-button').click();
   };
   const note = async (from, to, text) => { await drag(on(...from), on(...to)); await page.keyboard.type(text); await page.keyboard.press('Escape'); };
   // The notes written on the picture beside their badges, and the list put away.
@@ -101,7 +92,7 @@ async function editorWith({ capture, view, request = null, frames = [] }) {
     document.body.append(row);
   });
   const rest = async () => { await page.mouse.move(5, view.height - 5); await page.waitForTimeout(400); };
-  return { page, context, on, drag, deselect, tool, size, numbered, dressed, note, framed, lights, rest, k };
+  return { page, context, on, drag, deselect, tool, size, numbered, note, framed, lights, rest, k };
 }
 
 // How it works: a checkout, mocked up with three changes, the notes on the picture.
@@ -211,7 +202,7 @@ if (!only || only === 'tablet') {
 // A window: a podcast player, an arrow and a word on it.
 if (!only || only === 'player') {
   const e = await editorWith({ capture: await still('player', 980, 640), view: { width: 1300, height: 1040 } });
-  await e.size(0.9); await e.tool('Arrow'); await e.dressed();
+  await e.size(0.9); await e.tool('Arrow');
   await e.drag(e.on(336, 357), e.on(250, 395)); await e.deselect();
   await e.tool('Text'); await e.page.mouse.click(...e.on(342, 339));
   await e.page.keyboard.type('Thicker, with chapters'); await e.page.keyboard.press('Escape'); await e.deselect();
