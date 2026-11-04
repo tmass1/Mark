@@ -156,7 +156,7 @@ export function onto(boxes: readonly Rect[], width: number, height: number): Poi
 export function blockSize(weight: number): number { return Math.max(7, weight * 1.5); }
 export type Point = [number, number];
 
-import { DEFAULT_NOTE_STYLE, DISC, DISC_INSET, UNITS_HIGH, courseAlone, courseFrom, curvedArrow, noteLook, type ArrowLook, type Cast, type NoteLook, type NoteStyle, type Stop } from './note-style';
+import { BADGE_CAST, BADGE_DISC, BADGE_HIGH, DEFAULT_NOTE_STYLE, DISC, DISC_INSET, UNITS_HIGH, courseAlone, courseFrom, curvedArrow, noteLook, type ArrowLook, type Cast, type NoteLook, type NoteStyle, type Stop } from './note-style';
 import { clampRect, ratioInside, ratioRect, type Rect } from './region';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -193,12 +193,16 @@ export function baseWeight(width: number, height: number): number {
 export function textSize(weight: number): number { return weight * 2; }
 /** A badge is sized off it too, so a step reads the same on a small region and
  *  a Retina full-screen grab. */
-export function stepRadius(weight: number): number { return weight * 1.93; }
+export function stepRadius(weight: number): number { return noteUnit(weight) * BADGE_HIGH / 2; }
+/** Half a pill's height: it holds a line of words, so it is taller than a badge. */
+export function pillRadius(weight: number): number { return weight * 1.93; }
 /** A note style's unit in the image's pixels: all of a note scales from this. */
-export function noteUnit(weight: number): number { return stepRadius(weight) * 2 / UNITS_HIGH; }
+export function noteUnit(weight: number): number { return pillRadius(weight) * 2 / UNITS_HIGH; }
 /** The words in a pill, and the numeral in its disc, a little smaller to fit two digits. */
 export function stepTextSize(weight: number, size = 15.5): number { return noteUnit(weight) * size; }
-export function stepNumeralSize(weight: number, number: string): number { return noteUnit(weight) * (number.length > 1 ? 11.5 : 12.5); }
+export function stepNumeralSize(weight: number, number: string, badge = false): number {
+  return noteUnit(weight) * (badge ? (number.length > 1 ? 10 : 11.5) : (number.length > 1 ? 11.5 : 12.5));
+}
 /** A measure is drawn finer than its weight -- a dimension line, not a stroke
  *  of ink -- with its ticks and label scaled to the same weight. */
 export function measureWidth(weight: number): number { return Math.max(1, weight * 0.3); }
@@ -413,7 +417,7 @@ export function pillAt(item: Numbered, n: number, measure: Measure, width = Infi
   const note = item.note?.trim();
   if (!note) return null;
   const [bx, by] = badgeAt(item, width, height);
-  const r = stepRadius(item.weight), u = noteUnit(item.weight), look = noteLook(style, item.color, inkOn(item.color));
+  const r = pillRadius(item.weight), u = noteUnit(item.weight), look = noteLook(style, item.color, inkOn(item.color));
   const font = `${look.weight} ${stepTextSize(item.weight, look.wordsSize)}px ${FONT}`;
   const lead = (DISC_INSET + DISC + look.gap) * u;
   const pillWidth = lead + measure(note, font) + look.end * u;
@@ -878,7 +882,7 @@ function paintNote(ctx: CanvasRenderingContext2D, look: NoteLook, weight: number
                    number: string, centre: Point, pill: Pill | null): void {
   const { x, y, width, height } = frame, unit = noteUnit(weight), radius = (height / 2) * look.corner;
   const ops = roundedOps(x, y, width, height, radius);
-  casting(ctx, look.casts, unit, scale, ops);
+  casting(ctx, look.casts, pill ? unit : unit * BADGE_CAST, scale, ops);
   if (look.ring) {
     const out = look.ring.width * unit;
     ctx.fillStyle = look.ring.color;
@@ -896,7 +900,7 @@ function paintNote(ctx: CanvasRenderingContext2D, look: NoteLook, weight: number
     tracePath(ctx, roundedOps(x + inset, y + inset, width - inset * 2, height - inset * 2, Math.max(0, radius - inset)));
     ctx.stroke();
   }
-  const disc = (DISC / 2) * unit, discOps = roundedOps(centre[0] - disc, centre[1] - disc, disc * 2, disc * 2, disc * look.numberCorner);
+  const disc = ((pill ? DISC : BADGE_DISC) / 2) * unit, discOps = roundedOps(centre[0] - disc, centre[1] - disc, disc * 2, disc * 2, disc * look.numberCorner);
   ctx.fillStyle = paintOf(ctx, look.numberFill, x, centre[1] - disc, x, centre[1] + disc);
   tracePath(ctx, discOps);
   ctx.fill();
@@ -906,7 +910,7 @@ function paintNote(ctx: CanvasRenderingContext2D, look: NoteLook, weight: number
     tracePath(ctx, discOps);
     ctx.stroke();
   }
-  const size = stepNumeralSize(weight, number);
+  const size = stepNumeralSize(weight, number, !pill);
   ctx.fillStyle = look.numberInk;
   ctx.font = `700 ${size}px ${FONT}`;
   ctx.textAlign = 'center';
@@ -2176,7 +2180,8 @@ export class AnnotationLayer {
     const [cx, cy] = pill ? pill.numeral : [bx, by];
     const radius = (frame.height / 2) * look.corner, ops = roundedOps(frame.x, frame.y, frame.width, frame.height, radius);
     const out = look.ring ? look.ring.width * unit : 0;
-    group.append(...this.castNodes(look.casts, unit, pathData(ops), this.castBox(frame, look.casts, unit, out), key));
+    const castUnit = pill ? unit : unit * BADGE_CAST;
+    group.append(...this.castNodes(look.casts, castUnit, pathData(ops), this.castBox(frame, look.casts, castUnit, out), key));
     if (look.ring) {
       const ring = document.createElementNS(SVG, 'path');
       ring.setAttribute('class', 'ring');
@@ -2208,7 +2213,7 @@ export class AnnotationLayer {
       rim.setAttribute('stroke-width', String(look.rim.width * unit));
       group.append(rim);
     }
-    const disc = (DISC / 2) * unit;
+    const disc = ((pill ? DISC : BADGE_DISC) / 2) * unit;
     const seat = document.createElementNS(SVG, 'path');
     seat.setAttribute('class', 'number');
     seat.setAttribute('d', pathData(roundedOps(cx - disc, cy - disc, disc * 2, disc * 2, disc * look.numberCorner)));
@@ -2218,7 +2223,7 @@ export class AnnotationLayer {
       seat.setAttribute('stroke-width', String(look.numberRim.width * unit));
     }
     group.append(seat);
-    const numeral = String(pill ? pill.number : number), size = stepNumeralSize(item.weight, numeral);
+    const numeral = String(pill ? pill.number : number), size = stepNumeralSize(item.weight, numeral, !pill);
     const figure = document.createElementNS(SVG, 'text');
     figure.setAttribute('class', 'numeral');
     figure.setAttribute('x', String(cx)); figure.setAttribute('y', String(centredBaseline(cy, size)));

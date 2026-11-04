@@ -16,6 +16,11 @@ export const UNITS_HIGH = 34;
 export const DISC = 22;
 /** How far in from the pill's end the disc is, which centres it on that end. */
 export const DISC_INSET = (UNITS_HIGH - DISC) / 2;
+/** A number with no words needs no room for a line of type, so it is smaller, with
+ *  a smaller shadow to match: it should not outweigh the arrow it points with. */
+export const BADGE_HIGH = 24;
+export const BADGE_DISC = 19;
+export const BADGE_CAST = 0.7;
 
 type Point = [number, number];
 /** A position along a gradient, 0 to 1, and a colour. */

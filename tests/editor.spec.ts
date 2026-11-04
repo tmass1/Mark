@@ -1634,7 +1634,7 @@ test('a numbered step travels as one, and reaches the copied image', async ({ pa
       ctx.drawImage(bitmap, 0, 0);
       // Inside the disc but clear of the numeral, which is drawn at its centre.
       // The badge was placed at 300,200 of a 1200x740 shot.
-      const [r, g, b] = ctx.getImageData(316, 200, 1, 1).data;
+      const [r, g, b] = ctx.getImageData(311, 200, 1, 1).data;
       document.body.dataset.badge = `${r},${g},${b}`;
     } } });
   });

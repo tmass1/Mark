@@ -4,7 +4,7 @@ import { showsAt,
   ARROW_STYLES, COLORS, DEFAULT_ARROW, arrowPaint, arrowStrokeWidth, arrowStrokes, badgeAt, describe as describeKind, inkOn, isSegment, numbered,
   noteAt, offsetBy, onto, penPath, scaledNote, stretchedStroke, polygonPath, snapAngle, stepArrow, stepList, stepNumbers, stepRadius, styleOf,
   textSize, thin, borderColor, borderWidth, markShadow, outsetOps, pathData, pillAt, pillExit, restyled,
-  shadowReach, noteUnit, stepNumeralSize, stepTextSize, underlay, withNumbering, centredBaseline, measureLabel, measureRuns, measureWidth, hexColour,
+  shadowReach, noteUnit, pillRadius, stepNumeralSize, stepTextSize, underlay, withNumbering, centredBaseline, measureLabel, measureRuns, measureWidth, hexColour,
   type Arrow, type Note, type PathOp, type Point, type Shape, type Step,
 } from './annotations';
 import { DISC, DISC_INSET, NOTE_STYLES, noteLook, shade, type NoteStyle } from './note-style';
@@ -100,7 +100,7 @@ describe('text notes', () => {
 /** How the export records a badge's numeral: at the badge's centre across, and
  *  on the baseline that centres it down. */
 const numeral = (n: number, [x, y]: readonly number[], weight: number) =>
-  `text!:${n}@${x},${centredBaseline(y, stepNumeralSize(weight, String(n)))}`;
+  `text!:${n}@${x},${centredBaseline(y, stepNumeralSize(weight, String(n), true))}`;
 const shape = (over: Partial<Shape> = {}): Shape =>
   ({ kind: 'box', id: 3, x: 10, y: 20, width: 200, height: 100, color: '#34c759', weight: 8, ...over });
 const step = (over: Partial<Step> = {}): Step =>
@@ -642,7 +642,7 @@ describe('framed notes', () => {
   });
 
   it('sits the number where the badge’s would be, and sizes the pill to its words', () => {
-    const r = stepRadius(10), unit = noteUnit(10), size = stepTextSize(10);
+    const r = pillRadius(10), unit = noteUnit(10), size = stepTextSize(10);
     const pill = pillAt(step({ note: 'fix it' }), 3, measure)!;
     expect(pill.height).toBe(r * 2);
     expect(pill.numeral).toEqual([100, 100]);                // the badge's own centre
@@ -655,10 +655,16 @@ describe('framed notes', () => {
     expect(pill.width).toBeCloseTo((DISC_INSET + DISC + gap + end) * unit + 'fix it'.length * size * 0.5);
   });
 
+  it('stands a number with no words smaller than a pill, in proportion to its arrow', () => {
+    expect(stepRadius(10) / pillRadius(10)).toBeCloseTo(24 / 34);
+    expect(stepNumeralSize(10, '1', true)).toBeLessThan(stepNumeralSize(10, '1'));
+    expect(stepNumeralSize(10, '12', true)).toBeLessThan(stepNumeralSize(10, '1', true));
+  });
+
   it('fits itself to the style it is drawn in', () => {
     const widths = NOTE_STYLES.map(style => pillAt(step({ note: 'fix it' }), 1, measure, Infinity, Infinity, style)!.width);
     expect(new Set(widths).size).toBeGreaterThan(1);
-    const r = stepRadius(10);
+    const r = pillRadius(10);
     for (const style of NOTE_STYLES) expect(pillAt(step({ note: 'fix it' }), 1, measure, Infinity, Infinity, style)!.height).toBe(r * 2);
   });
 
