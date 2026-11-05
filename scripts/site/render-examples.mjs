@@ -16,6 +16,12 @@ const out = path.join(here, '../../public/site');
 const origin = process.argv[2] ?? 'http://127.0.0.1:1420';
 const only = process.env.ONLY;
 fs.mkdirSync(out, { recursive: true });
+// A browser has no Mac material behind the window's glass, so it's put there: the dark
+// one that comes to #24272a under the window's --scrim, as a screenshot of the app
+// measures. The floor and the panes are set to the #242a31 and #37393c measured there
+// too. render-shots.mjs uses the same values.
+const MATERIAL = '#2a2a2a';
+const MEASURED = ':root { --base: #242b34b8 !important; --panel: #dbe3f015 !important; }';
 
 const browser = await chromium.launch();
 
@@ -42,7 +48,9 @@ async function editorWith({ capture, view, request = null, frames = [] }) {
   const context = await browser.newContext({ viewport: view, deviceScaleFactor: 2, colorScheme: 'dark' });
   const page = await context.newPage();
   page.on('pageerror', e => console.log('pageerror', e.message));
-  // What the Mac app would answer: this capture, the ask, and a recording's frames.
+  // What the Mac app would answer: this capture, the ask, and a recording's frames. And no
+  // native glass, said outright: an undefined answer would turn native-glass on in main.ts,
+  // and that switches off the panes the toolbar and the rail are drawn on.
   await page.addInitScript(state => {
     let next = 1;
     window.__TAURI_INTERNALS__ = {
@@ -54,8 +62,9 @@ async function editorWith({ capture, view, request = null, frames = [] }) {
         return state.returns[cmd];
       },
     };
-  }, { capture, request, returns: { recording_supported: true, video_frames: frames } });
+  }, { capture, request, returns: { recording_supported: true, video_frames: frames, glass_available: false } });
   await page.goto(`${origin}/`);
+  await page.addStyleTag({ content: `html, body { background: ${MATERIAL} !important; } ${MEASURED}` });
   await page.locator('.capture').waitFor();
   await page.waitForTimeout(500);
   const box = await page.locator('.overlay').boundingBox();

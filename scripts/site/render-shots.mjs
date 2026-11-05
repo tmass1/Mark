@@ -14,14 +14,31 @@ const out = path.join(here, '../../public/site');
 const origin = process.argv[2] ?? 'http://127.0.0.1:1420';
 const only = process.env.ONLY;
 fs.mkdirSync(out, { recursive: true });
+// The demo blurs its pale desktop to stand in for the Mac's material, which comes out too
+// light and lets the desktop show through. In the pictures the window sits on the dark
+// material itself, which comes to #24272a under its --scrim, as a screenshot of the app
+// measures. The floor and the panes are set to the #242a31 and #37393c measured there too.
+// render-examples.mjs uses the same values. Square corners on the wrapper leave the material
+// behind the editor's own rounded ones, so no bits of the desktop end up in a picture's corners.
+const MATERIAL = '#2a2a2a';
+const MEASURED = ':root { --base: #242b34b8 !important; --panel: #dbe3f015 !important; }';
 
 const browser = await chromium.launch();
 // Wide enough that the stage is laid out at 1440 and not scaled: one stage
 // point per scene point, so the numbers below are scene coordinates.
 const page = await browser.newPage({ viewport: { width: 1472, height: 960 }, deviceScaleFactor: 2 });
-await page.goto(`${origin}/demo.html`);
 const editor = page.frameLocator('.win.editor iframe');
-await editor.getByRole('heading', { name: 'Capture your screen' }).waitFor();
+/** The demo from the start, its editor window on the material. */
+async function openDemo() {
+  await page.goto(`${origin}/demo.html`);
+  await page.addStyleTag({ content: `.win.editor { background: ${MATERIAL} !important; border-radius: 0 !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }` });
+  await editor.getByRole('heading', { name: 'Capture your screen' }).waitFor();
+  await editor.locator('html').evaluate((el, css) => {
+    const doc = el.ownerDocument;
+    doc.head.append(Object.assign(doc.createElement('style'), { textContent: css }));
+  }, MEASURED);
+}
+await openDemo();
 const stage = await page.locator('.stage').boundingBox();
 const at = (x, y) => ({ x: stage.x + x, y: stage.y + y });
 
@@ -92,8 +109,7 @@ await shot('hero', await boxOf(win));
 // phone, and its preview where a link to it is shared.
 if (!only || only === 'mockup') {
   const region = { x: 400, y: 118, w: 860, h: 442 };
-  await page.goto(`${origin}/demo.html`);
-  await editor.getByRole('heading', { name: 'Capture your screen' }).waitFor();
+  await openDemo();
   await editor.locator('[data-start="region"]').click();
   await page.frameLocator('.overlay').locator('.veil').waitFor();
   await drag(at(region.x, region.y), at(region.x + region.w, region.y + region.h));
@@ -129,8 +145,7 @@ if (!only || only === 'mockup') {
 // two numbered steps -- and, printed, the very words Send gave Claude with it.
 // The guide's preview where a link to it is shared.
 if (!only || only === 'ask') {
-  await page.goto(`${origin}/demo.html`);
-  await editor.getByRole('heading', { name: 'Capture your screen' }).waitFor();
+  await openDemo();
   await page.evaluate(() => window.postMessage('mark-demo:ask', location.origin));
   await editor.locator('.request-bar').waitFor();
   await editor.locator('[data-start="region"]').click();
