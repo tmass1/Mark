@@ -11,8 +11,8 @@ export const SITE = 'https://mark.tommymassaro.com';
 export const MAIN = 'main';
 
 // What the site is built from: the pages Vite starts at (every .html at the
-// top), what they import, what public/ copies, and the two files pack.sh adds.
-const BUILT = ['src/', 'public/', 'demo/', 'scripts/site/pack.sh', 'scripts/site/_headers',
+// top), what they import, what public/ copies, and the files pack.sh adds.
+const BUILT = ['src/', 'public/', 'demo/', 'scripts/site/pack.sh', 'scripts/site/_headers', 'scripts/site/robots.txt', 'scripts/site/sitemap.xml',
   'package.json', 'pnpm-lock.yaml', 'vite.config.ts', 'tsconfig.json', 'wrangler.jsonc'];
 // What it certainly isn't. A tracked file in neither list counts as the site's.
 const NOT_BUILT = ['docs/', 'tests/', 'mockups/', 'release-notes/', 'src-tauri/', 'brand/', 'scripts/',
@@ -166,7 +166,7 @@ export function releaseStops(live, here) {
 // What's checked on the live site, before and after: pages that must load,
 // release files that must be there, and paths that must stay hidden. The site
 // has no sign-in, so nothing on it is private beyond what's never uploaded.
-export const PUBLIC_PAGES = ['/', '/ai', '/demo', '/demo/editor', '/demo/selector', '/demo/recording'];
+export const PUBLIC_PAGES = ['/', '/ai', '/privacy', '/terms', '/demo', '/demo/editor', '/demo/selector', '/demo/recording'];
 
 /** Public pages the build in `dir` doesn't have, so that would answer "not
  *  found" once it is live. Cloudflare serves /demo/editor from

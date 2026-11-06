@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Privacy: Mark for Mac</title>
+    <meta name="description" content="What Mark does with what it sees. Your captures stay on your Mac unless you send them, the app has no account or analytics, and this site counts visits without cookies." />
+    <link rel="canonical" href="https://mark.tommymassaro.com/privacy" />
+    <meta name="theme-color" content="#08090b" />
+    <link rel="icon" href="/src/mark-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/site/legal.css" />
+  </head>
+  <body>
+    <header class="wrap top">
+      <a class="brand" href="./"><img src="/src/mark-icon.png" width="36" height="36" alt="" />Mark</a>
+      <a class="get" href="./#download">Download for Mac</a>
+    </header>
+    <main class="wrap">
+      <h1>Privacy</h1>
+      <p class="lede">Mark is a tool that sees your screen, so here is exactly what happens to what it sees.</p>
+      <p class="date">Last updated 5 November 2026</p>
+
+      <section class="short" aria-labelledby="short">
+        <h2 id="short">The short version</h2>
+        <ul>
+          <li>What you capture stays on your Mac unless you send it somewhere.</li>
+          <li>The app has no account, no cloud and no analytics.</li>
+          <li>The one thing it does by itself is check for updates, and you can turn that off.</li>
+          <li>This website counts visits, without cookies.</li>
+        </ul>
+      </section>
+
+      <h2>The app</h2>
+      <p><strong>What you capture.</strong> Screenshots and recordings are made and kept on your Mac. Mark doesn’t upload them, and it has no server to upload them to.</p>
+      <p><strong>Reading your screen.</strong> Copy Text and Hide Sensitive use Apple’s Vision framework on your Mac, so the words and faces they find stay there too.</p>
+      <p><strong>Permissions.</strong> macOS asks before Mark can record your screen. Mark uses your microphone only when you turn it on for a recording.</p>
+      <p><strong>Accounts and analytics.</strong> There are none. The app doesn’t track how you use it.</p>
+
+      <h2>When something leaves your Mac</h2>
+      <p><strong>When you send to an AI tool.</strong> If you connect a tool such as Claude Code or Codex, it can ask to see your screen, but nothing reaches it until you press Send. Send gives it the picture, every mark and where it is, your notes, and the words on screen. From there it’s handled under that tool’s own terms, and many pass it on to their own cloud service, so redact anything private first.</p>
+      <p><strong>When you copy or save.</strong> A copied picture or list goes wherever you paste it, and a saved file goes wherever you put it.</p>
+      <p><strong>Update checks.</strong> Once a day, and shortly after it opens, Mark asks <code>mark.tommymassaro.com</code> whether there’s a new version. Like any web request, that shows the server your IP address. You can turn this off in Mark’s Settings, under General.</p>
+
+      <h2>This website</h2>
+      <p><strong>Visit counts.</strong> The site uses PostHog to count page views and clicks on Download. It runs without cookies and doesn’t build a profile of you. To stop being counted in your browser, visit any page with <code>?analytics=off</code> added to its address. That choice is kept in one small cookie, set only because you asked.</p>
+      <p><strong>Hosting.</strong> Cloudflare hosts the site and handles your IP address in order to deliver its pages.</p>
+      <p><strong>Fonts.</strong> The site’s typeface comes from Google Fonts, so Google sees your browser’s request for it.</p>
+      <p><strong>The live demo.</strong> It runs in your browser, against a picture of a desktop rather than your own screen. It asks for your microphone only if you turn it on, and what it records stays in your browser.</p>
+
+      <h2>Selling and sharing</h2>
+      <p>Your data isn’t sold, and it isn’t shared for advertising.</p>
+
+      <h2>Your rights</h2>
+      <p>Depending on where you live, you may have the right to see, correct or delete data held about you, or to object to how it’s used. The app keeps nothing about you on a server, so in practice this covers the website’s visit counts. Write to <a href="mailto:hello@tommymassaro.com">hello@tommymassaro.com</a> and you’ll get help with it.</p>
+
+      <h2>Changes and contact</h2>
+      <p>If any of this changes, this page will say so and show a new date. Mark is made by Tommy Massaro. Questions are welcome at <a href="mailto:hello@tommymassaro.com">hello@tommymassaro.com</a>.</p>
+    </main>
+    <footer>
+      <div class="wrap">
+        <span>Mark for Mac</span>
+        <nav aria-label="More"><a href="./">Home</a><a href="./ai.html">Setup guide</a><a href="./privacy.html" aria-current="page">Privacy</a><a href="./terms.html">Terms</a><a href="mailto:hello@tommymassaro.com">Contact</a></nav>
+      </div>
+    </footer>
+  </body>
+</html>

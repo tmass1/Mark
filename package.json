@@ -10,7 +10,7 @@
     "tauri": "tauri",
     "test": "vitest run",
     "site": "sh scripts/site/pack.sh",
-    "site:shots": "node scripts/site/render-shots.mjs && node scripts/site/render-examples.mjs",
+    "site:shots": "node scripts/site/render-shots.mjs && node scripts/site/render-examples.mjs && node scripts/site/render-landing.mjs",
     "site:deploy": "node scripts/site/deploy.mjs"
   },
   "dependencies": {

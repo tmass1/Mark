@@ -1,7 +1,8 @@
 #!/bin/sh
 # Assembles the site into dist-site/, ready to upload to any static host: the
-# page as index.html, the guide to AI tools, the demo it frames, their assets,
-# and the disk image the download button points at if one has been built.
+# page as index.html, the guide to AI tools, the privacy and terms pages, the demo
+# it frames, their assets, and the disk image the download button points at if one
+# has been built.
 set -eu
 cd "$(dirname "$0")/../.."
 pnpm build
@@ -9,9 +10,11 @@ rm -rf dist-site
 mkdir dist-site
 cp dist/site.html dist-site/index.html
 cp dist/ai.html dist-site/ai.html      # the guide to AI tools, at /ai
+cp dist/privacy.html dist/terms.html dist-site/
 cp dist/demo.html dist-site/
 cp -R dist/assets dist/demo dist/site dist/signature dist-site/
 cp scripts/site/_headers dist-site/_headers      # read by Cloudflare's static asset host
+cp scripts/site/robots.txt scripts/site/sitemap.xml dist-site/      # read by search engines
 VERSION=$(node -p "require('./package.json').version")
 DMG="Mark_${VERSION}_universal.dmg"
 for candidate in "$DMG" "src-tauri/target/universal-apple-darwin/release/bundle/dmg/$DMG"; do

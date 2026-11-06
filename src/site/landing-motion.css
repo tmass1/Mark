@@ -1,0 +1,108 @@
+/* The motion layer. Everything here waits for html.motion, so the page underneath
+   stands on its own: ?motion=off, or a visitor who asks for less motion, gets that. */
+
+/* Nothing shows and then hides again while the script arrives. */
+.motion:not(.ready) main :is(h1, h2), .motion:not(.ready) .hero .wrap > :not(.demo-frame) { opacity: 0; }
+
+/* ---- words rise into place, a heading at a time --------------------------------- */
+.motion .w {
+  display: inline-block; opacity: 0; transform: translateY(.42em); filter: blur(10px);
+  transition: opacity .7s var(--ease), transform .95s var(--ease), filter .7s var(--ease);
+  transition-delay: calc(var(--i, 0) * 34ms);
+}
+.motion .seen .w { opacity: 1; transform: none; filter: none; }
+/* A numbered mark lands rather than rises. */
+.motion .w.pop { transform: scale(0); filter: none; transition: opacity .2s, transform .7s cubic-bezier(.34, 1.56, .64, 1); }
+.motion .seen .w.pop { transform: none; }
+
+.motion .rv {
+  opacity: 0; transform: translateY(20px);
+  transition: opacity .8s var(--ease), transform 1s var(--ease);
+  transition-delay: calc(120ms + var(--i, 0) * 70ms);
+}
+.motion .seen .rv, .motion .rv.seen { opacity: 1; transform: none; }
+.motion .rv.settled { transition: none; }
+
+/* ---- depth: things that move at their own speed as you scroll ----------------------- */
+.motion [data-depth], .motion .demo-frame, .motion .tilt { will-change: transform; }
+.motion .chapter { position: relative; isolation: isolate; }
+/* Each patch of colour floats on its own slow path, under the speed the scroll gives it. */
+.motion .ambient i { will-change: transform; }
+.motion .ambient i::before { animation: float var(--t, 56s) ease-in-out infinite alternate; }
+@keyframes float { to { transform: translate(var(--dx), var(--dy)) scale(1.16); } }
+.motion .hero::before { transform: translateY(var(--glow, 0)); will-change: transform; }
+.motion .demo-frame { transform-origin: 50% 0; }
+.motion .tilt { transform-origin: 50% 0; }
+.motion .demo-frame .try-me { transition: opacity .3s; }
+
+/* ---- the linked section: a paragraph, crossed out, as the marks replace it ------------ */
+.motion.pin .how-track { height: 340vh; }
+.motion.pin .how-stage { position: sticky; top: 84px; height: calc(100vh - 84px); display: flex; flex-direction: column; justify-content: center; }
+.motion.pin .how-stage .head { margin-bottom: clamp(20px, 3vh, 44px); }
+.motion.pin .versus { width: 100%; max-width: var(--fit, none); margin-inline: auto; }
+.motion.pin .versus figure + figure { transform-origin: 50% 0; position: relative; z-index: 1; }
+.motion.pin .versus .shot { position: relative; box-shadow: 0 0 0 1px #ffffff1a, 0 40px 90px -30px #000, 0 30px 90px -30px #0a84ff40; }
+.how-marks { position: absolute; left: 12.367%; top: 16.883%; width: 81.023%; height: 71.753%; overflow: visible; pointer-events: none; }
+/* The window's bottom bar, once it has steps to count. */
+.how-foot { position: absolute; inset: 0; width: 100%; height: 100%; clip-path: inset(90.6% 0 0 0); opacity: 0; pointer-events: none; }
+#typed .say {
+  color: var(--faint); transition: color .25s;
+  background: linear-gradient(var(--red), var(--red)) 0 58% / calc(var(--s, 0) * 100%) 2px no-repeat;
+}
+#typed .say.on { color: var(--ink); }
+#typed .say.done { color: #4b4f56; }
+.motion.pin #typed-count, .motion.pin #marks-count { font-variant-numeric: tabular-nums; }
+
+/* ---- 1: capture ------------------------------------------------------------------------ */
+.motion.pin-capture .capture-track { height: 400vh; }
+.motion.pin-capture .capture-stage { position: sticky; top: 84px; height: calc(100vh - 84px); display: flex; flex-direction: column; justify-content: center; }
+.motion.pin-capture .capture-stage .head { margin-bottom: clamp(20px, 3vh, 44px); }
+.motion.pin-capture .capture-demo { width: 100%; max-width: var(--fit, none); margin-inline: auto; }
+/* How far through this way the scroll has come, along the foot of its row. */
+.motion.pin-capture .mode { position: relative; overflow: hidden; }
+.motion.pin-capture .mode[aria-pressed="true"]::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  background: #ffffffb8; transform: scaleX(var(--t, 0)); transform-origin: 0 50%;
+}
+.stage-grab.morph .marquee { transition: left .45s var(--ease), top .45s var(--ease), width .45s var(--ease), height .45s var(--ease); }
+.stage-grab.rolling .marquee::before { outline: 2px solid var(--red); }
+.motion .mode.rv { transition-delay: calc(200ms + var(--i, 0) * 60ms); }
+
+/* ---- 3: the keys, the picture, the words ------------------------------------------------- */
+.motion .term .line { display: block; min-height: 1.6em; opacity: 0; transform: translateY(6px); transition: opacity .3s, transform .4s var(--ease); }
+.motion .term .line.on { opacity: 1; transform: none; }
+.motion .copied { will-change: transform, opacity; rotate: none; }
+
+/* ---- pictures seen through their frame --------------------------------------------------- */
+.motion .shot.deep { overflow: hidden; }
+.motion .shot.deep img { transform-origin: var(--at, 50% 50%); }
+
+/* ---- the keyboard: a ripple out from the keys that start it all ------------------------------ */
+.motion .keyboard.seen .key { animation: key-wave .6s var(--ease) calc(var(--d, 0) * 42ms) backwards; }
+@keyframes key-wave { from { transform: translateY(14px); opacity: 0; } }
+.motion .keyboard:not(.seen) .key { opacity: 0; }
+
+/* ---- line drawings draw themselves ----------------------------------------------------------- */
+.motion .figs .wire:not(.dot) { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1.7s var(--ease) .1s; }
+.motion .figs .seen .wire:not(.dot) { stroke-dashoffset: 0; }
+.motion .figs svg > :is(.dot, text, g, path[fill]) { opacity: 0; transition: opacity 1s ease .7s; }
+.motion .figs .seen svg > :is(.dot, text, g, path[fill]) { opacity: 1; }
+.motion .figs h3, .motion .figs p { opacity: 0; transform: translateY(12px); transition: opacity .7s var(--ease) .25s, transform .8s var(--ease) .25s; }
+.motion .figs .seen h3, .motion .figs .seen p { opacity: 1; transform: none; }
+
+/* ---- the changelog's line runs along it ---------------------------------------------------------- */
+.motion .log li { opacity: 0; transform: translateY(14px); transition: opacity .7s var(--ease), transform .8s var(--ease); transition-delay: calc(var(--i, 0) * 110ms); }
+.motion .log.seen li { opacity: 1; transform: none; }
+.motion .log li::before { transform: scaleX(0); transform-origin: 0 50%; transition: transform 1s var(--ease); transition-delay: calc(var(--i, 0) * 110ms); }
+.motion .log.seen li::before { transform: none; }
+.motion .log li::after { transform: scale(0); transition: transform .6s cubic-bezier(.34, 1.56, .64, 1); transition-delay: calc(var(--i, 0) * 110ms + 120ms); }
+.motion .log.seen li::after { transform: none; }
+
+/* ---- the arrow comes up at the button, its echoes behind it ---------------------------------------- */
+.motion .giant.up svg { will-change: transform, opacity; }
+.motion .last .get.landed { animation: landed .6s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes landed { 40% { transform: scale(1.05); } }
+
+@media (max-width: 1040px) {
+  .motion .tilt, .motion .demo-frame { transform: none !important; }
+}

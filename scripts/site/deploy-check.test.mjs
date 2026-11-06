@@ -23,7 +23,7 @@ describe('uncommitted changes', () => {
 
   it('stops for what the site is built from, and leaves the rest alone', () => {
     const changes = sortChanges([
-      ...['src/main.ts', 'public/site/hero.png', 'site.html', 'package.json', 'scripts/site/_headers', 'demo/editor.html']
+      ...['src/main.ts', 'public/site/hero.png', 'site.html', 'package.json', 'scripts/site/_headers', 'scripts/site/robots.txt', 'scripts/site/sitemap.xml', 'demo/editor.html']
         .map(path => ({ path, untracked: false })),
       { path: 'src/brand-new.ts', untracked: true },
       ...['mockups/landing-light.html', 'mark-highlight-arrow-svg.zip', 'mark-highlight-arrow-svg/arrow.svg']
@@ -32,7 +32,7 @@ describe('uncommitted changes', () => {
         .map(path => ({ path, untracked: false })),
     ]);
     expect(changes.site).toEqual(['src/main.ts', 'public/site/hero.png', 'site.html', 'package.json',
-      'scripts/site/_headers', 'demo/editor.html', 'src/brand-new.ts']);
+      'scripts/site/_headers', 'scripts/site/robots.txt', 'scripts/site/sitemap.xml', 'demo/editor.html', 'src/brand-new.ts']);
     expect(changes.other).toHaveLength(8);
   });
 
@@ -215,7 +215,7 @@ describe('the pages a build has', () => {
   it('names each public page the build left out, and none it has', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pages-'));
     mkdirSync(join(dir, 'demo'));
-    for (const file of ['index.html', 'ai.html', 'demo.html', 'demo/editor.html']) writeFileSync(join(dir, file), '');
+    for (const file of ['index.html', 'ai.html', 'privacy.html', 'terms.html', 'demo.html', 'demo/editor.html']) writeFileSync(join(dir, file), '');
     expect(pagesMissing(dir)).toEqual(['/demo/selector', '/demo/recording']);
     writeFileSync(join(dir, 'demo/selector.html'), '');
     writeFileSync(join(dir, 'demo/recording.html'), '');

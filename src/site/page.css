@@ -1,4 +1,4 @@
-/* Mark's site.
+/* The guide to AI tools.
  *
  * The page is built from the editor's own materials: the slate ground, panes
  * of frosted glass with a lit top edge, the blue of its controls and the red of
@@ -46,7 +46,7 @@ body {
 }
 img { display: block; max-width: 100%; height: auto; }
 a { color: inherit; text-decoration: none; }
-h1, h2, h3, p, ol, figure { margin: 0; }
+h1, h2, h3, p, ol { margin: 0; }
 h1, h2 { font-weight: 700; letter-spacing: -.03em; line-height: 1.05; text-wrap: balance; }
 h2 { font-size: clamp(28px, 3.4vw, 40px); }
 h3 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
@@ -58,18 +58,7 @@ kbd {
 :focus-visible { outline: 2px solid var(--hover); outline-offset: 3px; border-radius: 6px; }
 .skip { position: absolute; left: 16px; top: -60px; z-index: 100; padding: 8px 14px; border-radius: 999px; background: var(--slate); }
 .skip:focus { top: 12px; }
-
-/* Only the platform that can use the download hears about the requirements. */
-.not-mac { display: none; }
-html.elsewhere .not-mac { display: inline; }
-html.elsewhere .only-mac { display: none; }
-
-/* ---- panes and buttons, as in the editor ------------------------------------- */
-.pane, .card, .shot, .demo-frame {
-  background: var(--sheen), var(--panel);
-  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 30px 60px -30px var(--shadow);
-}
-.primary, .glassy {
+.primary {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 36px; padding: 0 18px;
   border-radius: 999px; font-weight: 500; white-space: nowrap; transition: background .15s, transform .15s;
 }
@@ -79,18 +68,10 @@ html.elsewhere .only-mac { display: none; }
 }
 .primary:hover { background: linear-gradient(180deg, #ffffff33, #ffffff00 60%), var(--hover); }
 .primary:active { transform: translateY(.5px); }
-.glassy {
-  border: 1px solid var(--control-line); background: var(--control);
-  box-shadow: inset 0 1px 0 var(--rim), 0 1px 2px #00000012;
-}
-.glassy:hover { background: var(--control-hover); }
-.big { height: 48px; padding: 0 24px; font-size: 17px; }
 .small { height: 34px; padding: 0 16px; font-size: 14px; }
-.apple { width: 15px; height: 18px; fill: currentColor; margin-top: -2px; }
 
 /* ---- the mark ----------------------------------------------------------------- */
 .mark { display: block; width: 26px; height: 26px; flex: none; }
-.mark.large { width: 84px; height: 84px; filter: drop-shadow(0 18px 30px #00000080); }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; letter-spacing: -.01em; }
 .bar .brand { gap: 12px; font-size: 20px; letter-spacing: -.015em; }
 .bar .brand .mark { width: 36px; height: 36px; }
@@ -111,103 +92,10 @@ html.elsewhere .only-mac { display: none; }
 /* ---- sections ------------------------------------------------------------------ */
 main { display: block; }
 section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
-
-.hero { padding-top: 96px; text-align: center; }
-.hero h1 { font-size: clamp(44px, 7.2vw, 84px); letter-spacing: -.04em; line-height: 1.2; }
-/* Who it's for: a pane of the editor's glass set into the line, its icon on a
-   tile in that person's colour, the tile's radius the pane's less its inset.
-   Its width eases from one name to the next, so the line re-centres rather than
-   jumps; the name leaves upward and the next arrives from below. */
-.nb { white-space: nowrap; }
-.who {
-  --c: var(--orange);
-  display: inline-flex; align-items: center; gap: .5em; vertical-align: middle; position: relative; top: -.06em;
-  overflow: hidden; padding: .26em .78em .26em .26em; border-radius: .74em;
-  font-size: .4em; font-weight: 600; letter-spacing: -.015em; line-height: 1;
-  background: var(--sheen), var(--panel); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4);
-  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 22px 44px -22px var(--shadow);
-  transition: width .42s cubic-bezier(.3, .8, .25, 1);
-}
-.who[data-who="coworker"] { --c: var(--blue); }
-.who[data-who="designer"] { --c: var(--purple); }
-.who[data-who="friend"] { --c: var(--green); }
-.who i {
-  display: grid; place-items: center; flex: none; width: 1.8em; height: 1.8em; border-radius: .48em;
-  color: var(--c); background: color-mix(in srgb, var(--c) 20%, transparent);
-  box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--c) 34%, transparent);
-}
-.who svg { width: 1.05em; height: 1.05em; }
-.who i, .who span { transition: opacity .18s, transform .18s; }
-.who.out i, .who.out span { opacity: 0; transform: translateY(-.35em); }
-.who.in i, .who.in span { opacity: 0; transform: translateY(.35em); transition: none; }
 .lede { max-width: 560px; margin: 24px auto 0; font-size: 19px; line-height: 1.5; color: var(--muted); text-wrap: pretty; }
-.lede kbd { color: var(--ink); }
-.actions { display: flex; justify-content: center; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
-.fine { margin-top: 18px; font-size: 13px; color: var(--dim); }
-.download .fine { max-width: 520px; margin: 22px auto 0; line-height: 1.55; }
-
-/* A picture of the app sits in a thin frame with the window's own radius, so the
-   glass edge is the frame's and not painted twice. */
-.shot { border-radius: 12px; overflow: hidden; }
-.shot img { border-radius: inherit; }
-/* The hero is the demo itself, lit from below as its picture was; the picture
-   is a phone's, which cannot drive the demo. */
-.hero .demo-frame {
-  position: relative; margin-top: 88px;
-  box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge), 0 60px 120px -40px #000000cc, 0 30px 60px -30px #0a84ff33;
-}
-/* Above the demo until it is used: a callout that says it is the app, not a
-   picture of it, floating a little and lit blue to be noticed. Its pointer is a
-   square turned on its corner, in the pill's own colour, edged where it shows. */
-.try-me {
-  position: absolute; left: 50%; bottom: calc(100% + 16px); z-index: 2;
-  display: inline-flex; align-items: center; gap: 9px; padding: 8px 16px 8px 13px; border-radius: 999px;
-  font-size: 14px; color: var(--muted); white-space: nowrap; pointer-events: none;
-  background: linear-gradient(180deg, #ffffff12, #ffffff00 60%), #142030;
-  box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px #0a84ff99, 0 10px 28px -8px #0a84ff80;
-  transform: translateX(-50%);
-  animation: try-me-float 2.8s ease-in-out infinite, try-me-glow 2.8s ease-in-out infinite;
-  transition: opacity .3s;
-}
-.try-me strong { color: var(--ink); font-weight: 600; }
-.try-me::after {
-  content: ''; position: absolute; left: 50%; top: 100%; width: 11px; height: 11px; margin: -6px 0 0 -5.5px;
-  background: #142030; box-shadow: .5px .5px 0 #0a84ff99; transform: rotate(45deg);
-}
-.try-me.used { opacity: 0; }
-/* A dot that says live, as a recording light does, in Mark's blue. */
-.live { position: relative; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--blue); }
-.live::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--blue); animation: try-me-ping 1.8s cubic-bezier(0, 0, .2, 1) infinite; }
-@keyframes try-me-float { 0%, 100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, -5px); } }
-@keyframes try-me-glow {
-  0%, 100% { box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px #0a84ff99, 0 10px 28px -8px #0a84ff66; }
-  50% { box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px #0a84ffcc, 0 12px 36px -6px #0a84ffcc; }
-}
-@keyframes try-me-ping { 0% { transform: scale(1); opacity: .7; } 80%, 100% { transform: scale(2.6); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .try-me, .live::after { animation: none; } }
-.demo-note { max-width: 620px; margin: 18px auto 0; color: var(--dim); font-size: 13.5px; line-height: 1.55; text-wrap: pretty; }
-.hero-shot {
-  display: none; width: min(100%, 938px); margin: 64px auto 0; position: relative;
-  box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge), 0 60px 120px -40px #000000cc, 0 30px 60px -30px #0a84ff33;
-}
-
-/* Who it works with, quietly, under the download: names rather than a wall of logos. */
-.works-with { max-width: 600px; margin: 22px auto 0; color: var(--dim); font-size: 13.5px; line-height: 1.6; text-wrap: balance; }
-.works-with span { margin-right: 4px; color: var(--muted); font-weight: 600; }
-
-/* ---- sections in two columns ---------------------------------------------------------- */
-/* Words on one side, the app on the other: how it works and the agents with the
-   words first, video the other way round, so the page doesn't march. */
-.flow, .agents { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 40px 56px; padding-top: 140px; }
-.flow { align-items: start; }
-.agents { align-items: center; }
-.video { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: center; padding-top: 140px; }
 .eyebrow { margin-bottom: 14px; color: var(--hover); font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-.section-lede { margin-top: 18px; color: var(--muted); font-size: 17px; line-height: 1.55; text-wrap: pretty; }
-.mockup-shot, .ask-shot, .video-shot { box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge), 0 40px 80px -36px #000000cc, 0 24px 50px -30px #0a84ff40; }
 
-/* How it works: three beats, red like Mark's own numbered badges, beside a
-   mock-up made with them and the list its notes copy as. */
+/* How it works: three beats, red like Mark's own numbered badges. */
 .beats { list-style: none; padding: 0; margin: 34px 0 0; display: grid; gap: 22px; }
 .beats li { display: grid; grid-template-columns: 32px 1fr; column-gap: 16px; }
 .beat {
@@ -217,58 +105,6 @@ section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
 }
 .beats h3 { padding-top: 4px; }
 .beats p { margin-top: 6px; color: var(--muted); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
-.flow-side { display: grid; gap: 16px; }
-.received {
-  margin: 0; padding: 14px 16px 16px; border-radius: 18px;
-  background: var(--sheen), var(--panel);
-  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 30px 60px -30px var(--shadow);
-}
-.received figcaption { font-size: 14px; font-weight: 600; }
-.received pre {
-  margin: 10px 0 0; padding: 12px 14px; border-radius: 10px; background: #080b10; box-shadow: inset 0 0 0 .5px var(--edge);
-  font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: #cfd6e0; white-space: pre-wrap; overflow-wrap: anywhere;
-}
-
-/* Video: the eyebrow in a recording's red, with its dot. */
-.video .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--brand); }
-.video .eyebrow::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 3px #ff453a33; }
-.video-shot { border-radius: 14px; }
-/* What a recording can do, three across, under the picture and its words. */
-.facts { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 30px 32px; }
-.facts li { display: flex; align-items: flex-start; gap: 14px; }
-.facts h3 { padding-top: 1px; font-size: 16px; }
-.facts p { margin-top: 4px; color: var(--muted); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
-.video .fine { margin-top: 26px; }
-
-/* Frame: what the panel makes, the phone as tall as the rest beside it. The columns
-   are the ones that make it so, at this page's width, for these pictures. */
-.frame { padding-top: 140px; }
-.frame .section-lede { max-width: 640px; }
-.frame h2 { margin-top: 0; }
-.devices {
-  display: grid; gap: 16px; margin-top: 44px;
-  grid-template-columns: minmax(0, 405fr) minmax(0, 318fr) minmax(0, 318fr);
-  grid-template-areas: "phone browser browser" "phone tablet window";
-}
-.device { display: flex; flex-direction: column; min-width: 0; padding: 10px; border-radius: 22px; background: var(--sheen), var(--panel); box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 30px 60px -30px var(--shadow); }
-.device img { flex: 1; min-height: 0; width: 100%; object-fit: cover; border-radius: 12px; }
-.device figcaption { padding: 12px 8px 4px; color: var(--muted); font-size: 14px; font-weight: 500; }
-.phone { grid-area: phone; }
-.browser { grid-area: browser; }
-.tablet { grid-area: tablet; }
-.window { grid-area: window; }
-
-/* The agents: their ask, the setup under both. */
-.agents-note { margin-top: 16px; color: var(--dim); font-size: 15px; line-height: 1.55; text-wrap: pretty; }
-.agents-actions { display: flex; align-items: center; gap: 14px; margin-top: 30px; }
-.agents-try { color: var(--dim); font-size: 14px; }
-.setup {
-  grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 28px 40px;
-  padding: 26px 30px 28px; border-radius: 22px;
-  background: var(--sheen), var(--panel);
-  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 30px 60px -30px var(--shadow);
-}
-.setup p { margin-top: 6px; color: var(--muted); font-size: 14.5px; line-height: 1.55; text-wrap: pretty; }
 .inline { color: var(--hover); }
 .inline:hover { text-decoration: underline; }
 .command {
@@ -286,56 +122,15 @@ section { max-width: var(--width); margin: 0 auto; padding: 0 var(--gutter); }
 }
 .copy-command:hover { background: var(--control-hover); }
 
-.features { padding-top: 140px; }
-.features h2 { text-align: center; }
-.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 44px; }
-.card { border-radius: 22px; padding: 10px 10px 22px; transition: background .2s; }
-.card:hover { background: var(--sheen), var(--panel-hover); }
-.card h3 { margin: 18px 14px 0; }
-.card p { margin: 8px 14px 0; color: var(--muted); font-size: 14.5px; line-height: 1.55; text-wrap: pretty; }
-.card p kbd { font-size: .86em; }
-/* The concentric rule: a card's inner shape is the card's radius less its padding. */
-.visual { height: 168px; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #00000040; box-shadow: inset 0 0 0 .5px var(--edge); }
-.visual.picture img { width: 100%; height: 100%; object-fit: cover; }
-.arrows { gap: 22px; color: var(--brand); padding: 0 8px; }
-.arrows figure { flex: 0 1 92px; min-width: 0; display: grid; justify-items: center; gap: 2px; }
-/* Smaller in a narrow card, never cut off by it. */
-.arrows svg { width: 100%; max-width: 92px; height: auto; aspect-ratio: 92 / 98; filter: drop-shadow(0 10px 16px #ff453a3d); }
-.arrows figcaption { font-size: 12px; color: var(--muted); }
-/* The pointers, as the arrows are shown beside them. */
-.pointers { gap: 14px; color: var(--ink); padding: 0 10px; }
-.pointers figure { flex: 0 1 68px; min-width: 0; display: grid; justify-items: center; gap: 8px; }
-.pointers svg { width: 100%; max-width: 68px; height: auto; aspect-ratio: 1; filter: drop-shadow(0 8px 14px #0a84ff40); }
-.pointers figcaption { font-size: 12px; color: var(--muted); }
-/* The rest, a line each: one pane, four across, each line beside its glyph. */
-.more {
-  list-style: none; margin: 16px 0 0; padding: 28px 30px; border-radius: 22px;
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 26px 28px;
-  background: var(--sheen), var(--panel);
-  box-shadow: inset 0 1px 0 var(--rim), inset 0 -.5px 0 var(--edge), 0 0 0 .5px var(--edge), 0 30px 60px -30px var(--shadow);
-}
-.more li { display: flex; align-items: flex-start; gap: 12px; }
-.more h3 { font-size: 15px; }
-.more p { margin-top: 4px; color: var(--muted); font-size: 13.5px; line-height: 1.5; text-wrap: pretty; }
-.more p kbd { font-size: .86em; }
-.glyph { flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 999px; color: var(--ink); background: var(--control); box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge); }
-.glyph svg { width: 20px; height: 20px; }
-
-.demo-frame { padding: 8px; border-radius: 22px; }
-.demo { display: block; width: 100%; aspect-ratio: 16 / 10; border: none; border-radius: 14px; background: #0e1118; }
-.no-demo { display: none; margin-top: 28px; color: var(--dim); font-size: 14px; }
-
-.download { padding-top: 160px; text-align: center; display: flex; flex-direction: column; align-items: center; }
-.download h2 { margin-top: 28px; font-size: clamp(36px, 5vw, 56px); }
-.download > p:not(.fine) { margin-top: 14px; color: var(--muted); }
-.download .primary { margin-top: 28px; }
-
 footer {
   max-width: var(--width); margin: 120px auto 0; padding: 28px var(--gutter) 48px;
   display: flex; align-items: center; gap: 24px; border-top: 1px solid var(--hairline); color: var(--dim); font-size: 14px;
 }
 /* The credit is the signature bar's, under this. */
-footer .version { margin-left: auto; }
+footer .legal { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-left: auto; }
+footer .legal a { color: inherit; text-decoration: none; }
+footer .legal a:hover { color: var(--ink); }
+footer .version { white-space: nowrap; }
 
 /* The signature bar declares its Inter inside its shadow root, where Chrome
    ignores @font-face, and this page doesn't load Inter itself. Declared here,
@@ -395,24 +190,6 @@ footer .version { margin-left: auto; }
 #other .command { margin-top: 14px; }
 
 /* ---- narrower ------------------------------------------------------------------ */
-@media (max-width: 900px) {
-  .flow, .video, .agents, .setup { grid-template-columns: 1fr; }
-  .video { gap: 40px; }
-  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .devices {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas: "browser browser" "phone tablet" "phone window";
-  }
-  /* One column: the words before the picture, as the other sections have them. */
-  .video-text { order: -1; }
-  .more { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  /* Three across would crop the pictures, so a card a row, its picture beside its words. */
-  .grid { grid-template-columns: 1fr; }
-  .grid .card { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); grid-template-rows: 1fr auto 1fr; column-gap: 10px; }
-  .grid .card .visual { grid-row: 1 / -1; }
-  .grid .card h3 { grid-column: 2; grid-row: 1; align-self: end; margin-top: 0; }
-  .grid .card p { grid-column: 2; grid-row: 2; }
-}
 /* The bar's links, closer together, and gone before they would run out of room. */
 @media (max-width: 900px) { .links a { padding: 8px 9px; } }
 @media (max-width: 800px) {
@@ -426,25 +203,7 @@ footer .version { margin-left: auto; }
   .bar .brand { font-size: 18px; gap: 10px; }
   .bar .brand .mark { width: 32px; height: 32px; }
   .bar .primary { height: 38px; padding: 0 16px; font-size: 14px; }
-  .hero { padding-top: 72px; }
-  .hero-shot { display: block; margin-top: 44px; }
-  /* The hero shows the mock-up on a phone, so How it works keeps only its notes. */
-  .mockup-shot { display: none; }
-  .flow, .video, .frame, .agents, .features { padding-top: 96px; }
-  .facts { grid-template-columns: 1fr; gap: 22px; }
-  .devices { grid-template-columns: minmax(0, 1fr); grid-template-areas: "browser" "phone" "tablet" "window"; margin-top: 32px; }
-  /* No demo on a phone, so nothing for an agent to ask in. */
-  .agents-actions { display: none; }
-  .setup { padding: 22px 20px 24px; }
   .doc section, .doc .doc-hero { padding-top: 64px; }
   .tool { padding: 18px 18px 20px; }
   .tool-index { grid-template-columns: 1fr; gap: 12px; }
-  .grid, .more { grid-template-columns: 1fr; }
-  .grid .card { display: block; }
-  .grid .card h3 { margin-top: 18px; }
-  .more { padding: 24px 22px; }
-  /* A phone cannot drive the demo, so it is not offered one. */
-  .demo-frame, .demo-note { display: none; }
-  .no-demo { display: block; }
-  .download { padding-top: 112px; }
 }

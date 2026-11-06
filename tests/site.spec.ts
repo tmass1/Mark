@@ -17,31 +17,28 @@ test('the site takes its version, shortcut and download from the app', async ({ 
     await expect(link).toHaveAttribute('download', dmg);
   }
   // The arrow styles are drawn by the editor's geometry, one path each.
-  await expect(page.locator('.arrows svg path')).toHaveCount(4);
-  await expect(page.locator('.arrows figcaption')).toHaveText(['Mark', 'Tapered', 'Solid', 'Thin']);
-  // And the pointers by the Record bar's own art.
-  await expect(page.locator('.pointers figcaption')).toHaveText(['Arrow', 'Halo', 'Touch', 'Ripple']);
-  for (const art of await page.locator('.pointers svg').all()) expect(await art.locator('path, circle').count()).toBeGreaterThan(0);
+  await expect(page.locator('#arrows svg path')).toHaveCount(4);
+  expect(await page.locator('#arrows button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')))).toEqual(['Mark', 'Tapered', 'Solid', 'Thin']);
   // Every picture shown is a real file. (The hero's picture is a phone's, below.)
   for (const img of await page.locator('img').all()) {
     if (!await img.isVisible()) continue;
     await img.scrollIntoViewIfNeeded();
-    expect(await img.evaluate(el => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0)).toBe(true);
+    await expect.poll(() => img.evaluate(el => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0)).toBe(true);
   }
 });
 
 test('the site shows each device Frame puts round a capture, the phone as tall as the rest', async ({ page }) => {
   await page.setViewportSize({ width: 1360, height: 900 });
-  await page.goto('/site.html');
+  // Without the motion, which moves each at its own speed: at rest they stand on one line.
+  await page.goto('/site.html?motion=off');
   await expect(page.getByRole('heading', { name: 'A phone prototype belongs in a phone.' })).toBeVisible();
-  await expect(page.locator('.device figcaption')).toHaveText(['Phone, with its Dynamic Island', 'Browser', 'Tablet', 'Window']);
-  const box = async (name: string) => (await page.locator(`.device.${name}`).boundingBox())!;
-  const [phone, browser, tablet] = [await box('phone'), await box('browser'), await box('tablet')];
-  expect(Math.abs(phone.y + phone.height - (tablet.y + tablet.height))).toBeLessThanOrEqual(1);
-  expect(browser.y).toBeCloseTo(phone.y, 0);
+  await expect(page.locator('.devices figcaption')).toHaveText(['Phone', 'Browser', 'Tablet', 'Window']);
+  const feet = await page.locator('.devices figure').evaluateAll(figures => figures.map(figure => figure.getBoundingClientRect().bottom));
+  for (const foot of feet) expect(Math.abs(foot - feet[0])).toBeLessThanOrEqual(1);
   // A picture filling its place shows only a little less of itself: its background, not its device.
-  for (const img of await page.locator('.device img').all()) {
+  for (const img of await page.locator('.devices img').all()) {
     await img.scrollIntoViewIfNeeded();
+    await expect.poll(() => img.evaluate(el => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
     const { shown, own } = await img.evaluate(el => {
       const i = el as HTMLImageElement;
       return { shown: i.clientWidth / i.clientHeight, own: i.naturalWidth / i.naturalHeight };
@@ -51,18 +48,18 @@ test('the site shows each device Frame puts round a capture, the phone as tall a
 });
 
 test('the bar keeps its links on one line, then gives them up, with Download at its end', async ({ page }) => {
-  await page.goto('/site.html');
-  for (const width of [1360, 847, 801]) {
+  await page.goto('/site.html?motion=off');
+  for (const width of [1360, 847, 721]) {
     await page.setViewportSize({ width, height: 800 });
-    for (const link of await page.locator('.links a').all()) expect((await link.boundingBox())!.height).toBeLessThan(44);
-    const [bar, links, download] = [await page.locator('.bar').boundingBox(), await page.locator('.links').boundingBox(), await page.locator('.bar .primary').boundingBox()];
+    for (const link of await page.locator('.links a:visible').all()) expect((await link.boundingBox())!.height).toBeLessThan(44);
+    const [bar, links, download] = [await page.locator('.bar .wrap').boundingBox(), await page.locator('.links').boundingBox(), await page.locator('.bar .get').boundingBox()];
     expect(links!.x + links!.width).toBeLessThanOrEqual(download!.x);
     expect(download!.x + download!.width).toBeLessThanOrEqual(bar!.x + bar!.width);
   }
-  for (const width of [800, 400]) {
+  for (const width of [720, 400]) {
     await page.setViewportSize({ width, height: 800 });
     await expect(page.locator('.links')).toBeHidden();
-    const [bar, download] = [(await page.locator('.bar').boundingBox())!, (await page.locator('.bar .primary').boundingBox())!];
+    const [bar, download] = [(await page.locator('.bar .wrap').boundingBox())!, (await page.locator('.bar .get').boundingBox())!];
     expect(bar.x + bar.width - (download.x + download.width)).toBeLessThanOrEqual(14);
   }
 });
@@ -233,7 +230,7 @@ test('every page finds everything it asks for', async ({ page }) => {
   // The editor is loaded at the root and again from demo/, so a path that is
   // right from one is not automatically right from the other. This is the check
   // that caught the icon missing from the site and broken in the demo's frame.
-  for (const at of ['/', '/demo.html', '/site.html', '/ai.html']) {
+  for (const at of ['/', '/demo.html', '/site.html', '/ai.html', '/privacy.html', '/terms.html']) {
     const missing: string[] = [];
     page.on('response', response => {
       // Only what was fetched over the wire: a data: or blob: URL has no status
@@ -260,4 +257,107 @@ test('the demo’s editor shows the icon on its empty state, from its own depth'
   await expect(editor.getByRole('heading', { name: 'Capture your screen' })).toBeVisible();
   expect(await editor.locator('.viewfinder').evaluate(
     el => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0)).toBe(true);
+});
+
+test('the bar turns into a floating capsule once the page scrolls', async ({ page }) => {
+  await page.goto('/site.html');
+  await expect(page.locator('.bar')).not.toHaveClass(/stuck/);
+  await page.evaluate(() => window.scrollTo({ top: 400, behavior: 'instant' }));
+  await expect(page.locator('.bar')).toHaveClass(/stuck/);
+  await expect.poll(async () => (await page.locator('.bar .wrap').boundingBox())!.y).toBeGreaterThan(0);
+});
+
+test('Mark’s own arrow is drawn at the download button, and the page stands without the motion', async ({ page }) => {
+  await page.goto('/site.html');
+  await expect(page.locator('html')).toHaveClass(/ready/);
+  await expect(page.locator('.hero-arrow path').first()).toBeAttached();
+  // A heading rises a word at a time, and still reads as it's written.
+  await expect(page.getByRole('heading', { name: 'Point at it. Don’t describe it.' }).locator('.w')).toHaveCount(6);
+
+  await page.goto('/site.html?motion=off');
+  await expect(page.locator('html')).not.toHaveClass(/motion/);
+  await expect(page.locator('main .w')).toHaveCount(0);
+  await expect(page.locator('.hero-arrow path').first()).toBeAttached();
+  for (const heading of await page.locator('main h2').all()) await expect(heading).toHaveCSS('opacity', '1');
+  await expect(page.locator('.how-track')).not.toHaveCSS('position', 'sticky');
+});
+
+test('scrolling steps through each way to capture, and past the paragraph the marks replace', async ({ page }) => {
+  await page.goto('/site.html');
+  await expect(page.locator('html')).toHaveClass(/pin-capture/);
+  const through = async (selector: string, share: number) => page.evaluate(([selector, share]) => {
+    const track = document.querySelector<HTMLElement>(selector as string)!, top = track.getBoundingClientRect().top + scrollY - 84;
+    scrollTo({ top: top + (track.offsetHeight - (innerHeight - 84)) * (share as number), behavior: 'instant' });
+  }, [selector, share] as const);
+  await through('.capture-track', .1);
+  await expect(page.locator('#grab')).toHaveAttribute('data-mode', 'region');
+  await through('.capture-track', .5);
+  await expect(page.locator('#grab')).toHaveAttribute('data-mode', 'display');
+  await through('.capture-track', .9);
+  await expect(page.locator('#grab')).toHaveAttribute('data-mode', 'record');
+
+  await through('.how-track', 0);
+  await expect(page.locator('#typed-count')).toHaveText('48 words');
+  await expect(page.locator('#marks-count')).toHaveText('0 marks');
+  await through('.how-track', .78);
+  await expect(page.locator('#typed-count')).toHaveText('0 words');
+  await expect(page.locator('#marks-count')).toHaveText('3 marks');
+  await expect(page.locator('.how-marks .note, .how-marks g').first()).toBeAttached();
+});
+
+test('the marks on Step 2 are the editor’s own: drawing one adds a note', async ({ page }) => {
+  await page.goto('/site.html');
+  const picture = page.locator('#overlay');
+  await picture.scrollIntoViewIfNeeded();
+  await expect(page.locator('#steps textarea')).toHaveCount(3, { timeout: 10_000 });
+  await expect(page.locator('#steps textarea').nth(2)).toHaveValue('Export only what’s filtered', { timeout: 10_000 });
+  const box = (await picture.boundingBox())!;
+  await page.mouse.move(box.x + box.width * .2, box.y + box.height * .7);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * .4, box.y + box.height * .8, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.locator('#steps textarea')).toHaveCount(4);
+  await expect(page.locator('#steps textarea').nth(3)).toBeFocused();
+});
+
+test('the video section’s recording plays in view, and stops when clicked', async ({ page }) => {
+  await page.goto('/site.html');
+  const player = page.locator('#player'), movie = player.locator('video');
+  await player.scrollIntoViewIfNeeded();
+  await expect(player).toHaveClass(/playing/);
+  const now = () => movie.evaluate(el => (el as HTMLVideoElement).currentTime);
+  const from = await now();
+  await expect.poll(now, { timeout: 8000 }).not.toBe(from);
+  await player.click();
+  await expect(player).not.toHaveClass(/playing/);
+});
+
+test('the changelog is the release notes’ own, newest first', async ({ page }) => {
+  await page.goto('/site.html');
+  await expect(page.locator('#changelog li')).toHaveCount(4);
+  await expect(page.locator('#changelog li time').first()).toHaveText(pkg.version);
+});
+
+test('privacy, terms and contact are a click from the home page and the guide, and name no draft', async ({ page }) => {
+  for (const start of ['/site.html', '/ai.html']) {
+    await page.goto(start);
+    const footer = page.locator('footer');
+    await expect(footer.getByRole('link', { name: 'Contact' })).toHaveAttribute('href', 'mailto:hello@tommymassaro.com');
+    await footer.getByRole('link', { name: 'Privacy' }).click();
+    await expect(page).toHaveURL(/\/privacy\.html$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy');
+    await page.goto(start);
+    await footer.getByRole('link', { name: 'Terms' }).click();
+    await expect(page).toHaveURL(/\/terms\.html$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/Terms/);
+    expect(await page.content()).not.toMatch(/\bdraft\b/i);
+  }
+});
+
+test('the landing page fits a phone, nothing wider than the screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/site.html');
+  await expect(page.locator('html')).toHaveClass(/ready/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await expect(page.locator('.hero-arrow path')).toHaveCount(0);
 });

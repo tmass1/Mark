@@ -105,12 +105,19 @@
             /* Only build person profiles for people we identify, which on a set
                of demo sites is nobody — anonymous visitors stay anonymous. */
             person_profiles: "identified_only",
-            /* Both are already the defaults. They are named because they are the
-               entire reason one project works across these hosts, and a future
-               edit that turns either off would quietly split every visitor in
-               two without any error to notice. */
-            cross_subdomain_cookie: true,
-            persistence: "localStorage+cookie",
+            /* Where Mark parts from the canonical copy, on purpose: its privacy page
+               says the site counts page views and Download clicks, without cookies,
+               and this keeps that true. Nothing is kept between pages, so each page
+               load counts as a new visitor, and a visitor isn't followed across the
+               other sites. And the project's session recording, automatic clicks and
+               heatmaps, switched on in PostHog's settings for all its sites, stay
+               off here, so a change there can't quietly make the page untrue. */
+            persistence: "memory",
+            disable_session_recording: true,
+            autocapture: false,
+            rageclick: false,
+            capture_heatmaps: false,
+            capture_dead_clicks: false,
             loaded: function (ph) {
               /* A convenience label, not load-bearing. The dashboard groups by
                  `$host`, which PostHog attaches to every event by itself — so if
@@ -394,6 +401,7 @@
 
     <footer>
       <a class="brand" href="./"><img class="mark" data-mark alt="" width="26" height="26" />Mark</a>
+      <nav class="legal" aria-label="More"><a href="./privacy.html">Privacy</a><a href="./terms.html">Terms</a><a href="mailto:hello@tommymassaro.com">Contact</a></nav>
       <span class="version">Version <span data-version>0.3.0</span></span>
     </footer>
 

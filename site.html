@@ -2,11 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>Mark — mock it up, send it to your AI agent</title>
-    <meta name="description" content="Mark is a small Mac app for screenshots and short recordings. Capture your screen, draw what you want changed with arrows and numbered notes, and send it to Claude Code, Codex, Cursor or any AI agent." />
-        <link rel="canonical" href="https://mark.tommymassaro.com/" />
+    <title>Mark for Mac: mark up a screenshot, send it to your AI agent</title>
+    <meta name="description" content="Mark is a free Mac app for screenshots and short recordings. Draw what you want changed, then send it to Claude Code, Codex, Cursor or any AI agent." />
+    <link rel="canonical" href="https://mark.tommymassaro.com/" />
+    <meta name="theme-color" content="#08090b" />
+    <link rel="icon" href="/src/mark-icon.png" />
+    <link rel="apple-touch-icon" href="/src/mark-icon.png" />
+    <meta property="og:site_name" content="Mark" />
     <meta property="og:title" content="Mark for Mac" />
     <meta property="og:description" content="Capture your screen, draw what you want changed, and send it to your AI agent. Screenshots and short recordings for the Mac." />
     <meta property="og:type" content="website" />
@@ -14,8 +18,37 @@
     <meta property="og:image" content="https://mark.tommymassaro.com/site/mockup.png" />
     <meta property="og:image:width" content="1876" />
     <meta property="og:image:height" content="1232" />
+    <meta property="og:image:alt" content="Mark’s editor over a captured dashboard, marked up with three numbered notes." />
     <meta name="twitter:card" content="summary_large_image" />
-      <!--
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Mark",
+        "description": "A small Mac app for screenshots and short recordings. Draw what you want changed and send it to your AI agent.",
+        "url": "https://mark.tommymassaro.com/",
+        "image": "https://mark.tommymassaro.com/site/mockup.png",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "macOS 13 or later",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "author": { "@type": "Person", "name": "Tommy Massaro" }
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet" />
+    <script>
+      // The motion layer is switched on here, before the first paint, so nothing flashes.
+      // ?motion=off shows the page without it. If its script never starts, the page shows itself.
+      // So does a window far taller than any screen, which is how search engines read a page.
+      if (new URLSearchParams(location.search).get('motion') !== 'off' && !matchMedia('(prefers-reduced-motion: reduce)').matches && innerHeight < 2000) {
+        document.documentElement.classList.add('motion');
+        setTimeout(() => { if (!window.__motionStarted) document.documentElement.classList.remove('motion'); }, 3000);
+      }
+    </script>
+    <link rel="stylesheet" href="/src/site/landing.css" />
+    <noscript><style>.demo-frame, .demo-note, .player-play, .player-strip, .player-times { display: none; } .hero-shot { display: block; }</style></noscript>
+    <!--
       PostHog, shared with every tommymassaro.com site and read back at
       stats.tommymassaro.com. The canonical copy of this tag, with the
       reasoning behind each line, is snippets/subdomain-analytics.html in
@@ -108,12 +141,19 @@
             /* Only build person profiles for people we identify, which on a set
                of demo sites is nobody — anonymous visitors stay anonymous. */
             person_profiles: "identified_only",
-            /* Both are already the defaults. They are named because they are the
-               entire reason one project works across these hosts, and a future
-               edit that turns either off would quietly split every visitor in
-               two without any error to notice. */
-            cross_subdomain_cookie: true,
-            persistence: "localStorage+cookie",
+            /* Where Mark parts from the canonical copy, on purpose: its privacy page
+               says the site counts page views and Download clicks, without cookies,
+               and this keeps that true. Nothing is kept between pages, so each page
+               load counts as a new visitor, and a visitor isn't followed across the
+               other sites. And the project's session recording, automatic clicks and
+               heatmaps, switched on in PostHog's settings for all its sites, stay
+               off here, so a change there can't quietly make the page untrue. */
+            persistence: "memory",
+            disable_session_recording: true,
+            autocapture: false,
+            rageclick: false,
+            capture_heatmaps: false,
+            capture_dead_clicks: false,
             loaded: function (ph) {
               /* A convenience label, not load-bearing. The dashboard groups by
                  `$host`, which PostHog attaches to every event by itself — so if
@@ -194,245 +234,337 @@
     </script>
   </head>
   <body>
+    <!-- Shared by each big arrow: the icon's own drawing, from brand/mark-dark.svg. -->
+    <svg class="defs" aria-hidden="true">
+      <defs>
+        <path id="arrow-shape" d="M765 254C802 246 833 268 838 299C842 323 832 345 813 360L405 676L456 713C467 721 470 735 465 746C461 758 452 766 439 769L218 803C202 806 187 800 178 788C169 776 167 761 172 746L280 526C285 512 296 502 308 502C320 502 330 509 336 520L362 574C367 585 380 588 389 579L728 271C739 262 752 257 765 254Z" />
+        <linearGradient id="fill-arrow" x1="760" y1="265" x2="205" y2="800" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#ff8c83" /><stop offset=".22" stop-color="#ff6f64" /><stop offset=".52" stop-color="#f94e43" /><stop offset=".78" stop-color="#eb302f" /><stop offset="1" stop-color="#c91824" />
+        </linearGradient>
+        <linearGradient id="fill-rim" x1="740" y1="245" x2="220" y2="810" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#fff" stop-opacity=".54" /><stop offset=".42" stop-color="#fff" stop-opacity=".16" /><stop offset="1" stop-color="#8f111b" stop-opacity=".36" />
+        </linearGradient>
+        <linearGradient id="fill-echo" x1="760" y1="265" x2="205" y2="800" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#ff5a4f" /><stop offset=".55" stop-color="#b3221d" /><stop offset="1" stop-color="#6e0f12" />
+        </linearGradient>
+        <!-- Grain over the arrow's own colour, as light on a rough surface. -->
+        <filter id="grain" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
+          <feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" seed="7" result="noise" />
+          <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  .62 0 0 0 -.24" result="specks" />
+          <feComposite in="specks" in2="SourceAlpha" operator="in" result="inside" />
+          <feBlend in="inside" in2="SourceGraphic" mode="multiply" />
+        </filter>
+        <!-- A halo that breaks up into specks as it falls away, not a smooth glow. -->
+        <filter id="stipple" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="46" result="soft" />
+          <feTurbulence type="fractalNoise" baseFrequency="1.15" numOctaves="1" seed="11" result="noise" />
+          <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1 0 0 0 0" result="alpha" />
+          <feComposite in="soft" in2="alpha" operator="arithmetic" k1="0" k2="1.5" k3=".92" k4="-1.02" result="mixed" />
+          <feComponentTransfer in="mixed" result="specks"><feFuncA type="linear" slope="3.4" /></feComponentTransfer>
+          <feFlood flood-color="#ff3b30" result="colour" />
+          <feComposite in="colour" in2="specks" operator="in" />
+        </filter>
+      </defs>
+    </svg>
+
+    <div class="ambient" aria-hidden="true">
+      <i style="--c:#0a84ff26;--s:1200px;left:84%;top:7%;--dx:90px;--dy:-70px;--t:52s"></i>
+      <i style="--c:#bf5af221;--s:1100px;left:10%;top:14%;--dx:-80px;--dy:60px;--t:64s"></i>
+      <i style="--c:#0a84ff21;--s:1000px;left:80%;top:22%;--dx:70px;--dy:80px;--t:48s"></i>
+      <i style="--c:#30d1581c;--s:1100px;left:14%;top:29%;--dx:100px;--dy:-50px;--t:58s"></i>
+      <i style="--c:#bf5af221;--s:1200px;left:90%;top:36%;--dx:-90px;--dy:70px;--t:70s"></i>
+      <i style="--c:#ff9f0a17;--s:1000px;left:6%;top:43%;--dx:80px;--dy:50px;--t:54s"></i>
+      <i style="--c:#ff453a1c;--s:1100px;left:72%;top:50%;--dx:-70px;--dy:-80px;--t:62s"></i>
+      <i style="--c:#0a84ff21;--s:1200px;left:20%;top:57%;--dx:90px;--dy:60px;--t:50s"></i>
+      <i style="--c:#30d1581c;--s:1000px;left:92%;top:63%;--dx:-60px;--dy:-70px;--t:66s"></i>
+      <i style="--c:#bf5af221;--s:1100px;left:8%;top:70%;--dx:70px;--dy:-90px;--t:56s"></i>
+      <i style="--c:#0a84ff1e;--s:1200px;left:76%;top:77%;--dx:-100px;--dy:60px;--t:60s"></i>
+      <i style="--c:#ff453a17;--s:1100px;left:24%;top:84%;--dx:80px;--dy:70px;--t:68s"></i>
+      <i style="--c:#bf5af21c;--s:1000px;left:86%;top:91%;--dx:-70px;--dy:-60px;--t:52s"></i>
+      <i style="--c:#0a84ff1c;--s:1100px;left:12%;top:97%;--dx:60px;--dy:-70px;--t:64s"></i>
+    </div>
     <a class="skip" href="#download">Skip to download</a>
 
-    <header class="top">
-      <nav class="bar" aria-label="Site">
-        <a class="brand" href="#top"><img class="mark" data-mark alt="" width="36" height="36" />Mark</a>
-        <div class="links">
+    <header class="bar" id="bar">
+      <div class="wrap">
+        <a class="brand" href="#top"><img data-mark alt="" />Mark</a>
+        <nav class="links" aria-label="Site">
           <a href="#how">How it works</a>
           <a href="#video">Video</a>
           <a href="#agents">Agents</a>
           <a href="#features">Features</a>
           <a href="./ai.html">Setup guide</a>
-        </div>
-        <a class="primary small" href="#download" data-download data-track-download="mark" data-platform="macos">Download for Mac</a>
-      </nav>
+        </nav>
+        <a class="get small" href="#download" data-download data-track-download="mark" data-platform="macos">Download<span class="more">&nbsp;for Mac</span></a>
+      </div>
     </header>
 
     <main id="top">
-      <section class="hero">
-        <!-- The chip names one person after another (page.ts); the heading's
-             name lists them all, for anyone who hears it rather than sees it. -->
-        <h1 aria-label="Mock it up. Send it to your AI agent, co-worker, designer or friend.">Mock it up.<br />Send it to
-          your <span class="nb"><span class="who" data-who="agent"><i data-glyph="agent"></i><span>AI agent</span></span>.</span></h1>
-        <p class="lede">Mark is a small Mac app for screenshots and short recordings. Press <kbd data-shortcut>⌘4</kbd>,
-          draw what you want changed, and hand over a picture instead of a paragraph.</p>
-        <div class="actions">
-          <a class="primary big" href="#download" data-download data-track-download="mark" data-platform="macos">
-            <svg class="apple" viewBox="0 0 17 20" aria-hidden="true"><path d="M14.2 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.8-3.1-.8C3.9 5.4 1.6 7.5 1.6 11c0 1.4.3 2.8.9 4.2.7 1.7 2.3 4.4 4 4.4.9 0 1.6-.6 2.9-.6 1.2 0 1.8.6 3 .6 1.8 0 3.2-2.4 3.9-4.1.5-1.1.7-1.6.7-1.7-.1 0-2.8-1-2.8-3.2zM11.9 3.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>
-            Download for Mac
-          </a>
-        </div>
-        <p class="fine"><span class="only-mac">Version <span data-version>0.3.0</span> · macOS 13 or later · Apple silicon and Intel · Notarized by Apple</span>
-          <span class="not-mac">Mark is a Mac app. The download runs on macOS 13 or later, Apple silicon or Intel.</span></p>
-        <p class="works-with"><span>Works with</span> Claude Code · Codex · Cursor · GitHub Copilot · ChatGPT · Grok Build ·
-          any chat you can paste into</p>
-        <!-- Mark itself rather than a picture of it: the real editor, overlay and
-             settings, running in the page against a picture of a desktop. A phone
-             can't drive it, so a phone gets the picture instead and never loads
-             the demo: page.ts gives the frame its source only in a window wide
-             enough to show it. -->
-        <div class="demo-frame" id="try">
-          <!-- A picture of an app looks just like the app, so the frame says
-               which this is -- until the demo has been used. -->
-          <p class="try-me"><span class="live" aria-hidden="true"></span><strong>Try me</strong> — it’s the real app, live</p>
-          <iframe class="demo" data-src="./demo.html?embed" title="Mark, running in your browser" allow="microphone; clipboard-write"></iframe>
-        </div>
-        <p class="demo-note">This is Mark itself — its real editor, selection overlay and settings — running in your browser
-          against a picture of a desktop. It really records, too: press Record, and click around its dashboard.</p>
-        <figure class="shot hero-shot">
-          <img src="./site/mockup.png" width="938" height="616" loading="lazy" alt="Mark’s editor over a captured dashboard, marked up with three numbered notes: add an “All time” range, show the day’s total on hover, and label the dashed line “Last year”." />
-        </figure>
-        <p class="no-demo">The demo wants a pointer and a keyboard. Open this page on a Mac to try it.</p>
-      </section>
-
-      <section class="flow" id="how" aria-labelledby="how-title">
-        <div class="flow-text">
-          <p class="eyebrow">How it works</p>
-          <h2 id="how-title">Point at it. Don’t describe it.</h2>
-          <p class="section-lede">“The green button, no, the one under the total” takes a paragraph to type and still gets
-            misread. A mock-up takes three marks, and your agent sees exactly where each change goes.</p>
-          <ol class="beats">
-            <li><span class="beat" aria-hidden="true">1</span><div><h3>Capture</h3>
-              <p><kbd data-shortcut>⌘4</kbd> from anywhere: a region, a window, the whole screen, or a few seconds later to
-                catch a menu or a hover.</p></div></li>
-            <li><span class="beat" aria-hidden="true">2</span><div><h3>Mock it up</h3>
-              <p>Arrows, boxes, text, a pen, and numbered notes — one change each, in the order you want them made. Redact
-                anything private before it goes.</p></div></li>
-            <li><span class="beat" aria-hidden="true">3</span><div><h3>Send it</h3>
-              <p><kbd>⌥⌘C</kbd> copies the picture. Paste it into Claude Code, Codex, Cursor or any chat, and
-                <kbd>⇧⌘L</kbd> copies the notes as a list to paste beside it.</p></div></li>
-          </ol>
-        </div>
-        <div class="flow-side">
-          <figure class="shot mockup-shot">
-            <img src="./site/checkout.png" width="938" height="616" loading="lazy" alt="Mark’s editor over a captured checkout page, marked up with three numbered notes: show the date, not the days; make Express free over $75; and make Pay now full width." />
-          </figure>
-          <figure class="received">
-            <figcaption>The notes, as <kbd>⇧⌘L</kbd> copies them</figcaption>
-            <pre>1. Show the date, not the days
-2. Make Express free over $75
-3. Make Pay now full width</pre>
-          </figure>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="wrap">
+          <!-- The chip names one person after another; the heading's name lists them all,
+               for anyone who hears it rather than sees it. -->
+          <h1 id="hero-title" aria-label="Mock it up. Send it to your AI agent, co-worker, designer or friend.">Mock it up.<br />Send it to your <span class="nb"><span class="who" data-who="agent"><i data-glyph="agent"></i><span>AI agent</span></span>.</span></h1>
+          <p class="lede">Mark is a small Mac app for screenshots and short recordings. Press <kbd class="k" data-shortcut>⌘4</kbd>, draw what you want changed, and hand over a picture instead of a paragraph.</p>
+          <!-- The button and the arrow pointing at it share this box, so they move as one. -->
+          <div class="hero-cta">
+            <a class="get" href="#download" data-download data-track-download="mark" data-platform="macos">
+              <svg viewBox="0 0 17 20" aria-hidden="true"><path d="M14.2 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.8-3.1-.8C3.9 5.4 1.6 7.5 1.6 11c0 1.4.3 2.8.9 4.2.7 1.7 2.3 4.4 4 4.4.9 0 1.6-.6 2.9-.6 1.2 0 1.8.6 3 .6 1.8 0 3.2-2.4 3.9-4.1.5-1.1.7-1.6.7-1.7-.1 0-2.8-1-2.8-3.2zM11.9 3.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>
+              Download for Mac
+            </a>
+          </div>
+          <p class="fine"><span class="only-mac">Free · Version <span data-version></span> · macOS 13 or later · Apple silicon and Intel · Notarized by Apple</span><span class="not-mac">Mark is a Mac app. The download runs on macOS 13 or later, Apple silicon or Intel.</span></p>
+          <p class="works"><span>Works with</span> Claude Code · Codex · Cursor · GitHub Copilot · ChatGPT · Grok Build · any chat you can paste into</p>
+          <!-- Mark itself rather than a picture of it. A phone can't drive it, so a phone gets
+               the picture instead and never loads the demo. -->
+          <div class="demo-frame" id="try">
+            <p class="try-me"><span class="live" aria-hidden="true"></span><strong>Try me</strong> — it’s the real app, live</p>
+            <iframe class="demo" data-src="./demo.html?embed" title="Mark, running in your browser" allow="microphone; clipboard-write"></iframe>
+          </div>
+          <p class="demo-note">This is Mark itself: its real editor, selection overlay and settings, running in your browser against a picture of a desktop. It really records, too: press Record, and click around its dashboard.</p>
+          <figure class="hero-shot"><img src="/site/mockup.webp" width="1876" height="1232" loading="lazy" decoding="async" alt="Mark’s editor over a captured dashboard, marked up with three numbered notes: add an “All time” range, show the day’s total on hover, and label the dashed line “Last year”." /></figure>
+          <p class="no-demo">The demo wants a pointer and a keyboard. Open this page on a Mac to try it.</p>
         </div>
       </section>
 
-      <section class="video" id="video" aria-labelledby="video-title">
-        <figure class="shot video-shot">
-          <img src="./site/board.png" width="1200" height="860" loading="lazy" alt="Mark’s editor holding a 14-second recording of a sprint board: a numbered note “Snaps back when dropped” points at a card mid-drag, boxed in red. Below it, a strip of frames is trimmed with yellow handles, a zoom of 1.5× sits in purple along it and a part is cut out in red, beside buttons for Cut, Zoom, 1× and Frame, with Save Video in the footer." />
-        </figure>
-        <div class="video-text">
-          <p class="eyebrow">New · Video</p>
-          <h2 id="video-title">When a still won’t show it, record it.</h2>
-          <p class="section-lede">A flicker, a stuck transition, a flow that takes five clicks. Record a region, a window or the
-            whole screen — a window you pick comes to the front — with your microphone if you want to talk it through.</p>
-          <p class="fine">Up to five minutes. Recording needs macOS 15 or later.</p>
-          <div class="agents-actions">
-            <button class="primary" type="button" data-record>Record a video</button>
-            <span class="agents-try">in the demo above</span>
+      <section class="chapter wrap" id="how" aria-labelledby="point-title">
+        <div class="how-track"><div class="how-stage">
+        <div class="head">
+          <h2 id="point-title">Point at it.<br />Don’t describe it.</h2>
+          <p class="lede">A mock-up takes three marks <span class="n"><span>1</span></span> <span class="n"><span>2</span></span> <span class="n"><span>3</span></span> and your agent sees exactly where each change goes.</p>
+        </div>
+        <div class="versus">
+          <figure>
+            <figcaption>What you’d type <span id="typed-count"></span></figcaption>
+            <div class="composer">
+              <p id="typed">Can you fix a few things on the checkout? Where it says how many business days for Standard, show the actual date instead. Express should be free over $75, that’s the $12 one. And the green button, no, the one under the total, should go the full width.</p>
+              <div class="composer-end" aria-hidden="true">
+                <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M14 8.5v11M8.5 14h11" /></svg>
+                <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="14" r="12.5" /><path d="M14 19.5v-11M9.5 13 14 8.5l4.5 4.5" /></svg>
+              </div>
+            </div>
+          </figure>
+          <figure>
+            <figcaption>What you’d send <span>3 marks</span></figcaption>
+            <div class="shot"><img src="/site/checkout.webp" width="1876" height="1232" alt="Mark’s editor over a captured checkout page, marked up with three numbered notes: show the date, not the days; make Express free over $75; and make Pay now full width." /></div>
+          </figure>
+        </div>
+        </div></div>
+      </section>
+
+      <section class="chapter wrap" aria-labelledby="ch-capture">
+        <div class="capture-track"><div class="capture-stage">
+        <div class="head">
+          <h2 id="ch-capture"><span class="n"><span>1</span></span>Press <button class="kc" type="button" data-press aria-label="Command">⌘</button><button class="kc" type="button" data-press aria-label="4">4</button> from anywhere.</h2>
+          <p class="lede">A region, a window, the whole screen, or a few seconds later to catch a menu or a hover. Press the keys, or drag across the picture.</p>
+        </div>
+        <div class="capture-demo">
+          <div class="palette">
+            <div class="palette-top"><img data-mark alt="" />Capture your screen</div>
+            <div class="modes" id="modes" role="group" aria-label="Ways to capture"></div>
+            <div class="palette-end"><span>From any app</span><span><kbd class="k" data-shortcut>⌘4</kbd></span></div>
+          </div>
+          <div class="stage-grab" id="grab" data-mode="region">
+            <img src="/demo/scene.jpg" width="2880" height="1800" loading="lazy" decoding="async" alt="A window on a Mac desktop, with a selection being dragged across it and its size shown beside it." />
+            <div class="marquee" id="marquee">
+              <svg class="tick a" viewBox="0 0 22 22"><path d="M2 14V6a4 4 0 0 1 4-4h8" /></svg>
+              <svg class="tick b" viewBox="0 0 22 22"><path d="M2 14V6a4 4 0 0 1 4-4h8" /></svg>
+              <svg class="tick c" viewBox="0 0 22 22"><path d="M2 14V6a4 4 0 0 1 4-4h8" /></svg>
+              <svg class="tick d" viewBox="0 0 22 22"><path d="M2 14V6a4 4 0 0 1 4-4h8" /></svg>
+              <output class="reading" id="reading"></output>
+            </div>
+            <p class="hint" id="hint"></p>
+            <div class="count" id="count" aria-hidden="true"></div>
+            <div class="recbar"><span>Microphone</span><span>Delay</span><span>Pointer</span><b>Record</b></div>
+            <div class="flash" id="flash"></div>
           </div>
         </div>
-        <ul class="facts">
-          <li><span class="glyph" data-glyph="mic"></span><div><h3>One bar for all of it</h3>
-            <p>The microphone, a delay, the pointer and clicks, and zooming sit beside Record, under what you’re about to
-              record.</p></div></li>
-          <li><span class="glyph" data-glyph="timed"></span><div><h3>A countdown you can see</h3>
-            <p>A delayed recording counts down over the shot, then gets out of the way. Clicks go straight through while you
-              set up.</p></div></li>
-          <li><span class="glyph" data-glyph="zoom"></span><div><h3>Zoom in on clicks</h3>
-            <p>The picture moves gently in around each burst of clicks, following the pointer. Drag a zoom’s ends, or press
-              <kbd>Z</kbd> to add one.</p></div></li>
-          <li><span class="glyph" data-glyph="cut"></span><div><h3>Cut it down</h3>
-            <p>Drag the ends of the strip to trim, press <kbd>K</kbd> to cut a part out of the middle, and play the rest
-              at 2×.</p></div></li>
-          <li><span class="glyph" data-glyph="steps"></span><div><h3>Mark it up</h3>
-            <p>Arrows, boxes and numbered notes appear at the moment you drew them, and can go before the end: step 1’s arrow
-              is gone by step 4.</p></div></li>
-          <li><span class="glyph" data-glyph="save"></span><div><h3>Keep it as a video or a GIF</h3>
-            <p>Save an MP4 or a looping GIF, or copy either to paste into Slack, a pull request or an issue. A smaller GIF is
-              one switch away.</p></div></li>
-        </ul>
+        </div></div>
       </section>
 
-      <section class="frame" id="frame" aria-labelledby="frame-title">
-        <p class="eyebrow">New · Frame</p>
-        <h2 id="frame-title">A phone prototype belongs in a phone.</h2>
-        <p class="section-lede">Set a recording or a screenshot on a background and put a device round it: a window, a browser,
-          or a phone or tablet in four colours, a phone with its Dynamic Island if you like. A tall recording starts in a
-          phone.</p>
-        <!-- What the Frame panel makes, as it makes it: each is the app's own drawing of that device. -->
-        <div class="devices">
-          <figure class="device phone">
-            <img src="./site/phone.png" width="450" height="846" loading="lazy" alt="A travel app’s Lisbon itinerary in a phone in Natural Titanium, with its Dynamic Island, on a pink-to-blue gradient. A numbered note, “Say who booked it”, points at a table for three." />
-            <figcaption>Phone, with its Dynamic Island</figcaption>
-          </figure>
-          <figure class="device browser">
-            <img src="./site/browser.png" width="600" height="402" loading="lazy" alt="A checkout page in a browser with an address bar, on a violet-to-teal gradient. A numbered note, “Make Pay now full width”, points at the Pay now button." />
-            <figcaption>Browser</figcaption>
-          </figure>
-          <figure class="device tablet">
-            <img src="./site/tablet.png" width="500" height="380" loading="lazy" alt="A map of a day in Lisbon on a tablet in Deep Blue, on a peach gradient. A numbered note, “Say how long the tram takes”, points at the second stop." />
-            <figcaption>Tablet</figcaption>
-          </figure>
-          <figure class="device window">
-            <img src="./site/window.png" width="500" height="359" loading="lazy" alt="A podcast player’s window with its title bar, on a green-to-blue gradient. An arrow and the words “Thicker, with chapters” point at its progress bar." />
-            <figcaption>Window</figcaption>
-          </figure>
+      <section class="chapter wrap" aria-labelledby="ch-mark">
+        <div class="head">
+          <h2 id="ch-mark"><span class="n"><span>2</span></span>Draw what you want changed.</h2>
+          <p class="lede">Arrows, boxes, text, a pen, and numbered notes, one change each, in the order you want them made. <strong>This is Mark’s own drawing code, so go ahead: drag on the picture.</strong></p>
+        </div>
+        <div class="draw">
+          <div class="tools">
+            <div class="tool-set" id="tools" role="group" aria-label="Tool"></div>
+            <span class="grow"></span>
+            <span class="label">Arrow</span><div class="tool-set" id="arrows" role="group" aria-label="Arrow"></div>
+            <span class="label">Style</span><div class="tool-set" id="looks" role="group" aria-label="Style"></div>
+            <button class="plain" type="button" id="undo" disabled>Undo</button>
+            <button class="plain" type="button" id="wipe">Clear</button>
+          </div>
+          <div class="picture" id="picture">
+            <img id="picture-image" src="/site/orders.webp" width="1761" height="1130" draggable="false" loading="lazy" decoding="async" alt="An orders table, with marks on it that you can move and add to." />
+            <svg class="overlay" id="overlay" aria-label="Drag here to draw"></svg>
+          </div>
+          <aside class="steps" aria-label="Your notes">
+            <div class="steps-top"><span>Steps</span><span id="steps-count" style="color:#9ca3af"></span></div>
+            <ol class="steps-list" id="steps"></ol>
+            <p class="steps-end">Type a note and it goes on the picture. <kbd class="k">⇧⌘L</kbd> copies them all as a list.</p>
+          </aside>
         </div>
       </section>
 
-      <section class="agents" id="agents" aria-labelledby="agents-title">
-        <div class="agents-text">
-          <p class="eyebrow">Works with your agent</p>
-          <h2 id="agents-title">Or let your agent ask.</h2>
-          <p class="section-lede">Mark speaks MCP. When Claude Code, Codex, Copilot or Cursor needs to see your screen, it asks
-            Mark, and Mark comes forward with what it wants to see. You capture it, point, and press Send.</p>
-          <p class="agents-note">Send gives your agent the picture, every mark and where it is, your notes, and the words on
-            screen, read on your Mac. Nothing goes without that Send.</p>
-          <div class="agents-actions">
-            <button class="primary" type="button" data-ask>Let an agent ask</button>
-            <span class="agents-try">in the demo above</span>
+      <section class="chapter wrap" aria-labelledby="ch-send">
+        <div class="head">
+          <h2 id="ch-send"><span class="n"><span>3</span></span>Hand over a picture, not a paragraph.</h2>
+          <p class="lede">Paste it into Claude Code, Codex, Cursor or any chat. Your agent sees what you see, with your notes beside it.</p>
+        </div>
+        <div class="send">
+          <div class="chords">
+            <div class="chord">
+              <div class="keys"><span class="kc">⌥</span><span class="kc">⌘</span><span class="kc">C</span></div>
+              <p><strong>Copy and close</strong>The picture, marks and all, on your clipboard.</p>
+            </div>
+            <div class="chord">
+              <div class="keys"><span class="kc">⇧</span><span class="kc">⌘</span><span class="kc">L</span></div>
+              <p><strong>Copy the notes</strong>As a numbered list, to paste beside it.</p>
+            </div>
+          </div>
+          <div class="term-wrap">
+            <div class="term">
+              <div class="term-top"><i></i><i></i><i></i><span>waypoint — claude</span></div>
+<pre><span class="dim">›</span> <span class="tag">[Image #1]</span>
+<span class="me">  1. Add an “All time” range
+  2. Show the day’s total on hover
+  3. Label the dashed line “Last year”</span>
+
+<span class="dim">›</span> <span class="caret"></span></pre>
+            </div>
+            <figure class="copied" aria-hidden="true">
+              <div class="frame"><img src="/site/capture.webp" width="1720" height="884" loading="lazy" decoding="async" alt="" /><svg id="copied-marks"></svg></div>
+            </figure>
           </div>
         </div>
-        <figure class="shot ask-shot">
-          <img src="./site/signup.png" width="938" height="564" loading="lazy" alt="Mark’s editor with Codex’s ask across the top — it asks to see “the sign-up error” — over a captured sign-up form with two numbered notes: 14 characters, still “too short”, and yet it says Strong. Send to Codex is in the corner." />
-        </figure>
+      </section>
+
+      <section class="chapter wrap" id="agents" aria-labelledby="ch-ask">
+        <div class="ask">
+          <figure class="shot"><img src="/site/signup.webp" width="1876" height="1128" loading="lazy" alt="Mark’s editor with Codex’s ask across the top, asking to see “the sign-up error”, over a captured sign-up form with two numbered notes. Send to Codex is in the corner." /></figure>
+          <div>
+            <h2 id="ch-ask">Or let your agent ask.</h2>
+            <p class="lede">Mark speaks MCP. When Claude Code, Codex, Copilot or Cursor needs to see your screen, it asks Mark, and Mark comes forward with what it wants to see. You capture it, point, and press Send.</p>
+            <p class="lede"><strong>Nothing goes without that Send.</strong></p>
+            <div class="row-actions"><button class="quiet" type="button" data-ask>Let an agent ask, in the demo</button></div>
+          </div>
+        </div>
         <div class="setup">
           <div>
             <h3>Set it up once</h3>
-            <p>For Claude Code, in Terminal. Mark’s Settings has the rest ready — Codex, Copilot, Grok Build, Claude Desktop,
-              ChatGPT, Cursor and VS Code — and <a class="inline" href="./ai.html">the setup guide</a> walks through each.</p>
-            <div class="command"><code>claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp</code>
-              <button class="copy-command" type="button">Copy</button></div>
+            <p>For Claude Code, in Terminal. Mark’s Settings has the rest ready, and <a href="./ai.html">the setup guide</a> walks through each.</p>
+            <div class="command"><code>claude mcp add --scope user mark -- '/Applications/Mark.app/Contents/MacOS/mark' --mcp</code><button class="copy-command" type="button">Copy</button></div>
           </div>
           <div>
-            <h3>Any chat</h3>
-            <p>A chat in the cloud can’t reach your Mac, so paste: every capture lands on your clipboard as a PNG, and
-              <kbd>⇧⌘L</kbd> copies its numbered notes as text.</p>
+            <h3>What Send gives it</h3>
+            <p>The picture, every mark and where it is, your notes, and the words on screen, read on your Mac.</p>
           </div>
         </div>
       </section>
 
-      <section class="features" id="features" aria-labelledby="features-title">
-        <h2 id="features-title">Small, and particular about it.</h2>
-        <div class="grid">
-          <article class="card">
-            <div class="visual arrows" data-arrows></div>
+      <section class="chapter wrap" id="video" aria-labelledby="ch-video">
+        <div class="head">
+          <h2 id="ch-video">When a still won’t show it, record it.</h2>
+          <div>
+            <p class="lede">A flicker, a stuck transition, a flow that takes five clicks. Record a region, a window or the whole screen, with your microphone if you want to talk it through.</p>
+            <div class="row-actions"><button class="quiet" type="button" data-record>Record a video, in the demo</button><span class="fine">Up to five minutes. macOS 15 or later.</span></div>
+          </div>
+        </div>
+        <figure class="shot player" id="player">
+          <img src="/site/board-chrome.webp" width="2400" height="1720" loading="lazy" decoding="async" alt="Mark’s editor playing a 14-second recording of a sprint board: a card is dragged across and snaps back, a numbered note “Snaps back when dropped” appears, and the strip of frames below is trimmed, zoomed and cut." />
+          <div class="player-clip"><div class="player-zoom">
+            <video muted playsinline preload="none" aria-hidden="true" tabindex="-1">
+              <source src="/site/board.mp4" type="video/mp4" />
+              <source src="/site/board.webm" type="video/webm" />
+            </video>
+            <svg class="player-marks" aria-hidden="true"></svg>
+          </div></div>
+          <button class="player-play" type="button" aria-label="Play">
+            <svg class="when-paused" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.6 4.6v10.8L15.4 10z" fill="currentColor" /></svg>
+            <svg class="when-playing" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.6h2.8v10.8H6zM11.2 4.6H14v10.8h-2.8z" fill="currentColor" /></svg>
+          </button>
+          <div class="player-strip" aria-hidden="true"><i></i></div>
+          <span class="player-times" aria-hidden="true"><b></b><span></span></span>
+        </figure>
+        <div class="facts">
+          <div><h3>Zoom in on clicks</h3><p>The picture moves gently in around each burst of clicks, following the pointer. Drag a zoom’s ends, or press <kbd class="k">Z</kbd> to add one.</p></div>
+          <div><h3>Cut it down</h3><p>Drag the ends of the strip to trim, press <kbd class="k">K</kbd> to cut a part out of the middle, and play the rest at 2×.</p></div>
+          <div><h3>Keep it as a video or a GIF</h3><p>Save an MP4 or a looping GIF, or copy either to paste into Slack, a pull request or an issue.</p></div>
+        </div>
+      </section>
+
+      <section class="chapter wrap" aria-labelledby="ch-frame">
+        <div class="head">
+          <h2 id="ch-frame">A phone prototype belongs in a phone.</h2>
+          <p class="lede">Set a recording or a screenshot on a background and put a device round it: a window, a browser, a phone or a tablet.</p>
+        </div>
+        <div class="devices">
+          <figure><img src="/site/phone.png" width="900" height="1692" loading="lazy" alt="A travel itinerary in a phone, with a numbered note, “Say who booked it”." /><figcaption>Phone</figcaption></figure>
+          <figure><img src="/site/browser.png" width="1200" height="803" loading="lazy" alt="A checkout page in a browser, with a numbered note, “Make Pay now full width”." /><figcaption>Browser</figcaption></figure>
+          <figure><img src="/site/tablet.png" width="1000" height="760" loading="lazy" alt="A map of a day in Lisbon on a tablet, with a numbered note, “Say how long the tram takes”." /><figcaption>Tablet</figcaption></figure>
+          <figure><img src="/site/window.png" width="1000" height="718" loading="lazy" alt="A podcast player’s window, with an arrow and the words “Thicker, with chapters”." /><figcaption>Window</figcaption></figure>
+        </div>
+      </section>
+
+      <section class="chapter wrap" id="features" aria-labelledby="ch-keys">
+        <div class="head">
+          <h2 id="ch-keys">Small, and particular about it.</h2>
+          <p class="lede">Nearly everything in Mark is a key away. Hover one, or press it.</p>
+        </div>
+        <div class="reader" id="reader" aria-live="polite"></div>
+        <div class="keyboard" id="keyboard" aria-hidden="true"></div>
+        <ul class="keylist" id="keylist"></ul>
+        <div class="figs">
+          <article>
+            <svg id="fig-arrow" viewBox="0 0 320 210" aria-hidden="true"></svg>
             <h3>Arrows worth pointing with</h3>
-            <p>The one from Mark’s icon, tapered, solid or thin, and the tip lands exactly where you let go. A Style menu dresses your notes and Mark’s arrow four ways.</p>
+            <p>The one from Mark’s icon, tapered, solid or thin, and the tip lands exactly where you let go.</p>
           </article>
-          <article class="card">
-            <div class="visual pointers" data-pointers></div>
-            <h3>A pointer for the occasion</h3>
-            <p>Chosen before you record: the Mac’s arrow, a soft halo, or a fingertip for phone prototypes, with a ripple at each tap.</p>
-          </article>
-          <article class="card">
-            <div class="visual picture"><img src="./site/redacted.png" width="216" height="108" loading="lazy" alt="An API keys card whose live key has been replaced by coarse grey blocks; the test key beneath it still reads in full." /></div>
+          <article>
+            <svg id="fig-redact" viewBox="0 0 320 210" aria-hidden="true"></svg>
             <h3>Redact, don’t blur</h3>
             <p>Coarse blocks averaged from the capture, where a blur could be partly undone.</p>
           </article>
+          <article>
+            <svg id="fig-mac" viewBox="0 0 320 210" aria-hidden="true"></svg>
+            <h3>Nothing leaves your Mac</h3>
+            <p>No account, no cloud, and nothing goes to an AI without Send.</p>
+          </article>
         </div>
-        <!-- The rest, a line each, in one pane. -->
-        <ul class="more" aria-label="More of what Mark does">
-          <li><span class="glyph" data-glyph="window"></span><div><h3>A window, whole</h3>
-            <p>Press <kbd>Space</kbd> and click one, even where it’s covered.</p></div></li>
-          <li><span class="glyph" data-glyph="text"></span><div><h3>Copy the words</h3>
-            <p><kbd>⇧⌘T</kbd> copies its text, in reading order.</p></div></li>
-          <li><span class="glyph" data-glyph="hide"></span><div><h3>Hide what’s sensitive</h3>
-            <p><kbd>⇧⌘R</kbd> pixelates emails, numbers, keys and faces.</p></div></li>
-          <li><span class="glyph" data-glyph="crop"></span><div><h3>Crop keeps your work</h3>
-            <p>To any shape, and what you drew comes along.</p></div></li>
-          <li><span class="glyph" data-glyph="timed"></span><div><h3>Timed, for menus</h3>
-            <p>A countdown over the shot, to catch a menu or a hover open.</p></div></li>
-          <li><span class="glyph" data-glyph="thumbnail"></span><div><h3>Or skip the editor</h3>
-            <p><kbd>⌘C</kbd> copies it and opens nothing, or a thumbnail waits in the corner.</p></div></li>
-          <li><span class="glyph" data-glyph="menu"></span><div><h3>In the Dock, or not</h3>
-            <p>Its icon brings back a closed editor. Or keep Mark in the menu bar alone.</p></div></li>
-          <li><span class="glyph" data-glyph="private"></span><div><h3>Nothing leaves your Mac</h3>
-            <p>No account, no cloud, and nothing goes to an AI without Send.</p></div></li>
-        </ul>
       </section>
 
-      <section class="download" id="download" aria-labelledby="download-title">
-        <img class="mark large" data-mark alt="" width="84" height="84" />
-        <h2 id="download-title">Get Mark.</h2>
-        <p>Version <span data-version>0.3.0</span> · Universal · Notarized by Apple</p>
-        <a class="primary big" href="#" data-download data-track-download="mark" data-platform="macos">
-          <svg class="apple" viewBox="0 0 17 20" aria-hidden="true"><path d="M14.2 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.8-3.1-.8C3.9 5.4 1.6 7.5 1.6 11c0 1.4.3 2.8.9 4.2.7 1.7 2.3 4.4 4 4.4.9 0 1.6-.6 2.9-.6 1.2 0 1.8.6 3 .6 1.8 0 3.2-2.4 3.9-4.1.5-1.1.7-1.6.7-1.7-.1 0-2.8-1-2.8-3.2zM11.9 3.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>
-          Download for Mac
-        </a>
-        <p class="fine">Open the disk image and drag Mark to Applications. macOS asks for Screen Recording the first time you
-          capture. Screenshots need macOS 13 or later; recording video, macOS 15. After that, Mark checks for updates by itself.</p>
+      <section class="chapter wrap" id="log" aria-labelledby="ch-log">
+        <h2 id="ch-log">Changelog</h2>
+        <ol class="log" id="changelog"></ol>
+      </section>
+
+      <section class="last" id="download" aria-labelledby="ch-get">
+        <div class="wrap">
+          <div class="giant up" aria-hidden="true">
+            <svg viewBox="0 0 1024 1024"><use href="#arrow-shape" filter="url(#stipple)" /></svg>
+            <svg viewBox="0 0 1024 1024"><use href="#arrow-shape" fill="url(#fill-echo)" opacity=".5" transform="rotate(3.2 178 788)" /></svg>
+            <svg viewBox="0 0 1024 1024"><g filter="url(#grain)"><use href="#arrow-shape" fill="url(#fill-arrow)" stroke="url(#fill-rim)" stroke-width="5" stroke-linejoin="round" /></g></svg>
+          </div>
+          <h2 id="ch-get">Get Mark.</h2>
+          <a class="get" href="#download" data-download data-track-download="mark" data-platform="macos">
+            <svg viewBox="0 0 17 20" aria-hidden="true"><path d="M14.2 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.8-3.1-.8C3.9 5.4 1.6 7.5 1.6 11c0 1.4.3 2.8.9 4.2.7 1.7 2.3 4.4 4 4.4.9 0 1.6-.6 2.9-.6 1.2 0 1.8.6 3 .6 1.8 0 3.2-2.4 3.9-4.1.5-1.1.7-1.6.7-1.7-.1 0-2.8-1-2.8-3.2zM11.9 3.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>
+            Download for Mac
+          </a>
+          <p class="fine">Free. Open the disk image and drag Mark to Applications. macOS asks for Screen Recording the first time you capture. Screenshots need macOS 13 or later; recording video, macOS 15. After that, Mark checks for updates by itself.</p>
+        </div>
       </section>
     </main>
 
     <footer>
-      <a class="brand" href="#top"><img class="mark" data-mark alt="" width="26" height="26" />Mark</a>
-      <span class="version">Version <span data-version>0.3.0</span></span>
+      <div class="wrap">
+        <a class="brand" href="#top"><img data-mark alt="" />Mark</a>
+        <nav aria-label="More"><a href="./ai.html">Setup guide</a><a href="#log">Changelog</a><a href="./privacy.html">Privacy</a><a href="./terms.html">Terms</a><a href="mailto:hello@tommymassaro.com">Contact</a><span>Version <span data-version></span></span></nav>
+      </div>
     </footer>
 
-    <script type="module" src="/src/site/page.ts"></script>
+    <script type="module" src="/src/site/landing.ts"></script>
     <!-- Tommy's signature bar, shared by his product sites: credit, his other
          products, his portfolio. A copy of the one Tidy ships, in public/signature. -->
     <tommy-signature appearance="dark" current-product="mark"></tommy-signature>

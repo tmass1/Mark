@@ -851,11 +851,15 @@ notarization if Mark ever goes to someone else's.
 `demo.html` is Mark running in a browser: the editor, the selection overlay and
 settings are the real pages, each in a frame, against a page that plays lib.rs
 and a picture of a desktop. `site.html` is the landing page, which opens on
-the demo itself, framed where a picture of the app would be, and takes its
-version, shortcut and mark from the app itself. A phone gets the picture
-instead, and never loads the demo. `ai.html` is the guide to AI tools, served
-at `/ai`. All three are pages of the same Vite build, so `pnpm dev` serves them
-at `http://127.0.0.1:1420/demo.html`, `/site.html` and `/ai.html`. A copy in the demo shows
+the demo itself, framed where a picture of the app would be, takes its
+version, shortcut and mark from the app itself, and draws every mark on the page
+with the editor's own layer. A phone gets the picture instead, and never loads
+the demo. What moves as you scroll is in `src/site/motion.ts`, behind `html.motion`:
+`?motion=off`, or a visitor who asks for less motion, gets the page without it.
+`ai.html` is the guide to AI tools, served at `/ai`, and `privacy.html` and
+`terms.html` are served at `/privacy` and `/terms`. All are pages of the same Vite
+build, so `pnpm dev` serves them at `http://127.0.0.1:1420/demo.html`, `/site.html`
+and so on. A copy in the demo shows
 the very image that went to the clipboard, in a card at the bottom right, with
 a Save button for a browser that refuses the clipboard; below 640 pixels wide
 the demo shows a picture of the editor instead, since a phone cannot drive it.
@@ -868,7 +872,7 @@ different. After a change to the editor's appearance, redraw them with the dev
 server running:
 
 ```sh
-pnpm site:shots            # writes public/site/*.png
+pnpm site:shots            # writes public/site/*: pictures, and the recording (needs ffmpeg)
 ```
 
 To assemble a folder for a static host:
@@ -877,7 +881,7 @@ To assemble a folder for a static host:
 pnpm site                  # builds, then fills dist-site/
 ```
 
-`dist-site/index.html` is the landing page, with the guide, the demo, their assets, and
+`dist-site/index.html` is the landing page, with the guide, the privacy and terms pages, the demo, their assets, and
 `Mark_<version>_universal.dmg` beside it if the disk image has been built; the
 download button points at that file name.
 

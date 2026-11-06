@@ -35,7 +35,7 @@ Two options:
 8. **Deploy**, with the note naming the commit and branch. Just before uploading, it looks once more at what's live and at this checkout, in case someone deployed or something changed while the tests and build ran.
 9. **The live site.**
    - Cloudflare has to report the new version with its note, and the home page has to be the one just built.
-   - The public pages have to load: `/`, `/ai`, `/demo`, `/demo/editor`, `/demo/selector` and `/demo/recording`. So do the download and both Software Update files.
+   - The public pages have to load: `/`, `/ai`, `/privacy`, `/terms`, `/demo`, `/demo/editor`, `/demo/selector` and `/demo/recording`. So do the download and both Software Update files.
    - Everything that must stay hidden has to answer "not found": Git's files, `.env`, `.dev.vars`, the config files, the source, and the app's own window pages.
    - The site has no sign-in, so it has no private pages to check.
 10. **Rollback and to-dos.** It prints the command that puts the previous version back, and reminds you to:
