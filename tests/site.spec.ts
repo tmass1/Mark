@@ -368,7 +368,7 @@ test('privacy, terms and contact are a click from the home page and the guide, a
   for (const start of ['/site.html', '/ai.html']) {
     await page.goto(start);
     const footer = page.locator('footer');
-    await expect(footer.getByRole('link', { name: 'Contact' })).toHaveAttribute('href', 'mailto:hello@tommymassaro.com');
+    await expect(footer.getByRole('link', { name: 'Contact' })).toHaveAttribute('href', 'mailto:hey@tommymassaro.com');
     await footer.getByRole('link', { name: 'Privacy' }).click();
     await expect(page).toHaveURL(/\/privacy\.html$/);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy');
