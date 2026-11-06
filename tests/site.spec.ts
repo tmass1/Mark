@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import pkg from '../package.json' with { type: 'json' };
+import board from '../src/site/board.json' with { type: 'json' };
 
 /** The site: what it says about the app has to be what the app says about
  *  itself, and the demo in its frame has to be the real demo. */
@@ -49,8 +50,11 @@ test('the site shows each device Frame puts round a capture, the phone as tall a
 
 test('the bar keeps its links on one line, then gives them up, with Download at its end', async ({ page }) => {
   await page.goto('/site.html?motion=off');
+  // The bar eases to a new width, and its parts can't be compared while it does.
+  const settled = () => page.locator('.bar .wrap').evaluate(bar => Promise.all(bar.getAnimations({ subtree: true }).map(move => move.finished.catch(() => {}))));
   for (const width of [1360, 847, 721]) {
     await page.setViewportSize({ width, height: 800 });
+    await settled();
     for (const link of await page.locator('.links a:visible').all()) expect((await link.boundingBox())!.height).toBeLessThan(44);
     const [bar, links, download] = [await page.locator('.bar .wrap').boundingBox(), await page.locator('.links').boundingBox(), await page.locator('.bar .get').boundingBox()];
     expect(links!.x + links!.width).toBeLessThanOrEqual(download!.x);
@@ -59,6 +63,7 @@ test('the bar keeps its links on one line, then gives them up, with Download at 
   for (const width of [720, 400]) {
     await page.setViewportSize({ width, height: 800 });
     await expect(page.locator('.links')).toBeHidden();
+    await settled();
     const [bar, download] = [(await page.locator('.bar .wrap').boundingBox())!, (await page.locator('.bar .get').boundingBox())!];
     expect(bar.x + bar.width - (download.x + download.width)).toBeLessThanOrEqual(14);
   }
@@ -330,6 +335,27 @@ test('the video section’s recording plays in view, and stops when clicked', as
   await expect.poll(now, { timeout: 8000 }).not.toBe(from);
   await player.click();
   await expect(player).not.toHaveClass(/playing/);
+});
+
+test('the recording can jump on a host that only sends whole files', async ({ page }) => {
+  // The real host sends a whole file whatever part is asked for; the dev server doesn't, which hid this.
+  // A browser that can't ask for part of a video can't jump in it, and Chrome then stays on the first frame.
+  await page.route('**/site/board.{mp4,webm}', route => route.fulfill({ path: `public/site/${new URL(route.request().url()).pathname.split('/').pop()}` }));
+  await page.goto('/site.html');
+  const player = page.locator('#player'), movie = player.locator('video');
+  await player.scrollIntoViewIfNeeded();
+  const seen = () => movie.evaluate(el => {
+    const video = el as HTMLVideoElement;
+    return { reach: video.seekable.length ? video.seekable.end(0) : 0, at: video.currentTime };
+  });
+  await expect.poll(async () => (await seen()).reach, { timeout: 8000 }).toBeGreaterThan(14);
+  await expect.poll(async () => (await seen()).at, { timeout: 8000 }).toBeGreaterThan(1);
+  // It carries on past the part cut out, then comes back round to the start of what was kept, and plays on.
+  const SECONDS = 14.2, afterCut = board.cut[1] * SECONDS;
+  await expect.poll(async () => (await seen()).at, { timeout: 8000 }).toBeGreaterThan(afterCut + .2);
+  await expect.poll(async () => (await seen()).at, { timeout: 8000 }).toBeLessThan(board.cut[0] * SECONDS);
+  const back = (await seen()).at;
+  await expect.poll(async () => (await seen()).at, { timeout: 8000 }).toBeGreaterThan(back + .2);
 });
 
 test('the changelog is the release notes’ own, newest first', async ({ page }) => {

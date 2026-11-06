@@ -372,17 +372,31 @@ one('#wipe').addEventListener('click', () => { layer.load([]); listed = -1; sync
     if (movie.paused) return;
     seconds = movie.currentTime;
     const share = seconds / SECONDS;
-    if (share >= final || share < first) movie.currentTime = first * SECONDS;
-    else if (share >= cutFrom && share < cutTo) movie.currentTime = cutTo * SECONDS;
+    // A hair past each landing: a browser can round where it lands to just short of it, and would then
+    // jump again every frame and never play on.
+    if (share >= final || share < first) movie.currentTime = first * SECONDS + .01;
+    else if (share >= cutFrom && share < cutTo) movie.currentTime = cutTo * SECONDS + .01;
     paint();
     frameId = requestAnimationFrame(tick);
   };
+  // The host sends a whole file whatever part is asked for, and a browser that can't ask for part of a
+  // video can't jump in it: Chrome stays on the first frame, because the trim and the cut both jump. Held
+  // in memory the file can be jumped in anywhere. If fetching it fails, the video's own sources still try.
+  let loading: Promise<void> | undefined;
+  const load = () => loading ??= (async () => {
+    const source = all<HTMLSourceElement>('source', movie).find(item => movie.canPlayType(item.type));
+    if (!source) return;
+    const response = await fetch(source.src);
+    if (response.ok) movie.src = URL.createObjectURL(await response.blob());
+  })().catch(() => {});
   const sync = () => {
     const go = wanted && inView;
     player.classList.toggle('playing', go);
     button.setAttribute('aria-label', wanted ? 'Pause' : 'Play');
-    if (go) { movie.preload = 'auto'; movie.play().then(() => { if (!frameId) frameId = requestAnimationFrame(tick); }).catch(() => {}); }
-    else movie.pause();
+    if (!go) { movie.pause(); return; }
+    load().then(() => {
+      if (wanted && inView) movie.play().then(() => { if (!frameId) frameId = requestAnimationFrame(tick); }).catch(() => {});
+    });
   };
   movie.addEventListener('loadedmetadata', () => { movie.currentTime = seconds; }, { once: true });
   player.addEventListener('click', () => { wanted = !wanted; sync(); });

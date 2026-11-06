@@ -109,15 +109,18 @@
                says the site counts page views and Download clicks, without cookies,
                and this keeps that true. Nothing is kept between pages, so each page
                load counts as a new visitor, and a visitor isn't followed across the
-               other sites. And the project's session recording, automatic clicks and
-               heatmaps, switched on in PostHog's settings for all its sites, stay
-               off here, so a change there can't quietly make the page untrue. */
+               other sites. And the project's session recording, automatic clicks,
+               heatmaps, page-speed measurements and surveys, switched on in PostHog's
+               settings for all its sites, stay off here, so a change there can't
+               quietly make the page untrue. */
             persistence: "memory",
             disable_session_recording: true,
             autocapture: false,
             rageclick: false,
             capture_heatmaps: false,
             capture_dead_clicks: false,
+            capture_performance: false,
+            disable_surveys: true,
             loaded: function (ph) {
               /* A convenience label, not load-bearing. The dashboard groups by
                  `$host`, which PostHog attaches to every event by itself — so if
