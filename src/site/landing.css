@@ -188,9 +188,11 @@ h2 .kc { min-width: 1.04em; height: 1.04em; margin-block: -.09em; }
 .hero .fine { margin-top: 18px; }
 .works { margin-top: 10px; color: var(--muted); font-size: 14px; line-height: 1.6; text-wrap: balance; }
 .works span { color: var(--soft); font-weight: 560; }
-.not-mac { display: none; }
+.not-mac, .on-handheld { display: none; }
 .elsewhere .only-mac { display: none; }
 .elsewhere .not-mac { display: inline; }
+.handheld .off-handheld, .handheld .not-mac { display: none; }
+.handheld .on-handheld { display: inline; }
 .demo-frame {
   position: relative; margin-top: clamp(66px, 6.4vw, 88px); padding: 8px; border-radius: 22px; background: var(--sheen), var(--panel);
   box-shadow: inset 0 1px 0 var(--rim), 0 0 0 .5px var(--edge), 0 60px 120px -40px #000c, 0 30px 80px -30px #0a84ff4d;
@@ -262,6 +264,8 @@ h2 .kc { min-width: 1.04em; height: 1.04em; margin-block: -.09em; }
 .stage-grab {
   position: relative; aspect-ratio: 16 / 10; border-radius: 16px; overflow: hidden; background: #0b0c0e; box-shadow: inset 0 1px 0 #ffffff1a, 0 0 0 1px #ffffff0f, 0 30px 80px -30px #0a84ff4d;
   cursor: crosshair; touch-action: none; user-select: none; container-type: inline-size;
+  /* Its width has to be asked for. With a fixed shape and contained contents, Safari's grid sizes it to nothing. */
+  justify-self: stretch;
 }
 .stage-grab img { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .marquee { position: absolute; z-index: 2; left: 38%; top: 22%; width: 44%; height: 50%; box-shadow: 0 0 0 200vmax #08090b8f; pointer-events: none; }
@@ -448,33 +452,74 @@ footer a:hover { color: var(--ink); }
   .steps-list { max-height: 220px; }
   .capture-demo { grid-template-columns: 1fr; }
   .stage-grab { order: -1; }
-  .send, .ask { grid-template-columns: 1fr; }
+  .send, .ask { grid-template-columns: minmax(0, 1fr); }
 }
-@media (max-width: 720px) {
-  :root { --w: 150vw; }
-  .links, .more { display: none; }
-  .bar .get { margin-left: auto; }
-  .bar.stuck .wrap { width: calc(100% - 20px); height: 58px; margin-top: 10px; padding: 0 8px 0 12px; }
-  .hero { padding-top: 96px; }
+/* A small window or a touch screen: the demo wants a pointer and a keyboard, so these get the picture. */
+@media (max-width: 720px), (pointer: coarse) {
   .demo-frame, .demo-note { display: none; }
   .hero-shot { display: block; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px #ffffff1a, 0 30px 80px -30px #0a84ff66; }
   .no-demo { display: block; }
   [data-ask], [data-record] { display: none; }
+  /* Typing onto a picture this small would bring up the keyboard and zoom the page. */
+  .tool-set [data-tool="text"] { display: none; }
+}
+@media (pointer: coarse) {
+  /* A swipe up or down the capture picture scrolls the page; a drag across it still selects. */
+  .stage-grab { touch-action: pan-y; }
+  /* A finger on the picture draws. Safari ignores this on the svg layer itself, and scrolls away mid-arrow. */
+  .picture { touch-action: none; }
+  /* iOS zooms the whole page in on a field set smaller than this, and leaves it zoomed. */
+  .steps-list textarea { font-size: 16px; }
+}
+@media (max-width: 720px) {
+  :root { --w: 150vw; }
+  .links, .more, .with-keyboard { display: none; }
+  .bar .get { margin-left: auto; }
+  .bar .get, .bar.stuck .get { height: 40px; padding: 0 16px; font-size: 14.5px; }
+  .bar.stuck .wrap { width: calc(100% - 20px); height: 54px; margin-top: 10px; padding: 0 7px 0 9px; }
+  .hero { padding-top: 96px; }
+  /* The colour fades out before the section ends, rather than stopping at an edge. */
+  .hero::before { mask-image: linear-gradient(#000 62%, transparent 94%); }
+  /* A picture of the whole editor would be too small to read here, its notes above all, so
+     pictures run from edge to edge, closer in on their marks. Words and panels stay inset. */
+  .hero-shot, .versus .shot, .ask .shot, .player, .stage-grab, .draw { margin-inline: calc(-1 * var(--gutter)); border-radius: 0; }
+  .hero-shot img, .versus .shot img, .ask .shot img { max-width: none; }
+  .hero-shot img { width: 140%; margin-left: -9%; }
+  .versus .shot { aspect-ratio: 3 / 2; }
+  .versus .shot img { width: 155%; margin: -36.7% 0 0 -18.5%; }
+  .ask .shot img { width: 118%; margin-left: -18%; }
+  .player { width: calc((100% + 2 * var(--gutter)) * 1.24); margin-right: 0; }
   .versus { grid-template-columns: 1fr; gap: 24px; }
   .head { grid-template-columns: 1fr; align-items: start; }
-  .hint { font-size: 12px; }
+  /* It stays in view while the ways to capture go by beneath it, so choosing one shows what it does. */
+  .stage-grab { position: sticky; top: 72px; z-index: 2; }
+  .hint { width: max-content; max-width: calc(100% - 24px); font-size: 12px; text-align: center; white-space: normal; }
   .count { font-size: 76px; }
   .recbar span { display: none; }
-  .tools { gap: 6px 8px; }
-  .tools .label, .tools .grow { display: none; }
+  /* One row on any phone: the tools give up width before Undo or Clear would drop to a line of their own. */
+  .tools { flex-wrap: nowrap; min-width: 0; gap: 8px; padding: 8px 10px; }
+  #arrows, #looks, .tools .label, .tools .grow { display: none; }
+  .tool-set { flex: 0 1 auto; min-width: 0; border-radius: 23px; }
+  .tool-set button { flex: 0 1 auto; width: 44px; height: 40px; min-width: 0; padding: 0; border-radius: 20px; }
+  .plain { flex: none; height: 40px; padding: 0 8px; }
+  #undo { margin-left: auto; }
+  .picture { margin: 0 8px 8px; }
+  .steps { margin: 0 8px 8px; }
+  /* A scrolling box inside a scrolling page: a sixth note would land out of sight. */
+  .steps-list { max-height: none; overflow: visible; }
   .facts, .figs { grid-template-columns: 1fr; gap: 26px; }
   .facts > *, .figs > article { padding: 0; border-left: 0; }
-  .figs svg { max-width: 340px; }
-  .setup { grid-template-columns: 1fr; }
-  .devices { grid-template-columns: 1fr 1fr; }
+  .figs svg { max-width: 240px; margin-bottom: 14px; }
+  .setup { grid-template-columns: minmax(0, 1fr); }
+  .command button { height: 36px; padding: 0 12px; }
+  /* The tall phone beside the three that lie flat. */
+  .devices { grid-template-columns: 1.4fr 1fr; align-items: start; }
+  .devices figure:first-child { grid-row: span 3; }
   .keyboard, .reader { display: none; }
   .keylist { display: grid; grid-template-columns: 1fr; }
   .keylist li { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); color: var(--soft); font-size: 14.5px; }
+  /* Enough to show the point: nobody is about to press these on a phone. */
+  .keylist li:nth-child(n + 7) { display: none; }
   .last { height: 700px; }
   .last .fine { position: static; width: auto; margin-top: 20px; }
   .giant.up { --u: 620px; left: calc(150px - var(--u) * .23); top: calc(340px - var(--u) * .174); }
@@ -482,8 +527,11 @@ footer a:hover { color: var(--ink); }
   .log li::before { display: none; }
   .log li { padding-top: 0; padding-left: 26px; }
   .log li::after { top: 6px; }
-  .term-wrap { padding: 0; }
-  .copied { position: relative; width: 78%; margin: 0 0 -28px auto; z-index: 1; }
+  /* The picture first, overlapping the terminal it's pasted into. */
+  .term-wrap { display: flex; flex-direction: column; padding: 0; }
+  .copied { order: -1; position: relative; width: 78%; margin: 0 0 -28px auto; z-index: 1; }
   .term pre { min-height: 0; padding-top: 34px; font-size: 12.5px; }
   footer .wrap { flex-direction: column; align-items: flex-start; }
+  footer nav { align-items: center; gap: 0 22px; }
+  footer nav a { padding-block: 12px; }
 }

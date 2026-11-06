@@ -387,3 +387,205 @@ test('the landing page fits a phone, nothing wider than the screen', async ({ pa
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await expect(page.locator('.hero-arrow path')).toHaveCount(0);
 });
+
+test('nothing to read or press runs off the side of a phone', async ({ page }) => {
+  // The page can't scroll sideways, so what's too wide doesn't widen it: it's just cut off. Only pictures may be.
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/site.html?motion=off');
+    const cutOff = await page.evaluate(() => [...document.querySelectorAll('main p, main h1, main h2, main h3, main li, main figcaption, main button, main a, footer a')]
+      .filter(el => { const box = el.getBoundingClientRect(); return !el.closest('.player') && box.width > 0 && (box.right > innerWidth + 1 || box.left < -1); })
+      .map(el => (el.textContent ?? '').trim().slice(0, 40)));
+    expect(cutOff).toEqual([]);
+  }
+});
+
+test('the capture picture asks for its width, or Safari’s grid sizes it to nothing', async ({ page }) => {
+  // Only Safari shows this, and these tests run in Chromium, so what's checked is that it's asked for.
+  for (const width of [390, 900, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/site.html?motion=off');
+    const grab = page.locator('#grab');
+    expect(await grab.evaluate(el => getComputedStyle(el).justifySelf)).toBe('stretch');
+    expect((await grab.boundingBox())!.width).toBeGreaterThan(300);
+  }
+});
+
+test.describe('on a phone', () => {
+  // A phone as it says it is: touch, a narrow screen, and its own name for itself.
+  test.use({
+    viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+  });
+
+  test('its button sends the page to a Mac, and nothing is downloaded or counted', async ({ page }) => {
+    await page.addInitScript(() => { navigator.share = async data => { (window as unknown as { shared: unknown }).shared = data; }; });
+    const asked: string[] = [];
+    page.on('request', request => asked.push(new URL(request.url()).pathname));
+    await page.goto('/site.html');
+    await expect(page.locator('html')).toHaveClass(/handheld/);
+    const button = page.locator('.hero .get');
+    await expect(button).toHaveText('Send to my Mac', { useInnerText: true });
+    await expect(page.locator('.bar .get')).toHaveText('Send to Mac', { useInnerText: true });
+    await expect(page.locator('.hero .fine')).toHaveText('Mark is a free Mac app. Send yourself the link, then download it on your Mac.', { useInnerText: true });
+    for (const link of await page.locator('[data-download]').all()) {
+      await expect(link).not.toHaveAttribute('download');
+      await expect(link).not.toHaveAttribute('data-track-download');
+    }
+    await button.click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { shared?: { url: string } }).shared?.url)).toBe(`${new URL(page.url()).origin}/`);
+    expect(asked.filter(path => path.endsWith('.dmg'))).toEqual([]);
+  });
+
+  test('with no share sheet, its button copies the link', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'share', { value: undefined });
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (text: string) => { (window as unknown as { copied: string }).copied = text; } } });
+    });
+    await page.goto('/site.html');
+    const button = page.locator('.hero .get');
+    await button.click();
+    await expect(button).toHaveText('Link copied', { useInnerText: true });
+    expect(await page.evaluate(() => (window as unknown as { copied: string }).copied)).toBe(`${new URL(page.url()).origin}/`);
+    await expect(button).toHaveText('Send to my Mac', { useInnerText: true, timeout: 4000 });
+  });
+
+  test('the hero’s words stay as the scroll starts', async ({ page }) => {
+    await page.goto('/site.html');
+    await expect(page.locator('html')).toHaveClass(/ready/);
+    await page.evaluate(() => scrollTo({ top: 30, behavior: 'instant' }));
+    await page.waitForTimeout(700);
+    expect(Number(await page.locator('.hero h1').evaluate(el => getComputedStyle(el).opacity))).toBeGreaterThan(.9);
+  });
+
+  test('a swipe up the capture picture scrolls the page, and leaves no selection behind', async ({ page }) => {
+    // Without the selection the picture plays for itself on arrival, which would hide what the swipe left.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/site.html?motion=off');
+    const grab = page.locator('#grab');
+    await grab.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    const reading = page.locator('#grab .reading'), size = await reading.textContent();
+    expect(size).toMatch(/^\d+ × \d+ px$/);
+    const box = (await grab.boundingBox())!, x = box.x + box.width / 2, y = box.y + box.height / 2, before = await page.evaluate(() => scrollY);
+    const touch = await page.context().newCDPSession(page);
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let i = 1; i <= 8; i++) {
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - i * 14 }] });
+      await page.waitForTimeout(16);
+    }
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(before + 40);
+    await expect(reading).toHaveText(size!);
+  });
+
+  test('drawing keeps its picture in view, with the keyboard down and no zoom', async ({ page }) => {
+    await page.goto('/site.html?motion=off');
+    const picture = page.locator('#overlay');
+    await picture.scrollIntoViewIfNeeded();
+    await expect(page.locator('#steps textarea')).toHaveCount(3, { timeout: 10_000 });
+    // The tools that matter, in one row a thumb can hit; typing on a picture this small is left out.
+    await expect(page.locator('#arrows')).toBeHidden();
+    await expect(page.locator('#looks')).toBeHidden();
+    await expect(page.locator('[data-tool="text"]')).toBeHidden();
+    const tools = (await page.locator('#tools').boundingBox())!, clear = (await page.locator('#wipe').boundingBox())!;
+    expect(Math.abs(tools.y + tools.height / 2 - (clear.y + clear.height / 2))).toBeLessThan(2);
+    expect(tools.height).toBeGreaterThanOrEqual(44);
+    const box = (await picture.boundingBox())!;
+    await page.mouse.move(box.x + box.width * .2, box.y + box.height * .7);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * .4, box.y + box.height * .8, { steps: 6 });
+    await page.mouse.up();
+    await expect(page.locator('#steps textarea')).toHaveCount(4);
+    await expect(page.locator('#steps textarea').nth(3)).not.toBeFocused();
+    // iOS zooms the page in on any field set smaller than this.
+    expect(await page.locator('#steps textarea').first().evaluate(el => getComputedStyle(el).fontSize)).toBe('16px');
+  });
+
+  test('the drawing tools keep to one row, down to the smallest phone', async ({ page }) => {
+    for (const width of [320, 360, 390, 430]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto('/site.html?motion=off');
+      const middle = (box: { y: number; height: number }) => box.y + box.height / 2;
+      const tools = (await page.locator('#tools').boundingBox())!, undo = (await page.locator('#undo').boundingBox())!, clear = (await page.locator('#wipe').boundingBox())!;
+      expect(Math.abs(middle(tools) - middle(clear))).toBeLessThan(2);
+      expect(Math.abs(middle(undo) - middle(clear))).toBeLessThan(2);
+      expect(clear.x + clear.width).toBeLessThanOrEqual(width);
+      expect((await page.locator('[data-tool="box"]').boundingBox())!.width).toBeGreaterThanOrEqual(30);
+    }
+  });
+
+  test('a finger on the drawing picture stays there, in Safari too', async ({ page }) => {
+    // Safari ignores touch-action on the svg layer itself and scrolls away mid-arrow, so it has to be on the box
+    // around it. Only Safari shows this, and these tests run in Chromium, so what's checked is that it's asked for.
+    await page.goto('/site.html?motion=off');
+    expect(await page.locator('#picture').evaluate(el => getComputedStyle(el).touchAction)).toBe('none');
+  });
+
+  test('every note stays in view, and the panel doesn’t mention a keyboard', async ({ page }) => {
+    await page.goto('/site.html?motion=off');
+    const picture = page.locator('#overlay'), notes = page.locator('#steps textarea');
+    await picture.scrollIntoViewIfNeeded();
+    await expect(notes).toHaveCount(3, { timeout: 10_000 });
+    const box = (await picture.boundingBox())!;
+    for (const [from, to] of [[.08, .2], [.38, .5], [.66, .78]]) {
+      await page.mouse.move(box.x + box.width * from, box.y + box.height * .78);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width * to, box.y + box.height * .9, { steps: 6 });
+      await page.mouse.up();
+    }
+    await expect(notes).toHaveCount(6);
+    // A scrolling box inside the scrolling page would put the newest note out of sight.
+    expect(await page.locator('#steps').evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+    await expect(page.locator('.steps-end')).toHaveText('Type a note and it goes on the picture.', { useInnerText: true });
+  });
+
+  test('a recording that isn’t allowed to play by itself offers a Play button', async ({ page }) => {
+    // As an iPhone in Low Power Mode does: only a tap can start a video.
+    await page.addInitScript(() => {
+      const play = HTMLMediaElement.prototype.play;
+      HTMLMediaElement.prototype.play = function () {
+        return (window as unknown as { tapped?: boolean }).tapped ? play.call(this) : Promise.reject(new DOMException('Needs a tap', 'NotAllowedError'));
+      };
+    });
+    await page.goto('/site.html');
+    const player = page.locator('#player');
+    await player.scrollIntoViewIfNeeded();
+    await expect(page.locator('.player-play')).toHaveAttribute('aria-label', 'Play');
+    await expect(player).not.toHaveClass(/playing/);
+    await page.evaluate(() => { (window as unknown as { tapped: boolean }).tapped = true; });
+    await player.click();
+    await expect(player).toHaveClass(/playing/);
+    await expect.poll(() => page.locator('#player video').evaluate(el => !(el as HTMLVideoElement).paused)).toBe(true);
+  });
+
+  test('its pictures are sized for it', async ({ page }) => {
+    await page.goto('/site.html?motion=off');
+    const scene = page.locator('#grab img');
+    await scene.scrollIntoViewIfNeeded();
+    await expect.poll(() => scene.evaluate(el => (el as HTMLImageElement).currentSrc)).toContain('scene-1200.webp');
+    expect(await page.locator('.bar .brand img').evaluate(el => (el as HTMLImageElement).naturalWidth)).toBeLessThanOrEqual(144);
+  });
+});
+
+test.describe('on a tablet', () => {
+  test.use({
+    viewport: { width: 1024, height: 768 }, isMobile: true, hasTouch: true,
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+  });
+
+  test('an iPad, which says it’s a Mac, gets the picture and no download', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
+      Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 });
+    });
+    const asked: string[] = [];
+    page.on('request', request => asked.push(new URL(request.url()).pathname));
+    await page.goto('/site.html', { waitUntil: 'networkidle' });
+    await expect(page.locator('.hero .get')).toHaveText('Send to my Mac', { useInnerText: true });
+    await expect(page.locator('.hero .hero-shot')).toBeVisible();
+    await expect(page.locator('.demo-frame')).toBeHidden();
+    await expect(page.getByText('The demo wants a pointer and a keyboard.')).toBeVisible();
+    expect(asked.filter(path => path.endsWith('demo.html'))).toEqual([]);
+  });
+});

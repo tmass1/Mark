@@ -41,6 +41,9 @@
       // The motion layer is switched on here, before the first paint, so nothing flashes.
       // ?motion=off shows the page without it. If its script never starts, the page shows itself.
       // So does a window far taller than any screen, which is how search engines read a page.
+      // A phone or a tablet can't run a Mac app, and is told so before the first paint. An iPad says
+      // it's a Mac, and gives itself away with its touch screen.
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (/Mac/.test(navigator.platform) && navigator.maxTouchPoints > 1)) document.documentElement.classList.add('handheld');
       if (new URLSearchParams(location.search).get('motion') !== 'off' && !matchMedia('(prefers-reduced-motion: reduce)').matches && innerHeight < 2000) {
         document.documentElement.classList.add('motion');
         setTimeout(() => { if (!window.__motionStarted) document.documentElement.classList.remove('motion'); }, 3000);
@@ -298,7 +301,7 @@
           <a href="#features">Features</a>
           <a href="./ai.html">Setup guide</a>
         </nav>
-        <a class="get small" href="#download" data-download data-track-download="mark" data-platform="macos">Download<span class="more">&nbsp;for Mac</span></a>
+        <a class="get small" href="#download" data-download data-track-download="mark" data-platform="macos"><span class="off-handheld">Download<span class="more">&nbsp;for Mac</span></span><span class="on-handheld">Send to Mac</span></a>
       </div>
     </header>
 
@@ -313,10 +316,10 @@
           <div class="hero-cta">
             <a class="get" href="#download" data-download data-track-download="mark" data-platform="macos">
               <svg viewBox="0 0 17 20" aria-hidden="true"><path d="M14.2 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.8-3.1-.8C3.9 5.4 1.6 7.5 1.6 11c0 1.4.3 2.8.9 4.2.7 1.7 2.3 4.4 4 4.4.9 0 1.6-.6 2.9-.6 1.2 0 1.8.6 3 .6 1.8 0 3.2-2.4 3.9-4.1.5-1.1.7-1.6.7-1.7-.1 0-2.8-1-2.8-3.2zM11.9 3.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>
-              Download for Mac
+              <span class="off-handheld">Download for Mac</span><span class="on-handheld">Send to my Mac</span>
             </a>
           </div>
-          <p class="fine"><span class="only-mac">Free · Version <span data-version></span> · macOS 13 or later · Apple silicon and Intel · Notarized by Apple</span><span class="not-mac">Mark is a Mac app. The download runs on macOS 13 or later, Apple silicon or Intel.</span></p>
+          <p class="fine"><span class="only-mac">Free · Version <span data-version></span> · macOS 13 or later · Apple silicon and Intel · Notarized by Apple</span><span class="not-mac">Mark is a Mac app. The download runs on macOS 13 or later, Apple silicon or Intel.</span><span class="on-handheld">Mark is a free Mac app. Send yourself the link, then download it on your Mac.</span></p>
           <p class="works"><span>Works with</span> Claude Code · Codex · Cursor · GitHub Copilot · ChatGPT · Grok Build · any chat you can paste into</p>
           <!-- Mark itself rather than a picture of it. A phone can't drive it, so a phone gets
                the picture instead and never loads the demo. -->
@@ -349,7 +352,7 @@
           </figure>
           <figure>
             <figcaption>What you’d send <span>3 marks</span></figcaption>
-            <div class="shot"><img src="/site/checkout.webp" width="1876" height="1232" alt="Mark’s editor over a captured checkout page, marked up with three numbered notes: show the date, not the days; make Express free over $75; and make Pay now full width." /></div>
+            <div class="shot"><img src="/site/checkout.webp" width="1876" height="1232" loading="lazy" decoding="async" alt="Mark’s editor over a captured checkout page, marked up with three numbered notes: show the date, not the days; make Express free over $75; and make Pay now full width." /></div>
           </figure>
         </div>
         </div></div>
@@ -368,7 +371,7 @@
             <div class="palette-end"><span>From any app</span><span><kbd class="k" data-shortcut>⌘4</kbd></span></div>
           </div>
           <div class="stage-grab" id="grab" data-mode="region">
-            <img src="/demo/scene.jpg" width="2880" height="1800" loading="lazy" decoding="async" alt="A window on a Mac desktop, with a selection being dragged across it and its size shown beside it." />
+            <img src="/demo/scene.jpg" srcset="/site/scene-1200.webp 1200w, /demo/scene.jpg 2880w" sizes="(max-width: 1040px) 100vw, 66vw" width="2880" height="1800" loading="lazy" decoding="async" alt="A window on a Mac desktop, with a selection being dragged across it and its size shown beside it." />
             <div class="marquee" id="marquee">
               <svg class="tick a" viewBox="0 0 22 22"><path d="M2 14V6a4 4 0 0 1 4-4h8" /></svg>
               <svg class="tick b" viewBox="0 0 22 22"><path d="M2 14V6a4 4 0 0 1 4-4h8" /></svg>
@@ -406,7 +409,7 @@
           <aside class="steps" aria-label="Your notes">
             <div class="steps-top"><span>Steps</span><span id="steps-count" style="color:#9ca3af"></span></div>
             <ol class="steps-list" id="steps"></ol>
-            <p class="steps-end">Type a note and it goes on the picture. <kbd class="k">⇧⌘L</kbd> copies them all as a list.</p>
+            <p class="steps-end">Type a note and it goes on the picture.<span class="with-keyboard"> <kbd class="k">⇧⌘L</kbd> copies them all as a list.</span></p>
           </aside>
         </div>
       </section>
@@ -504,17 +507,17 @@
           <p class="lede">Set a recording or a screenshot on a background and put a device round it: a window, a browser, a phone or a tablet.</p>
         </div>
         <div class="devices">
-          <figure><img src="/site/phone.png" width="900" height="1692" loading="lazy" alt="A travel itinerary in a phone, with a numbered note, “Say who booked it”." /><figcaption>Phone</figcaption></figure>
-          <figure><img src="/site/browser.png" width="1200" height="803" loading="lazy" alt="A checkout page in a browser, with a numbered note, “Make Pay now full width”." /><figcaption>Browser</figcaption></figure>
-          <figure><img src="/site/tablet.png" width="1000" height="760" loading="lazy" alt="A map of a day in Lisbon on a tablet, with a numbered note, “Say how long the tram takes”." /><figcaption>Tablet</figcaption></figure>
-          <figure><img src="/site/window.png" width="1000" height="718" loading="lazy" alt="A podcast player’s window, with an arrow and the words “Thicker, with chapters”." /><figcaption>Window</figcaption></figure>
+          <figure><img src="/site/phone.webp" width="900" height="1692" loading="lazy" alt="A travel itinerary in a phone, with a numbered note, “Say who booked it”." /><figcaption>Phone</figcaption></figure>
+          <figure><img src="/site/browser.webp" width="1200" height="803" loading="lazy" alt="A checkout page in a browser, with a numbered note, “Make Pay now full width”." /><figcaption>Browser</figcaption></figure>
+          <figure><img src="/site/tablet.webp" width="1000" height="760" loading="lazy" alt="A map of a day in Lisbon on a tablet, with a numbered note, “Say how long the tram takes”." /><figcaption>Tablet</figcaption></figure>
+          <figure><img src="/site/window.webp" width="1000" height="718" loading="lazy" alt="A podcast player’s window, with an arrow and the words “Thicker, with chapters”." /><figcaption>Window</figcaption></figure>
         </div>
       </section>
 
       <section class="chapter wrap" id="features" aria-labelledby="ch-keys">
         <div class="head">
           <h2 id="ch-keys">Small, and particular about it.</h2>
-          <p class="lede">Nearly everything in Mark is a key away. Hover one, or press it.</p>
+          <p class="lede">Nearly everything in Mark is a key away.<span class="with-keyboard"> Hover one, or press it.</span></p>
         </div>
         <div class="reader" id="reader" aria-live="polite"></div>
         <div class="keyboard" id="keyboard" aria-hidden="true"></div>
@@ -553,7 +556,7 @@
           <h2 id="ch-get">Get Mark.</h2>
           <a class="get" href="#download" data-download data-track-download="mark" data-platform="macos">
             <svg viewBox="0 0 17 20" aria-hidden="true"><path d="M14.2 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.9-.8-3.1-.8C3.9 5.4 1.6 7.5 1.6 11c0 1.4.3 2.8.9 4.2.7 1.7 2.3 4.4 4 4.4.9 0 1.6-.6 2.9-.6 1.2 0 1.8.6 3 .6 1.8 0 3.2-2.4 3.9-4.1.5-1.1.7-1.6.7-1.7-.1 0-2.8-1-2.8-3.2zM11.9 3.6c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.7-1.3z"/></svg>
-            Download for Mac
+            <span class="off-handheld">Download for Mac</span><span class="on-handheld">Send to my Mac</span>
           </a>
           <p class="fine">Free. Open the disk image and drag Mark to Applications. macOS asks for Screen Recording the first time you capture. Screenshots need macOS 13 or later; recording video, macOS 15. After that, Mark checks for updates by itself.</p>
         </div>

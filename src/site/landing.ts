@@ -17,7 +17,36 @@ showAppFacts();
 copyButtons();
 // The Mac gets the download line; anyone else is told what they are looking at.
 const platform = `${(navigator as { userAgentData?: { platform: string } }).userAgentData?.platform ?? ''} ${navigator.platform}`;
-document.documentElement.classList.toggle('elsewhere', !/Mac/i.test(platform));
+const handheld = document.documentElement.classList.contains('handheld');
+document.documentElement.classList.toggle('elsewhere', handheld || !/Mac/i.test(platform));
+
+// ---- a phone can't run a Mac app ----------------------------------------------------
+// The download would be 18 MB it can't open, counted as a download all the same. So its button sends
+// the page to the visitor's Mac: by the phone's own share sheet (AirDrop, Messages, Mail), or, with no
+// such sheet, by copying the link, or at the last by an email to themselves.
+if (handheld) for (const link of all<HTMLAnchorElement>('[data-download]')) {
+  link.removeAttribute('download');
+  link.removeAttribute('data-track-download');
+  link.removeAttribute('data-platform');
+  link.href = '#download';
+  link.setAttribute('role', 'button');
+  const label = one('.on-handheld', link), words = label.textContent;
+  link.addEventListener('click', async event => {
+    event.preventDefault();
+    const url = `${location.origin}/`;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Mark for Mac', url }); return; }
+      catch (error) { if ((error as Error).name === 'AbortError') return; }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      label.textContent = 'Link copied';
+      setTimeout(() => { label.textContent = words; }, 2000);
+    } catch {
+      location.href = `mailto:?subject=${encodeURIComponent('Mark for Mac')}&body=${encodeURIComponent(url)}`;
+    }
+  });
+}
 
 // ---- the bar ---------------------------------------------------------------------
 const bar = one('#bar');
@@ -67,11 +96,11 @@ if (!calm) {
   }, 2400);
 }
 
-// ---- the demo, only in a window wide enough to show it ------------------------------------
+// ---- the demo, only in a window wide enough to show it, with a pointer to drive it ----------
 // A frame that is hidden but has a source is loaded all the same -- a lazy one too, since a hidden
 // frame is taken for a tracker and fetched at once -- so the source waits for a width that shows it.
 const demo = one<HTMLIFrameElement>('.demo'), tryMe = one('.try-me');
-const wide = matchMedia('(min-width: 721px)');
+const wide = matchMedia('(min-width: 721px) and (pointer: fine)');
 const startDemo = () => {
   if (!wide.matches || !demo.dataset.src) return;
   demo.src = demo.dataset.src;
@@ -218,7 +247,8 @@ grab.addEventListener('pointermove', event => {
   setRect(Math.min(anchor[0], x), Math.min(anchor[1], y), Math.abs(x - anchor[0]) + 1, Math.abs(y - anchor[1]) + 1);
 });
 grab.addEventListener('pointerup', () => { if (anchor) { anchor = null; shutter(); } });
-grab.addEventListener('pointercancel', () => { anchor = null; });
+// A swipe up or down the picture turns into a scroll partway through: put back what it had started to select.
+grab.addEventListener('pointercancel', () => { if (anchor) { anchor = null; clearRect(); } });
 const press = () => {
   const keys = all('[data-press]');
   keys.forEach(key => key.classList.add('down'));
@@ -274,7 +304,8 @@ steps.addEventListener('input', event => {
 });
 layer.onNumbered = id => {
   listed = -1; syncSteps();
-  steps.querySelector<HTMLTextAreaElement>(`[data-id="${id}"]`)?.focus();
+  // Not on a phone, where the keyboard would come up over the picture after every arrow.
+  if (!handheld) steps.querySelector<HTMLTextAreaElement>(`[data-id="${id}"]`)?.focus();
 };
 document.fonts.ready.then(() => layer.load(START));
 
@@ -395,7 +426,10 @@ one('#wipe').addEventListener('click', () => { layer.load([]); listed = -1; sync
     button.setAttribute('aria-label', wanted ? 'Pause' : 'Play');
     if (!go) { movie.pause(); return; }
     load().then(() => {
-      if (wanted && inView) movie.play().then(() => { if (!frameId) frameId = requestAnimationFrame(tick); }).catch(() => {});
+      if (wanted && inView) movie.play().then(() => { if (!frameId) frameId = requestAnimationFrame(tick); }).catch((error: Error) => {
+        // A phone saving power won't play a video by itself, so the button says so, and a tap will.
+        if (error.name === 'NotAllowedError') { wanted = false; sync(); }
+      });
     });
   };
   movie.addEventListener('loadedmetadata', () => { movie.currentTime = seconds; }, { once: true });

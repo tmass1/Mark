@@ -106,3 +106,12 @@
 @media (max-width: 1040px) {
   .motion .tilt, .motion .demo-frame { transform: none !important; }
 }
+/* A phone keeps the motion that says something, without what it would have to hold in memory or
+   work out as it scrolls: a layer several screens wide for each patch of colour, a blur on each word. */
+@media (max-width: 720px) {
+  .motion .w { filter: none; }
+  .motion .ambient i { will-change: auto; }
+  .motion .ambient i::before { animation: none; }
+  .motion .hero::before { transform: none; will-change: auto; }
+  .motion .shot.deep, .motion .shot.deep img { transform: none !important; }
+}

@@ -2,7 +2,7 @@
  *  its version, its shortcut and its download. The mark is the same import the editor uses, so
  *  the page and the app show one file and the build gives it a path that is right from anywhere. */
 import pkg from '../../package.json';
-import markIcon from '../mark-icon.png';
+import markIcon from './mark-small.webp';   // The app's icon, sized for the page: it's never shown above 36px.
 import { DEFAULT_SHORTCUT, prettyShortcut } from '../shortcut';
 
 export const one = <T extends Element = HTMLElement>(selector: string, within: ParentNode = document) => within.querySelector<T>(selector)!;

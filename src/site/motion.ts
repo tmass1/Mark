@@ -137,14 +137,16 @@ export function startMotion({ layer: drawLayer, start, capture, arrows }: Parts)
 
   // ---- the hero ----------------------------------------------------------------------------
   {
-    const hero = one('.hero'), frameEl = one('.demo-frame');
+    const hero = one('.hero'), frameEl = one('.demo-frame'), shotEl = one('.hero-shot');
     for (const selector of ['.hero .lede', '.hero-cta .get', '.hero .fine', '.hero .works', '.hero .hero-shot']) reveal(selector);
     // Each line leaves at its own speed, the demo sliding up over them as it stands.
     const parts = ([['h1', .36], ['.lede', .28], ['.hero-cta', .22], ['.fine', .17], ['.works', .13]] as const).map(([selector, speed]) => [one(`.hero ${selector}`), speed] as const);
     // Once risen, they follow the scroll directly: the rise's ease would make them trail behind it.
     setTimeout(() => all('.hero .rv').forEach(el => el.classList.add('settled')), 1700);
     let top = 0;
-    layouts.push(() => { top = pageTop(frameEl); });
+    // A hidden frame has no place in the page, and the words would fade by a distance of nothing:
+    // a phone or a tablet goes by its picture.
+    layouts.push(() => { top = pageTop(frameEl.offsetParent ? frameEl : shotEl); });
     scrubs.push(y => {
       hero.style.setProperty('--glow', `${(y * .3).toFixed(1)}px`);
       for (const [el, speed] of parts) {
@@ -158,7 +160,8 @@ export function startMotion({ layer: drawLayer, start, capture, arrows }: Parts)
   }
 
   // ---- colour floating behind the page, each patch at its own speed -----------------------------------
-  all('.ambient i').forEach((blob, i) => depth(blob, [-.14, -.22, -.09][i % 3]));
+  // Not on a phone, where the colour just sits: each patch moving would be a layer to hold in memory.
+  if (root.clientWidth >= 721) all('.ambient i').forEach((blob, i) => depth(blob, [-.14, -.22, -.09][i % 3]));
 
   // ---- how it works: the paragraph crossed out as the marks replace it ------------------------------
   const pin = matchMedia('(min-width: 1041px) and (min-height: 620px)');
